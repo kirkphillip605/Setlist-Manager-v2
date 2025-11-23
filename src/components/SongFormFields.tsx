@@ -10,24 +10,14 @@ interface SongFormFieldsProps {
   control: Control<Song>;
 }
 
+// Keys mapped to match musicApi.ts for guitar friendliness
 const KEYS = [
-  "C Major", "C Minor",
-  "C# Major", "C# Minor",
-  "Db Major", "Db Minor",
-  "D Major", "D Minor",
-  "D# Major", "D# Minor",
-  "Eb Major", "Eb Minor",
-  "E Major", "E Minor",
-  "F Major", "F Minor",
-  "F# Major", "F# Minor",
-  "Gb Major", "Gb Minor",
-  "G Major", "G Minor",
-  "G# Major", "G# Minor",
-  "Ab Major", "Ab Minor",
-  "A Major", "A Minor",
-  "A# Major", "A# Minor",
-  "Bb Major", "Bb Minor",
-  "B Major", "B Minor"
+  // Major
+  "C Major", "Db Major", "D Major", "Eb Major", "E Major", "F Major", 
+  "F# Major", "G Major", "Ab Major", "A Major", "Bb Major", "B Major",
+  // Minor
+  "C Minor", "C# Minor", "D Minor", "D# Minor", "E Minor", "F Minor", 
+  "F# Minor", "G Minor", "G# Minor", "A Minor", "Bb Minor", "B Minor"
 ];
 
 export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
@@ -65,7 +55,7 @@ export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
           <Input
             id="key"
             list="keys-list"
-            placeholder="e.g. Am"
+            placeholder="e.g. A Major"
             {...register("key")}
           />
           <datalist id="keys-list">

@@ -97,7 +97,10 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
   }
 };
 
-const PITCH_CLASS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+// Enharmonic mappings favored for guitarists
+// Mode 1 = Major, Mode 0 = Minor
+const MAJOR_KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const MINOR_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B'];
 
 export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatures> => {
   console.log(`Fetching audio features for ID: ${spotifyId}`);
@@ -118,17 +121,21 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
     const data = await response.json();
     console.log("Spotify Audio Features Response:", data);
     
-    // Parse Key
-    // key: integer 0-11. -1 if no key detected.
-    // mode: 0 (Minor), 1 (Major)
     let keyString = "";
+    
+    // Check if key is a valid number (0-11)
     if (data && typeof data.key === 'number' && data.key >= 0 && data.key < 12) {
-      const note = PITCH_CLASS[data.key];
-      const mode = data.mode === 1 ? "Major" : "Minor";
-      keyString = `${note} ${mode}`;
+      const pitchClass = data.key;
+      const mode = data.mode; // 1 = Major, 0 = Minor
+
+      if (mode === 1) {
+        keyString = `${MAJOR_KEYS[pitchClass]} Major`;
+      } else {
+        keyString = `${MINOR_KEYS[pitchClass]} Minor`;
+      }
     }
 
-    // Parse Tempo
+    // Parse Tempo: Round to nearest whole number
     let tempoString = "";
     if (data && typeof data.tempo === 'number') {
       tempoString = Math.round(data.tempo).toString();
