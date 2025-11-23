@@ -92,8 +92,6 @@ const SongEdit = () => {
       console.log("Selected song:", result);
       
       // Parallel Fetch: Lyrics and Audio Features
-      // This waits for BOTH to complete (or fail/timeout handled internally in musicApi)
-      // We pass result.id (Spotify ID) to fetchAudioFeatures
       const [lyrics, features] = await Promise.all([
         fetchLyrics(result.artist, result.title),
         fetchAudioFeatures(result.id)
@@ -111,7 +109,7 @@ const SongEdit = () => {
         lyrics: lyrics || "",
         key: features.key || "",
         tempo: features.tempo || "",
-        duration: features.duration || "",
+        duration: features.duration || result.duration || "", // Prefer feature duration, fallback to search result
         note: ""
       };
 
@@ -122,12 +120,12 @@ const SongEdit = () => {
       let messages = [];
       if (lyrics) messages.push("Lyrics");
       if (features.key) messages.push("Key/Tempo");
-      if (features.duration) messages.push("Duration");
+      if (newSongData.duration) messages.push("Duration");
       
       if (messages.length > 0) {
         toast.success(`Found: ${messages.join(", ")}`, { id: toastId });
       } else {
-        toast.info("Basic metadata set (details not found)", { id: toastId });
+        toast.info("Basic metadata set", { id: toastId });
       }
 
       // Finally switch to the form view
@@ -135,7 +133,6 @@ const SongEdit = () => {
     } catch (error) {
       console.error("Error in selectSong:", error);
       toast.error("Error fetching details", { id: toastId });
-      // Even if something catastrophic fails, we let them edit manually
       setMode('edit'); 
     } finally {
       setIsProcessing(false);
@@ -184,8 +181,8 @@ const SongEdit = () => {
                 <div>
                   <p className="font-medium">{result.title}</p>
                   <p className="text-sm text-muted-foreground">{result.artist}</p>
-                  {result.album && (
-                    <p className="text-xs text-muted-foreground">{result.album}</p>
+                  {result.duration && (
+                    <p className="text-xs text-muted-foreground">{result.duration}</p>
                   )}
                 </div>
               </div>

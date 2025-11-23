@@ -1,6 +1,5 @@
 const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
-const RAPIDAPI_KEY = import.meta.env.VITE_RAPIDAPI_KEY;
 
 export interface MusicResult {
   id: string; // Spotify ID
@@ -9,6 +8,7 @@ export interface MusicResult {
   album?: string;
   coverUrl?: string;
   spotifyUrl?: string;
+  duration?: string; // MM:SS
 }
 
 export interface AudioFeatures {
@@ -25,7 +25,6 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
     try {
       const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(id);
-      // For 429 (Too Many Requests) or 5xx server errors, we might want to throw to trigger retry
       if (res.status === 429 || res.status >= 500) {
         throw new Error(`Request failed with status ${res.status}`);
       }
@@ -41,7 +40,6 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
       return await fetchOne();
     } catch (error) {
       if (i === retries) throw error;
-      // Exponential backoff: 500ms, 1000ms, etc.
       await new Promise(r => setTimeout(r, 500 * Math.pow(2, i)));
     }
   }
@@ -82,6 +80,12 @@ const getSpotifyToken = async () => {
   }
 };
 
+const formatDuration = (ms: number) => {
+  const minutes = Math.floor(ms / 60000);
+  const seconds = ((ms % 60000) / 1000).toFixed(0);
+  return `${minutes}:${Number(seconds) < 10 ? '0' : ''}${seconds}`;
+};
+
 export const searchMusic = async (query: string): Promise<MusicResult[]> => {
   if (!query) return [];
 
@@ -111,6 +115,7 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
       
       const image = track.album.images[1]?.url || track.album.images[0]?.url || "";
       const spotifyUrl = track.external_urls?.spotify || "";
+      const durationStr = track.duration_ms ? formatDuration(track.duration_ms) : "";
 
       if (!seen.has(key)) {
         seen.add(key);
@@ -120,7 +125,8 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
           artist: track.artists.map((a: any) => a.name).join(", "),
           album: track.album.name,
           coverUrl: image,
-          spotifyUrl: spotifyUrl
+          spotifyUrl: spotifyUrl,
+          duration: durationStr
         });
       }
     }
@@ -132,22 +138,17 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
   }
 };
 
+const PITCH_CLASS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
 export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatures> => {
-  if (!spotifyId || !RAPIDAPI_KEY) {
-    console.warn("Missing Spotify ID or RapidAPI Key");
-    return {};
-  }
+  if (!spotifyId) return {};
   
   console.log(`Fetching track analysis for ID: ${spotifyId}`);
   try {
     const response = await fetchWithRetry(
-      `https://track-analysis.p.rapidapi.com/pktx/spotify/${spotifyId}`,
+      `https://api.reccobeats.com/v1/audio-features?ids=${spotifyId}`,
       {
-        method: 'GET',
-        headers: {
-          'x-rapidapi-host': 'track-analysis.p.rapidapi.com',
-          'x-rapidapi-key': RAPIDAPI_KEY
-        }
+        method: 'GET'
       },
       2, // 2 retries
       10000 // 10s timeout
@@ -161,30 +162,35 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
     const data = await response.json();
     console.log("Track Analysis Response:", data);
     
-    // Parse Key: e.g. key="C", mode="major" -> "C Major"
+    if (!data.content || data.content.length === 0) {
+      return {};
+    }
+
+    const track = data.content[0];
+
+    // Parse Key: 0=C, 1=C#, etc.
     let keyString = "";
-    if (data.key && data.mode) {
-      const modeCapitalized = data.mode.charAt(0).toUpperCase() + data.mode.slice(1);
-      keyString = `${data.key} ${modeCapitalized}`;
+    if (track.key !== undefined && track.mode !== undefined && track.key >= 0 && track.key < 12) {
+      const pitch = PITCH_CLASS[track.key];
+      const mode = track.mode === 1 ? "Major" : "Minor";
+      if (pitch) {
+        keyString = `${pitch} ${mode}`;
+      }
     }
 
     // Parse Tempo: Round to nearest whole number
     let tempoString = "";
-    if (data.tempo) {
-      tempoString = Math.round(Number(data.tempo)).toString();
+    if (track.tempo) {
+      tempoString = Math.round(Number(track.tempo)).toString();
     }
 
-    // Parse Duration: Already in "MM:SS" format or similar from API
-    const durationString = data.duration || "";
-
-    const result = {
+    // This API does NOT return duration in a usable format for us (only as part of analysis frames potentially), 
+    // so we rely on the search result for duration.
+    return {
       key: keyString,
       tempo: tempoString,
-      duration: durationString
+      duration: "" 
     };
-    
-    console.log("Parsed Analysis:", result);
-    return result;
   } catch (error) {
     console.error("Track Analysis Exception:", error);
     return {};
