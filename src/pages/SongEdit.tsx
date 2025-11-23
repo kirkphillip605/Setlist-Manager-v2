@@ -83,12 +83,16 @@ const SongEdit = () => {
 
   const selectSong = async (result: MusicResult) => {
     setIsProcessing(true);
-    const toastId = toast.loading("Fetching song details...");
+    const toastId = toast.loading("Fetching song details (Key, Tempo, Lyrics)...");
     
     try {
       // 1. Set Basic Info
       setValue("title", result.title);
       setValue("artist", result.artist);
+      if (result.album) {
+        // We could store album in note or somewhere else if we had a field, but we don't.
+        // We could append it to note? optional.
+      }
 
       // 2. Parallel Fetch: Lyrics and Audio Features
       const [lyrics, features] = await Promise.all([

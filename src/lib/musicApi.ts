@@ -1,6 +1,5 @@
 const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
-// const GENIUS_ACCESS_TOKEN = import.meta.env.VITE_GENIUS_ACCESS_TOKEN;
 
 export interface MusicResult {
   id: string; // Spotify ID
@@ -54,7 +53,7 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
   try {
     const token = await getSpotifyToken();
     const response = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`, 
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`, 
       {
         headers: { 'Authorization': `Bearer ${token}` }
       }
@@ -65,28 +64,27 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
     const data = await response.json();
     const tracks = data.tracks.items;
 
-    // Map to our interface and simple De-duplication
-    // We'll key by "Artist-Title" to remove obvious duplicates
+    // De-duplication: Key by "Artist-Title" to remove obvious duplicates
     const seen = new Set<string>();
     const results: MusicResult[] = [];
 
     for (const track of tracks) {
       const artist = track.artists[0].name;
       const title = track.name;
-      const key = `${artist.toLowerCase()}-${title.toLowerCase()}`;
+      const key = `${artist.toLowerCase().trim()}|${title.toLowerCase().trim()}`;
 
       if (!seen.has(key)) {
         seen.add(key);
         results.push({
           id: track.id,
           title: track.name,
-          artist: track.artists.map((a: any) => a.name).join(", "), // Join multiple artists
+          artist: track.artists.map((a: any) => a.name).join(", "),
           album: track.album.name
         });
       }
     }
 
-    return results;
+    return results.slice(0, 10);
   } catch (error) {
     console.error("Search Error:", error);
     return [];
@@ -110,10 +108,10 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
     const data = await response.json();
     
     // Convert Pitch Class + Mode to String
-    // key: integer 0-11
+    // key: integer 0-11. -1 if no key detected.
     // mode: 0 (Minor), 1 (Major)
     let keyString = "";
-    if (data.key !== null && data.key >= 0 && data.key < 12) {
+    if (data && data.key !== null && data.key >= 0 && data.key < 12) {
       const note = PITCH_CLASS[data.key];
       const mode = data.mode === 1 ? "Major" : "Minor";
       keyString = `${note} ${mode}`;
@@ -141,8 +139,6 @@ const cleanForLyrics = (str: string) => {
 };
 
 export const fetchLyrics = async (artist: string, title: string) => {
-  // We will stick to lyrics.ovh for now as it's the most reliable free text API 
-  // without needing a backend proxy for CORS which Genius requires for scraping text.
   try {
     const attemptFetch = async (a: string, t: string) => {
       const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(t)}`);
@@ -162,8 +158,7 @@ export const fetchLyrics = async (artist: string, title: string) => {
     const cleanTitle = cleanForLyrics(title);
     
     if (cleanArtist !== artist || cleanTitle !== title) {
-      // Small delay
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 200)); // Rate limit niceness
       lyrics = await attemptFetch(cleanArtist, cleanTitle);
       if (lyrics) return lyrics;
     }
