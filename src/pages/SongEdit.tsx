@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { SongFormFields } from "@/components/SongFormFields";
 import { getSong, saveSong } from "@/lib/api";
-import { searchMusic, fetchLyrics } from "@/lib/musicApi";
+import { searchMusic, fetchLyrics, iTunesResult } from "@/lib/musicApi";
 import { Song } from "@/types";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -20,7 +20,7 @@ const SongEdit = () => {
   const [mode, setMode] = useState<'search' | 'edit'>(id ? 'edit' : 'search');
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<iTunesResult[]>([]);
 
   const {
     register,
@@ -79,26 +79,31 @@ const SongEdit = () => {
     }
   };
 
-  const selectSong = async (result: any) => {
+  const selectSong = async (result: iTunesResult) => {
     setIsSearching(true);
     try {
-      const lyrics = await fetchLyrics(result.artistName, result.trackName);
-      
+      // 1. Populate metadata immediately
       setValue("title", result.trackName);
       setValue("artist", result.artistName);
+      setValue("key", "");
+      setValue("tempo", "");
+
+      // 2. Attempt to fetch lyrics
+      const lyrics = await fetchLyrics(result.artistName, result.trackName);
+      
       if (lyrics) {
         setValue("lyrics", lyrics);
         toast.success("Lyrics found and auto-filled!");
       } else {
-        toast.info("Could not find lyrics automatically.");
+        // Fallback logic as requested
+        setValue("lyrics", ""); 
+        toast.info("Lyrics not found. Metadata added.");
       }
-      
-      setValue("key", "");
-      setValue("tempo", "");
       
       setMode('edit');
     } catch (error) {
       console.error(error);
+      // Even if lyrics fetch crashes, we let the user edit the metadata we already set
       setMode('edit');
     } finally {
       setIsSearching(false);
@@ -143,6 +148,9 @@ const SongEdit = () => {
                 <div>
                   <p className="font-medium">{result.trackName}</p>
                   <p className="text-sm text-muted-foreground">{result.artistName}</p>
+                  {result.collectionName && (
+                    <p className="text-xs text-muted-foreground">{result.collectionName}</p>
+                  )}
                 </div>
               </div>
               <Button variant="ghost" size="sm">Select</Button>
