@@ -66,7 +66,6 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
     const data = await response.json();
     const tracks = data.tracks.items;
 
-    // De-duplication: Key by "Artist-Title" to remove obvious duplicates
     const seen = new Set<string>();
     const results: MusicResult[] = [];
 
@@ -75,7 +74,6 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
       const title = track.name;
       const key = `${artist.toLowerCase().trim()}|${title.toLowerCase().trim()}`;
       
-      // Get the medium sized image (usually index 1, 300x300) or the first one
       const image = track.album.images[1]?.url || track.album.images[0]?.url || "";
       const spotifyUrl = track.external_urls?.spotify || "";
 
@@ -102,6 +100,7 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
 const PITCH_CLASS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatures> => {
+  console.log(`Fetching audio features for ID: ${spotifyId}`);
   try {
     const token = await getSpotifyToken();
     const response = await fetch(
@@ -112,14 +111,14 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
     );
 
     if (!response.ok) {
-        console.error("Audio Features fetch failed:", await response.text());
+        console.error("Audio Features API Error:", await response.text());
         return {};
     }
 
     const data = await response.json();
-    console.log("Audio Features Raw:", data);
+    console.log("Spotify Audio Features Response:", data);
     
-    // Convert Pitch Class + Mode to String
+    // Parse Key
     // key: integer 0-11. -1 if no key detected.
     // mode: 0 (Minor), 1 (Major)
     let keyString = "";
@@ -129,17 +128,25 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
       keyString = `${note} ${mode}`;
     }
 
-    return {
+    // Parse Tempo
+    let tempoString = "";
+    if (data && typeof data.tempo === 'number') {
+      tempoString = Math.round(data.tempo).toString();
+    }
+
+    const result = {
       key: keyString,
-      tempo: data.tempo ? Math.round(data.tempo).toString() : ""
+      tempo: tempoString
     };
+    
+    console.log("Parsed Audio Features:", result);
+    return result;
   } catch (error) {
-    console.error("Audio Features Error:", error);
+    console.error("Audio Features Exception:", error);
     return {};
   }
 };
 
-// Helper to clean strings for better lyrics matching
 const cleanForLyrics = (str: string) => {
   return str
     .replace(/\s*\(.*?\)\s*/g, '')
@@ -161,16 +168,14 @@ export const fetchLyrics = async (artist: string, title: string) => {
       return null;
     };
 
-    // 1. Exact match
     let lyrics = await attemptFetch(artist, title);
     if (lyrics) return lyrics;
 
-    // 2. Cleaned match
     const cleanArtist = cleanForLyrics(artist);
     const cleanTitle = cleanForLyrics(title);
     
     if (cleanArtist !== artist || cleanTitle !== title) {
-      await new Promise(r => setTimeout(r, 200)); // Rate limit niceness
+      await new Promise(r => setTimeout(r, 200)); 
       lyrics = await attemptFetch(cleanArtist, cleanTitle);
       if (lyrics) return lyrics;
     }

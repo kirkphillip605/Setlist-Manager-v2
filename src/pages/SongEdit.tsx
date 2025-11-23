@@ -23,11 +23,6 @@ const SongEdit = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchResults, setSearchResults] = useState<MusicResult[]>([]);
   
-  // New state to hold extra data not in the main form visible fields if needed, 
-  // or just use setValue if we add hidden fields to form (which is cleaner).
-  // Actually, we can just use the form's setValue if we add the fields to the generic Song type,
-  // even if we don't render inputs for them (react-hook-form handles this).
-
   const {
     register,
     handleSubmit,
@@ -95,28 +90,40 @@ const SongEdit = () => {
     const toastId = toast.loading("Fetching song details (Key, Tempo, Lyrics)...");
     
     try {
+      console.log("Selected song:", result);
+      
       // 1. Set Basic Info & Metadata
-      setValue("title", result.title);
-      setValue("artist", result.artist);
+      setValue("title", result.title, { shouldDirty: true });
+      setValue("artist", result.artist, { shouldDirty: true });
       if (result.coverUrl) setValue("cover_url", result.coverUrl);
       if (result.spotifyUrl) setValue("spotify_url", result.spotifyUrl);
 
       // 2. Parallel Fetch: Lyrics and Audio Features
+      // We start fetching immediately
       const [lyrics, features] = await Promise.all([
         fetchLyrics(result.artist, result.title),
         fetchAudioFeatures(result.id)
       ]);
 
+      console.log("Fetched features:", features);
+
       // 3. Set Lyrics
       if (lyrics) {
-        setValue("lyrics", lyrics);
+        setValue("lyrics", lyrics, { shouldDirty: true });
       } else {
         setValue("lyrics", "");
       }
 
       // 4. Set Features
-      if (features.key) setValue("key", features.key);
-      if (features.tempo) setValue("tempo", features.tempo);
+      if (features.key) {
+        console.log("Setting Key:", features.key);
+        setValue("key", features.key, { shouldValidate: true, shouldDirty: true });
+      }
+      
+      if (features.tempo) {
+        console.log("Setting Tempo:", features.tempo);
+        setValue("tempo", features.tempo, { shouldValidate: true, shouldDirty: true });
+      }
 
       // 5. Feedback
       if (lyrics && features.key) {
