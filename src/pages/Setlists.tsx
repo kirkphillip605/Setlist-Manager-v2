@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { getSetlists, createSetlist, deleteSetlist } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2 } from "lucide-react";
+import { Plus, Calendar, Trash2, Loader2, ListMusic, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -57,20 +57,20 @@ const Setlists = () => {
 
   return (
     <AppLayout>
-      <div className="space-y-6">
-         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="space-y-6 pb-20">
+         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Setlists</h1>
-            <p className="text-muted-foreground">Organize your gigs.</p>
+            <p className="text-muted-foreground text-sm">Organize your gigs and rehearsals.</p>
           </div>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="rounded-full shadow-lg">
                 <Plus className="mr-2 h-4 w-4" /> Create Setlist
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>New Setlist</DialogTitle>
               </DialogHeader>
@@ -80,6 +80,7 @@ const Setlists = () => {
                     placeholder="Setlist Name (e.g. Summer Gig)" 
                     value={newListName}
                     onChange={(e) => setNewListName(e.target.value)}
+                    className="h-11"
                   />
                 </div>
                 <Button 
@@ -96,32 +97,54 @@ const Setlists = () => {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="flex justify-center p-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {setlists.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-muted-foreground bg-accent/20 rounded-lg border border-dashed">
-                No setlists created yet.
+               <div className="col-span-full text-center py-20">
+                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
+                    <ListMusic className="w-8 h-8 text-muted-foreground" />
+                 </div>
+                 <h3 className="text-lg font-medium">No setlists yet</h3>
+                 <p className="text-muted-foreground mt-1 mb-4">
+                   Create your first setlist to get started.
+                 </p>
+                 <Button variant="outline" onClick={() => setIsDialogOpen(true)}>
+                    Create Setlist
+                 </Button>
               </div>
             ) : (
               setlists.map((list) => (
                 <Link key={list.id} to={`/setlists/${list.id}`}>
-                  <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
-                      <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, list.id)}>
+                  <Card className="hover:bg-accent/40 transition-all duration-300 cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md group">
+                    <CardHeader className="flex flex-row items-start justify-between pb-2">
+                      <div className="space-y-1">
+                         <CardTitle className="text-lg font-bold truncate leading-none">{list.name}</CardTitle>
+                         <div className="flex items-center text-xs text-muted-foreground">
+                            <Calendar className="mr-1 h-3 w-3" />
+                            {list.date}
+                         </div>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2 -mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDelete(e, list.id)}>
                         <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                       </Button>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center text-sm text-muted-foreground mb-2">
-                        <Calendar className="mr-2 h-4 w-4" />
-                        {list.date}
-                      </div>
-                      <div className="text-sm font-medium">
-                        {list.sets.length} Sets • {list.sets.reduce((acc, set) => acc + set.songs.length, 0)} Songs
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-4">
+                          <div className="text-center">
+                            <span className="block text-2xl font-bold">{list.sets.length}</span>
+                            <span className="text-[10px] uppercase text-muted-foreground font-medium">Sets</span>
+                          </div>
+                          <div className="w-px bg-border h-full"></div>
+                          <div className="text-center">
+                            <span className="block text-2xl font-bold">{list.sets.reduce((acc, set) => acc + set.songs.length, 0)}</span>
+                            <span className="text-[10px] uppercase text-muted-foreground font-medium">Songs</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                       </div>
                     </CardContent>
                   </Card>
