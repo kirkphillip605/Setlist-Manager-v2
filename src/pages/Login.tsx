@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useTheme } from "@/components/theme-provider";
 
 const Login = () => {
@@ -24,7 +24,8 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-border shadow-lg">
         <CardHeader>
-          <CardTitle className="text-center">Welcome to BandMate</CardTitle>
+          <CardTitle className="text-center text-2xl font-bold">Bad Habits</CardTitle>
+          <CardDescription className="text-center">Setlist Management System</CardDescription>
         </CardHeader>
         <CardContent>
           <Auth
@@ -45,7 +46,8 @@ const Login = () => {
               },
             }}
             theme={theme === 'dark' ? 'dark' : 'default'}
-            providers={[]}
+            providers={['google']}
+            redirectTo={window.location.origin}
           />
         </CardContent>
       </Card>

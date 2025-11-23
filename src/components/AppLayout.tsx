@@ -1,8 +1,18 @@
-import { Link, useLocation } from "react-router-dom";
-import { Music, ListMusic, Home } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Music, ListMusic, Home, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -10,6 +20,12 @@ interface AppLayoutProps {
 
 const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  };
 
   const navItems = [
     { icon: Home, label: "Home", path: "/" },
@@ -26,7 +42,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <div className="bg-primary text-primary-foreground p-2 rounded-xl shadow-lg shadow-primary/20">
               <Music className="w-5 h-5" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">BandMate</h1>
+            <div>
+                <h1 className="text-sm font-bold tracking-tight leading-none">Bad Habits</h1>
+                <p className="text-[10px] text-muted-foreground font-medium">Setlist Management</p>
+            </div>
           </div>
           <ModeToggle />
         </div>
@@ -49,6 +68,28 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           ))}
         </nav>
 
+        {/* User Menu */}
+        <div className="mb-4">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-start gap-2 px-2 hover:bg-accent">
+                        <User className="w-4 h-4" />
+                        <span>Profile & Settings</span>
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate("/profile")}>
+                        <User className="mr-2 h-4 w-4" /> Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+                        <LogOut className="mr-2 h-4 w-4" /> Log out
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+
         {/* Desktop Metronome */}
         <MetronomeControls variant="desktop" />
       </aside>
@@ -59,9 +100,14 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
               <Music className="w-4 h-4" />
             </div>
-            <span className="font-bold text-lg">BandMate</span>
+            <span className="font-bold text-sm">Bad Habits</span>
          </div>
-         <ModeToggle />
+         <div className="flex items-center gap-2">
+             <ModeToggle />
+             <Button variant="ghost" size="icon" onClick={() => navigate("/profile")}>
+                <User className="w-5 h-5" />
+             </Button>
+         </div>
       </header>
 
       {/* Mobile Content Area */}
