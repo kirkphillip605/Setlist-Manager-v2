@@ -2,7 +2,6 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getSong, deleteSong } from "@/lib/api";
-import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,7 +12,9 @@ import {
   Music2, 
   Timer, 
   StickyNote,
-  Loader2
+  Loader2,
+  ExternalLink,
+  Music
 } from "lucide-react";
 import {
   AlertDialog,
@@ -111,35 +112,64 @@ const SongDetail = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="p-4 flex flex-col items-center text-center bg-secondary/10">
-            <span className="text-xs text-muted-foreground uppercase mb-1">Artist</span>
-            <span className="font-semibold">{song.artist}</span>
-          </Card>
-          
-          <Card className="p-4 flex flex-col items-center text-center bg-secondary/10">
-            <div className="flex items-center gap-1 mb-1">
-              <Music2 className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground uppercase">Key</span>
-            </div>
-            <span className="font-semibold">{song.key || "-"}</span>
-          </Card>
-          
-          <Card className="p-4 flex flex-col items-center text-center bg-secondary/10">
-             <div className="flex items-center gap-1 mb-1">
-              <Timer className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground uppercase">Tempo</span>
-            </div>
-            <span className="font-semibold">{song.tempo ? `${song.tempo} BPM` : "-"}</span>
-          </Card>
+        {/* Hero Section with Art */}
+        <div className="flex flex-col sm:flex-row gap-6 items-start">
+          <div className="shrink-0 mx-auto sm:mx-0">
+             {song.cover_url ? (
+               <img 
+                 src={song.cover_url} 
+                 alt={song.title} 
+                 className="w-48 h-48 rounded-lg shadow-md object-cover"
+               />
+             ) : (
+               <div className="w-48 h-48 rounded-lg shadow-md bg-secondary flex items-center justify-center">
+                 <Music className="w-16 h-16 text-muted-foreground opacity-50" />
+               </div>
+             )}
+          </div>
 
-          <Card className="p-4 flex flex-col items-center text-center bg-secondary/10">
-            <div className="flex items-center gap-1 mb-1">
-              <StickyNote className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground uppercase">Note</span>
-            </div>
-            <span className="font-semibold truncate w-full" title={song.note || ""}>{song.note || "-"}</span>
-          </Card>
+          <div className="flex-1 w-full space-y-4">
+             <div>
+               <h2 className="text-2xl font-semibold">{song.title}</h2>
+               <p className="text-lg text-muted-foreground">{song.artist}</p>
+             </div>
+             
+             {song.spotify_url && (
+               <Button asChild variant="outline" className="gap-2 text-[#1DB954] hover:text-[#1DB954] border-[#1DB954]/20 hover:bg-[#1DB954]/10">
+                 <a href={song.spotify_url} target="_blank" rel="noopener noreferrer">
+                   <Music className="w-4 h-4" />
+                   Open in Spotify
+                   <ExternalLink className="w-3 h-3 ml-1" />
+                 </a>
+               </Button>
+             )}
+
+             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                <Card className="p-3 flex flex-col items-center text-center bg-secondary/10">
+                  <div className="flex items-center gap-1 mb-1">
+                    <Music2 className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground uppercase">Key</span>
+                  </div>
+                  <span className="font-semibold">{song.key || "-"}</span>
+                </Card>
+                
+                <Card className="p-3 flex flex-col items-center text-center bg-secondary/10">
+                   <div className="flex items-center gap-1 mb-1">
+                    <Timer className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground uppercase">Tempo</span>
+                  </div>
+                  <span className="font-semibold">{song.tempo ? `${song.tempo} BPM` : "-"}</span>
+                </Card>
+
+                <Card className="p-3 flex flex-col items-center text-center bg-secondary/10 col-span-2 sm:col-span-1">
+                  <div className="flex items-center gap-1 mb-1">
+                    <StickyNote className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground uppercase">Note</span>
+                  </div>
+                  <span className="font-semibold truncate w-full" title={song.note || ""}>{song.note || "-"}</span>
+                </Card>
+             </div>
+          </div>
         </div>
 
         <Card className="min-h-[400px] p-6 bg-card relative">

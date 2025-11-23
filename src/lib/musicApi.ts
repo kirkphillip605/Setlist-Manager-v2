@@ -6,6 +6,8 @@ export interface MusicResult {
   title: string;
   artist: string;
   album?: string;
+  coverUrl?: string;
+  spotifyUrl?: string;
 }
 
 export interface AudioFeatures {
@@ -72,6 +74,10 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
       const artist = track.artists[0].name;
       const title = track.name;
       const key = `${artist.toLowerCase().trim()}|${title.toLowerCase().trim()}`;
+      
+      // Get the medium sized image (usually index 1, 300x300) or the first one
+      const image = track.album.images[1]?.url || track.album.images[0]?.url || "";
+      const spotifyUrl = track.external_urls?.spotify || "";
 
       if (!seen.has(key)) {
         seen.add(key);
@@ -79,7 +85,9 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
           id: track.id,
           title: track.name,
           artist: track.artists.map((a: any) => a.name).join(", "),
-          album: track.album.name
+          album: track.album.name,
+          coverUrl: image,
+          spotifyUrl: spotifyUrl
         });
       }
     }
@@ -103,15 +111,19 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
       }
     );
 
-    if (!response.ok) return {};
+    if (!response.ok) {
+        console.error("Audio Features fetch failed:", await response.text());
+        return {};
+    }
 
     const data = await response.json();
+    console.log("Audio Features Raw:", data);
     
     // Convert Pitch Class + Mode to String
     // key: integer 0-11. -1 if no key detected.
     // mode: 0 (Minor), 1 (Major)
     let keyString = "";
-    if (data && data.key !== null && data.key >= 0 && data.key < 12) {
+    if (data && typeof data.key === 'number' && data.key >= 0 && data.key < 12) {
       const note = PITCH_CLASS[data.key];
       const mode = data.mode === 1 ? "Major" : "Minor";
       keyString = `${note} ${mode}`;

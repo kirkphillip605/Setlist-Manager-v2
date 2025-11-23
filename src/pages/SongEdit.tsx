@@ -20,17 +20,26 @@ const SongEdit = () => {
   const [mode, setMode] = useState<'search' | 'edit'>(id ? 'edit' : 'search');
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false); // For fetching details
+  const [isProcessing, setIsProcessing] = useState(false);
   const [searchResults, setSearchResults] = useState<MusicResult[]>([]);
+  
+  // New state to hold extra data not in the main form visible fields if needed, 
+  // or just use setValue if we add hidden fields to form (which is cleaner).
+  // Actually, we can just use the form's setValue if we add the fields to the generic Song type,
+  // even if we don't render inputs for them (react-hook-form handles this).
 
   const {
     register,
     handleSubmit,
     reset,
     setValue,
+    watch,
     control,
     formState: { errors },
   } = useForm<Song>();
+
+  // Watch cover_url to show preview
+  const coverUrl = watch("cover_url");
 
   // Fetch song if editing
   const { data: song, isLoading: isSongLoading } = useQuery({
@@ -86,18 +95,16 @@ const SongEdit = () => {
     const toastId = toast.loading("Fetching song details (Key, Tempo, Lyrics)...");
     
     try {
-      // 1. Set Basic Info
+      // 1. Set Basic Info & Metadata
       setValue("title", result.title);
       setValue("artist", result.artist);
-      if (result.album) {
-        // We could store album in note or somewhere else if we had a field, but we don't.
-        // We could append it to note? optional.
-      }
+      if (result.coverUrl) setValue("cover_url", result.coverUrl);
+      if (result.spotifyUrl) setValue("spotify_url", result.spotifyUrl);
 
       // 2. Parallel Fetch: Lyrics and Audio Features
       const [lyrics, features] = await Promise.all([
         fetchLyrics(result.artist, result.title),
-        fetchAudioFeatures(result.id) // Spotify ID
+        fetchAudioFeatures(result.id)
       ]);
 
       // 3. Set Lyrics
@@ -124,9 +131,9 @@ const SongEdit = () => {
 
       setMode('edit');
     } catch (error) {
-      console.error(error);
+      console.error("Error in selectSong:", error);
       toast.error("Error fetching details", { id: toastId });
-      setMode('edit'); // Still go to edit mode so user isn't stuck
+      setMode('edit'); 
     } finally {
       setIsProcessing(false);
     }
@@ -164,9 +171,13 @@ const SongEdit = () => {
           >
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-[#1DB954]/10 p-2 rounded-full">
-                  <Music className="h-4 w-4 text-[#1DB954]" />
-                </div>
+                {result.coverUrl ? (
+                  <img src={result.coverUrl} alt="Album Art" className="w-12 h-12 rounded object-cover shadow-sm" />
+                ) : (
+                  <div className="bg-[#1DB954]/10 w-12 h-12 flex items-center justify-center rounded-full">
+                    <Music className="h-6 w-6 text-[#1DB954]" />
+                  </div>
+                )}
                 <div>
                   <p className="font-medium">{result.title}</p>
                   <p className="text-sm text-muted-foreground">{result.artist}</p>
@@ -222,6 +233,21 @@ const SongEdit = () => {
           renderSearch()
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 max-w-2xl">
+            {/* Hidden fields for extra data */}
+            <input type="hidden" {...register("cover_url")} />
+            <input type="hidden" {...register("spotify_url")} />
+
+            {/* Album Art Preview in Edit Mode */}
+            {coverUrl && (
+              <div className="flex items-center gap-4 p-4 border rounded-lg bg-secondary/10">
+                <img src={coverUrl} alt="Album Art" className="w-16 h-16 rounded shadow-sm object-cover" />
+                <div>
+                  <p className="text-sm font-medium">Album Artwork</p>
+                  <p className="text-xs text-muted-foreground">Automatically imported from Spotify</p>
+                </div>
+              </div>
+            )}
+
             <SongFormFields register={register} errors={errors} control={control} />
             
             <div className="flex gap-4">

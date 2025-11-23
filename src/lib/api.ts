@@ -29,7 +29,7 @@ export const saveSong = async (song: Partial<Song>) => {
   if (!user) throw new Error("No user found");
 
   if (song.id) {
-    // UPDATE: Do NOT set user_id to preserve original ownership (if Admin editing User's song)
+    // UPDATE
     const { data, error } = await supabase
       .from('songs')
       .update({
@@ -39,6 +39,8 @@ export const saveSong = async (song: Partial<Song>) => {
         key: song.key,
         tempo: song.tempo,
         note: song.note,
+        cover_url: song.cover_url,
+        spotify_url: song.spotify_url,
         updated_at: new Date().toISOString()
       })
       .eq('id', song.id)
@@ -47,10 +49,16 @@ export const saveSong = async (song: Partial<Song>) => {
     if (error) throw error;
     return data;
   } else {
-    // INSERT: Set user_id to current user
+    // INSERT
     const { data, error } = await supabase
       .from('songs')
-      .insert({ ...song, user_id: user.id })
+      .insert({ 
+        ...song, 
+        user_id: user.id,
+        // Ensure undefined fields are not passed as undefined if they are optional in DB but we want null
+        cover_url: song.cover_url || null,
+        spotify_url: song.spotify_url || null
+      })
       .select()
       .single();
     if (error) throw error;
@@ -161,7 +169,6 @@ export const createSet = async (setlistId: string, name: string, position: numbe
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
-  // Fetch parent setlist to inherit ownership (so Admin can add Sets to User setlists)
   const { data: parent } = await supabase
     .from('setlists')
     .select('user_id')
@@ -193,7 +200,6 @@ export const addSongToSet = async (setId: string, songId: string, position: numb
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
-  // Fetch parent set to inherit ownership
   const { data: parent } = await supabase
     .from('sets')
     .select('user_id')

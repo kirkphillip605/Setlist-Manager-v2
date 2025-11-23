@@ -6,6 +6,8 @@ export interface Song {
   key: string;
   tempo: string;
   note: string;
+  cover_url?: string;
+  spotify_url?: string;
 }
 
 export interface SetSong {
