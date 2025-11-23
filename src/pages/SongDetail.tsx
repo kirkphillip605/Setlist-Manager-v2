@@ -5,6 +5,7 @@ import { getSong, deleteSong } from "@/lib/api";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMetronome } from "@/components/MetronomeContext";
 import { 
   ChevronLeft, 
   Edit, 
@@ -14,7 +15,8 @@ import {
   StickyNote,
   Loader2,
   ExternalLink,
-  Music
+  Music,
+  Play
 } from "lucide-react";
 import {
   AlertDialog,
@@ -32,6 +34,7 @@ const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { openMetronome } = useMetronome();
 
   const { data: song, isLoading } = useQuery({
     queryKey: ['song', id],
@@ -54,6 +57,21 @@ const SongDetail = () => {
   const handleDelete = () => {
     if (id) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleMetronomeClick = () => {
+    if (song?.tempo) {
+      const bpm = parseInt(song.tempo);
+      if (!isNaN(bpm)) {
+        openMetronome(bpm);
+        toast.success(`Metronome started at ${bpm} BPM`);
+      } else {
+        toast.error("Invalid tempo format");
+      }
+    } else {
+      openMetronome(120); // Default
+      toast.info("No tempo set. Started at 120 BPM.");
     }
   };
 
@@ -134,15 +152,22 @@ const SongDetail = () => {
                <p className="text-lg text-muted-foreground">{song.artist}</p>
              </div>
              
-             {song.spotify_url && (
-               <Button asChild variant="outline" className="gap-2 text-[#1DB954] hover:text-[#1DB954] border-[#1DB954]/20 hover:bg-[#1DB954]/10">
-                 <a href={song.spotify_url} target="_blank" rel="noopener noreferrer">
-                   <Music className="w-4 h-4" />
-                   Open in Spotify
-                   <ExternalLink className="w-3 h-3 ml-1" />
-                 </a>
+             <div className="flex flex-wrap gap-2">
+               {song.spotify_url && (
+                 <Button asChild variant="outline" className="gap-2 text-[#1DB954] hover:text-[#1DB954] border-[#1DB954]/20 hover:bg-[#1DB954]/10">
+                   <a href={song.spotify_url} target="_blank" rel="noopener noreferrer">
+                     <Music className="w-4 h-4" />
+                     Open in Spotify
+                     <ExternalLink className="w-3 h-3 ml-1" />
+                   </a>
+                 </Button>
+               )}
+               
+               <Button onClick={handleMetronomeClick} variant="outline" className="gap-2">
+                  <Timer className="w-4 h-4" />
+                  Start Metronome
                </Button>
-             )}
+             </div>
 
              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
                 <Card className="p-3 flex flex-col items-center text-center bg-secondary/10">

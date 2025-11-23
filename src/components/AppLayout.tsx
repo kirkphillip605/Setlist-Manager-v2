@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { Music, ListMusic, Plus, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MetronomeControls } from "./MetronomeControls";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -18,7 +19,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0 md:pl-64">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r bg-card px-4 py-6">
+      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r bg-card px-4 py-6 z-20">
         <div className="flex items-center gap-2 mb-8 px-2">
           <div className="bg-primary text-primary-foreground p-2 rounded-lg">
             <Music className="w-6 h-6" />
@@ -42,12 +43,20 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </Link>
           ))}
         </nav>
+
+        {/* Desktop Metronome */}
+        <MetronomeControls variant="desktop" />
       </aside>
 
       {/* Mobile Content Area */}
       <main className="container mx-auto max-w-5xl p-4 md:p-8 animate-in fade-in duration-500">
         {children}
       </main>
+
+      {/* Mobile Metronome - Renders above bottom nav */}
+      <div className="md:hidden">
+        <MetronomeControls variant="mobile" />
+      </div>
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/80 backdrop-blur-lg px-6 py-3 flex justify-between items-center z-50">

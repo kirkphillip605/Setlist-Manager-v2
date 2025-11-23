@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { MetronomeProvider } from "@/components/MetronomeContext";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -50,23 +51,25 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            
-            <Route path="/" element={<ProtectedRoute session={session}><Index /></ProtectedRoute>} />
-            <Route path="/songs" element={<ProtectedRoute session={session}><SongList /></ProtectedRoute>} />
-            <Route path="/songs/new" element={<ProtectedRoute session={session}><SongEdit /></ProtectedRoute>} />
-            <Route path="/songs/:id" element={<ProtectedRoute session={session}><SongDetail /></ProtectedRoute>} />
-            <Route path="/songs/:id/edit" element={<ProtectedRoute session={session}><SongEdit /></ProtectedRoute>} />
-            <Route path="/setlists" element={<ProtectedRoute session={session}><Setlists /></ProtectedRoute>} />
-            <Route path="/setlists/:id" element={<ProtectedRoute session={session}><SetlistDetail /></ProtectedRoute>} />
-            
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <MetronomeProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              
+              <Route path="/" element={<ProtectedRoute session={session}><Index /></ProtectedRoute>} />
+              <Route path="/songs" element={<ProtectedRoute session={session}><SongList /></ProtectedRoute>} />
+              <Route path="/songs/new" element={<ProtectedRoute session={session}><SongEdit /></ProtectedRoute>} />
+              <Route path="/songs/:id" element={<ProtectedRoute session={session}><SongDetail /></ProtectedRoute>} />
+              <Route path="/songs/:id/edit" element={<ProtectedRoute session={session}><SongEdit /></ProtectedRoute>} />
+              <Route path="/setlists" element={<ProtectedRoute session={session}><Setlists /></ProtectedRoute>} />
+              <Route path="/setlists/:id" element={<ProtectedRoute session={session}><SetlistDetail /></ProtectedRoute>} />
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </MetronomeProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
