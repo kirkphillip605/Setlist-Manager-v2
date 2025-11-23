@@ -1,18 +1,97 @@
-// Update this page (the content is just a fallback if you fail to update the page)
-
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import AppLayout from "@/components/AppLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { Music, ListMusic, Plus } from "lucide-react";
+import { getSongs, getSetlists } from "@/lib/storage";
+import { useEffect, useState } from "react";
+import { Song, Setlist } from "@/types";
 
 const Index = () => {
+  const [stats, setStats] = useState({ songs: 0, setlists: 0 });
+  const [recentSongs, setRecentSongs] = useState<Song[]>([]);
+
+  useEffect(() => {
+    const songs = getSongs();
+    const setlists = getSetlists();
+    setStats({ songs: songs.length, setlists: setlists.length });
+    setRecentSongs(songs.slice(-5).reverse());
+  }, []);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">
-          Start building your amazing project here!
-        </p>
+    <AppLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Welcome back to your band management app.</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Songs</CardTitle>
+              <Music className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.songs}</div>
+              <div className="mt-4">
+                <Button asChild size="sm" className="w-full">
+                  <Link to="/songs/new">
+                    <Plus className="mr-2 h-4 w-4" /> Add Song
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Setlists</CardTitle>
+              <ListMusic className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.setlists}</div>
+              <div className="mt-4">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link to="/setlists">View Setlists</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Recently Added Songs</h2>
+          {recentSongs.length === 0 ? (
+            <div className="text-center py-10 bg-accent/20 rounded-lg border border-dashed">
+              <p className="text-muted-foreground mb-2">No songs added yet.</p>
+              <Button asChild variant="link">
+                <Link to="/songs/new">Add your first song</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {recentSongs.map((song) => (
+                <Link key={song.id} to={`/songs/${song.id}`}>
+                  <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg truncate">{song.title}</CardTitle>
+                      <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex gap-2 text-xs text-muted-foreground">
+                        {song.key && <span className="bg-secondary px-2 py-1 rounded">{song.key}</span>}
+                        {song.tempo && <span className="bg-secondary px-2 py-1 rounded">{song.tempo} BPM</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-      <MadeWithDyad />
-    </div>
+    </AppLayout>
   );
 };
 
