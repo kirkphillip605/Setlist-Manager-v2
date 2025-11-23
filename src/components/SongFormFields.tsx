@@ -1,8 +1,9 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { UseFormRegister, FieldErrors, Control } from "react-hook-form";
+import { UseFormRegister, FieldErrors, Control, Controller } from "react-hook-form";
 import { Song } from "@/types";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 interface SongFormFieldsProps {
   register: UseFormRegister<Song>;
@@ -20,7 +21,7 @@ const KEYS = [
   "F# Minor", "G Minor", "G# Minor", "A Minor", "Bb Minor", "B Minor"
 ];
 
-export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
+export const SongFormFields = ({ register, errors, control }: SongFormFieldsProps) => {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -96,11 +97,27 @@ export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
 
       <div className="space-y-2">
         <Label htmlFor="lyrics">Lyrics / Chords</Label>
-        <Textarea
-          id="lyrics"
-          placeholder="Enter lyrics and chords here..."
-          className="min-h-[200px] font-mono text-sm"
-          {...register("lyrics")}
+        <Controller
+          name="lyrics"
+          control={control}
+          render={({ field }) => (
+            <ReactQuill 
+              theme="snow" 
+              value={field.value || ''} 
+              onChange={field.onChange}
+              className="bg-background"
+              modules={{
+                toolbar: [
+                  [{ 'header': [1, 2, false] }],
+                  ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                  [{'list': 'ordered'}, {'list': 'bullet'}],
+                  ['link', 'clean'],
+                  [{ 'color': [] }, { 'background': [] }],
+                  [{ 'align': [] }]
+                ],
+              }}
+            />
+          )}
         />
       </div>
     </div>

@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMetronome } from "@/components/MetronomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
-import { searchMusic, fetchAudioFeatures, fetchLyrics } from "@/lib/musicApi";
+import { searchMusic, fetchAudioFeatures } from "@/lib/musicApi";
 import { 
   ChevronLeft, 
   Edit, 
@@ -19,6 +19,7 @@ import {
   Loader2,
   ExternalLink,
   Music,
+  Square,
   Play,
   Wand2
 } from "lucide-react";
@@ -39,14 +40,13 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { openMetronome } = useMetronome();
+  const { openMetronome, closeMetronome, isPlaying } = useMetronome();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -96,18 +96,22 @@ const SongDetail = () => {
     }
   };
 
-  const handleMetronomeClick = () => {
-    if (song?.tempo) {
-      const bpm = parseInt(song.tempo);
-      if (!isNaN(bpm)) {
-        openMetronome(bpm);
-        toast.success(`Metronome started at ${bpm} BPM`);
-      } else {
-        toast.error("Invalid tempo format");
-      }
+  const toggleMetronome = () => {
+    if (isPlaying) {
+      closeMetronome();
     } else {
-      openMetronome(120); // Default
-      toast.info("No tempo set. Started at 120 BPM.");
+      if (song?.tempo) {
+        const bpm = parseInt(song.tempo);
+        if (!isNaN(bpm)) {
+          openMetronome(bpm);
+          toast.success(`Metronome started at ${bpm} BPM`);
+        } else {
+          toast.error("Invalid tempo format");
+        }
+      } else {
+        openMetronome(120); // Default
+        toast.info("No tempo set. Started at 120 BPM.");
+      }
     }
   };
 
@@ -144,11 +148,9 @@ const SongDetail = () => {
             cover_url: result.coverUrl || song.cover_url,
         };
 
-        // Update fields if we found new data and existing is empty, OR overwrite?
-        // Admin action implies overwrite/update.
         if (features.key) updates.key = features.key;
         if (features.tempo) updates.tempo = features.tempo;
-        if (result.duration) updates.duration = result.duration; // from search result
+        if (result.duration) updates.duration = result.duration;
         
         updateSongMutation.mutate(updates);
         toast.dismiss(toastId);
@@ -259,9 +261,22 @@ const SongDetail = () => {
                  </Button>
                )}
                
-               <Button onClick={handleMetronomeClick} variant="outline" className="gap-2">
-                  <Timer className="w-4 h-4" />
-                  Start Metronome
+               <Button 
+                onClick={toggleMetronome} 
+                variant={isPlaying ? "destructive" : "outline"} 
+                className="gap-2"
+               >
+                  {isPlaying ? (
+                    <>
+                      <Square className="w-4 h-4 fill-current" />
+                      Stop Metronome
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-current" />
+                      Start Metronome
+                    </>
+                  )}
                </Button>
              </div>
 
@@ -293,10 +308,15 @@ const SongDetail = () => {
           </div>
         </div>
 
-        <Card className="min-h-[400px] p-6 bg-card relative">
-          <pre className="whitespace-pre-wrap font-mono text-sm sm:text-base leading-relaxed">
-            {song.lyrics || "No lyrics/chords added."}
-          </pre>
+        <Card className="min-h-[400px] p-8 bg-card relative">
+          {song.lyrics ? (
+            <div 
+              className="prose dark:prose-invert max-w-none font-sans"
+              dangerouslySetInnerHTML={{ __html: song.lyrics }}
+            />
+          ) : (
+            <div className="text-muted-foreground italic">No lyrics/chords added.</div>
+          )}
         </Card>
 
         {/* Admin Search Dialog */}
