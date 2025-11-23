@@ -228,6 +228,34 @@ export const addSongToSet = async (setId: string, songId: string, position: numb
   return data;
 };
 
+export const addSongsToSet = async (setId: string, songIds: string[], startPosition: number) => {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error("No user");
+
+  const { data: parent } = await supabase
+    .from('sets')
+    .select('user_id')
+    .eq('id', setId)
+    .single();
+
+  const ownerId = parent ? parent.user_id : user.id;
+
+  const rows = songIds.map((songId, index) => ({
+    set_id: setId,
+    song_id: songId,
+    position: startPosition + index,
+    user_id: ownerId
+  }));
+
+  const { data, error } = await supabase
+    .from('set_songs')
+    .insert(rows)
+    .select();
+    
+  if (error) throw error;
+  return data;
+};
+
 export const removeSongFromSet = async (setSongId: string) => {
   const { error } = await supabase.from('set_songs').delete().eq('id', setSongId);
   if (error) throw error;
@@ -237,4 +265,13 @@ export const updateSetSongOrder = async (items: {id: string, position: number}[]
   for (const item of items) {
     await supabase.from('set_songs').update({ position: item.position }).eq('id', item.id);
   }
+};
+
+export const moveSetSongToSet = async (setSongId: string, targetSetId: string, position: number) => {
+  const { error } = await supabase
+    .from('set_songs')
+    .update({ set_id: targetSetId, position })
+    .eq('id', setSongId);
+    
+  if (error) throw error;
 };

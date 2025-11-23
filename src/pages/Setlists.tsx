@@ -3,6 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { getSetlists, createSetlist, deleteSetlist } from "@/lib/api";
 import { Plus, Calendar, Trash2, Loader2, ListMusic, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -13,6 +23,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 const Setlists = () => {
   const [newListName, setNewListName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  
   const queryClient = useQueryClient();
 
   const { data: setlists = [], isLoading } = useQuery({
@@ -41,6 +53,7 @@ const Setlists = () => {
     mutationFn: deleteSetlist,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlists'] });
+      setDeleteId(null);
       toast.success("Setlist deleted");
     },
     onError: () => {
@@ -48,11 +61,10 @@ const Setlists = () => {
     }
   });
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.preventDefault(); 
-    if (confirm("Are you sure you want to delete this setlist?")) {
-      deleteMutation.mutate(id);
-    }
+    e.stopPropagation();
+    setDeleteId(id);
   };
 
   return (
@@ -127,7 +139,7 @@ const Setlists = () => {
                             {list.date}
                          </div>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2 -mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDelete(e, list.id)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2 -mt-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => handleDeleteClick(e, list.id)}>
                         <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                       </Button>
                     </CardHeader>
@@ -153,6 +165,23 @@ const Setlists = () => {
             )}
           </div>
         )}
+
+        <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Setlist?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the setlist.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive hover:bg-destructive/90">
+                        Delete
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );

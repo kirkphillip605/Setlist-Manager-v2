@@ -9,9 +9,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, PanInfo, useAnimation } from "framer-motion";
 import { toast } from "sonner";
 import { Song } from "@/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Swipeable Item Component
-const SongListItem = ({ song, onDelete }: { song: Song; onDelete: (id: string) => void }) => {
+const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: (id: string) => void }) => {
   const navigate = useNavigate();
   const controls = useAnimation();
   
@@ -21,11 +31,8 @@ const SongListItem = ({ song, onDelete }: { song: Song; onDelete: (id: string) =
 
     // Swipe Left to Delete (threshold -100)
     if (offset < -100 || velocity < -500) {
-      if (confirm(`Delete "${song.title}"?`)) {
-        onDelete(song.id);
-      } else {
-        controls.start({ x: 0 });
-      }
+      onDeleteRequest(song.id);
+      controls.start({ x: 0 }); // Reset position even if we are deleting, the list update will remove it
     } 
     // Swipe Right to Edit (threshold 100)
     else if (offset > 100 || velocity > 500) {
@@ -107,6 +114,7 @@ const SongListItem = ({ song, onDelete }: { song: Song; onDelete: (id: string) =
 
 const SongList = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: songs = [], isLoading } = useQuery({
@@ -118,6 +126,7 @@ const SongList = () => {
     mutationFn: deleteSong,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['songs'] });
+      setDeleteId(null);
       toast.success("Song deleted");
     },
     onError: () => {
@@ -179,12 +188,29 @@ const SongList = () => {
                 <SongListItem 
                   key={song.id} 
                   song={song} 
-                  onDelete={(id) => deleteMutation.mutate(id)} 
+                  onDeleteRequest={(id) => setDeleteId(id)} 
                 />
               ))
             )}
           </div>
         )}
+
+        <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Song?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will permanently delete this song from your repertoire. It will also be removed from any setlists it belongs to.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive hover:bg-destructive/90">
+                        Delete
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );
