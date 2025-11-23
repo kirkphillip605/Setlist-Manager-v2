@@ -94,7 +94,7 @@ const Setlists = () => {
             }
             
             @media print {
-              @page { margin: 1cm; size: landscape; }
+              @page { margin: 1cm; size: portrait; }
               .page-break { page-break-after: always; }
               body { -webkit-print-color-adjust: exact; }
             }

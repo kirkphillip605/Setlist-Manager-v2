@@ -310,10 +310,9 @@ const SongDetail = () => {
 
         <Card className="min-h-[400px] p-8 bg-card relative">
           {song.lyrics ? (
-            <div 
-              className="prose dark:prose-invert max-w-none font-sans"
-              dangerouslySetInnerHTML={{ __html: song.lyrics }}
-            />
+            <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
+              {song.lyrics}
+            </div>
           ) : (
             <div className="text-muted-foreground italic">No lyrics/chords added.</div>
           )}
