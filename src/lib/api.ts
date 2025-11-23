@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Song, Setlist, Set as SetType, SetSong } from "@/types";
+import { Song, Setlist } from "@/types";
 
 // --- Songs ---
 
@@ -28,22 +28,34 @@ export const saveSong = async (song: Partial<Song>) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user found");
 
-  const songData = {
-    ...song,
-    user_id: user.id
-  };
-
-  // If it has an ID, upsert. Otherwise insert.
-  // We remove 'id' if it's new/empty to let Postgres generate it if needed, 
-  // but if we generated a UUID client-side, we keep it.
-  const { data, error } = await supabase
-    .from('songs')
-    .upsert(songData)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  if (song.id) {
+    // UPDATE: Do NOT set user_id to preserve original ownership (if Admin editing User's song)
+    const { data, error } = await supabase
+      .from('songs')
+      .update({
+        title: song.title,
+        artist: song.artist,
+        lyrics: song.lyrics,
+        key: song.key,
+        tempo: song.tempo,
+        note: song.note,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', song.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } else {
+    // INSERT: Set user_id to current user
+    const { data, error } = await supabase
+      .from('songs')
+      .insert({ ...song, user_id: user.id })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
 };
 
 export const deleteSong = async (id: string) => {
@@ -54,9 +66,6 @@ export const deleteSong = async (id: string) => {
 // --- Setlists ---
 
 export const getSetlists = async (): Promise<Setlist[]> => {
-  // We fetch setlists, then we need to fetch their sets and songs.
-  // Supabase JOIN syntax can get deep.
-  
   const { data: setlists, error } = await supabase
     .from('setlists')
     .select(`
@@ -73,27 +82,22 @@ export const getSetlists = async (): Promise<Setlist[]> => {
 
   if (error) throw error;
 
-  // We need to sort the nested arrays manually because Supabase 
-  // nested ordering is limited in the JS client without specific syntax.
-  const typedSetlists = setlists as unknown as Setlist[];
-  
-  return typedSetlists.map(list => ({
+  // Use any to bypass type mismatch between DB response (set_songs) and App Type (songs)
+  return (setlists as any[]).map(list => ({
     ...list,
     sets: list.sets
-      .sort((a, b) => a.position - b.position)
-      .map(set => ({
+      .sort((a: any, b: any) => a.position - b.position)
+      .map((set: any) => ({
         ...set,
         songs: set.set_songs
-          .sort((a, b) => a.position - b.position)
-          .map(ss => ({
+          .sort((a: any, b: any) => a.position - b.position)
+          .map((ss: any) => ({
             ...ss,
-            songId: ss.song_id, // Map snake_case from DB to camelCase for app types if needed, or update types.
-            // Note: Our types use songId, but DB returns song_id. We might need to adjust types or mapping.
-            // Let's assume we map it here.
+            songId: ss.song_id,
             song: ss.song
           }))
       }))
-  }));
+  })) as Setlist[];
 };
 
 export const getSetlist = async (id: string): Promise<Setlist | null> => {
@@ -114,7 +118,6 @@ export const getSetlist = async (id: string): Promise<Setlist | null> => {
 
   if (error) return null;
 
-  // Manual sorting/mapping similar to getSetlists
   const list = data as any;
   return {
     ...list,
@@ -152,15 +155,29 @@ export const deleteSetlist = async (id: string) => {
   if (error) throw error;
 };
 
-// --- Set Operations (Granular updates instead of full object save) ---
+// --- Set Operations ---
 
 export const createSet = async (setlistId: string, name: string, position: number) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
+  // Fetch parent setlist to inherit ownership (so Admin can add Sets to User setlists)
+  const { data: parent } = await supabase
+    .from('setlists')
+    .select('user_id')
+    .eq('id', setlistId)
+    .single();
+    
+  const ownerId = parent ? parent.user_id : user.id;
+
   const { data, error } = await supabase
     .from('sets')
-    .insert({ setlist_id: setlistId, name, position, user_id: user.id })
+    .insert({ 
+      setlist_id: setlistId, 
+      name, 
+      position, 
+      user_id: ownerId 
+    })
     .select()
     .single();
   if (error) throw error;
@@ -176,9 +193,23 @@ export const addSongToSet = async (setId: string, songId: string, position: numb
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
+  // Fetch parent set to inherit ownership
+  const { data: parent } = await supabase
+    .from('sets')
+    .select('user_id')
+    .eq('id', setId)
+    .single();
+
+  const ownerId = parent ? parent.user_id : user.id;
+
   const { data, error } = await supabase
     .from('set_songs')
-    .insert({ set_id: setId, song_id: songId, position, user_id: user.id })
+    .insert({ 
+      set_id: setId, 
+      song_id: songId, 
+      position, 
+      user_id: ownerId 
+    })
     .select(`
       *,
       song:songs(*)
@@ -194,7 +225,6 @@ export const removeSongFromSet = async (setSongId: string) => {
 };
 
 export const updateSetSongOrder = async (items: {id: string, position: number}[]) => {
-  // Helper to batch update positions
   for (const item of items) {
     await supabase.from('set_songs').update({ position: item.position }).eq('id', item.id);
   }
