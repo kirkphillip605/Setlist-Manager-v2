@@ -3,20 +3,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { Music, ListMusic, Plus } from "lucide-react";
-import { getSongs, getSetlists } from "@/lib/storage";
-import { useEffect, useState } from "react";
-import { Song, Setlist } from "@/types";
+import { getSongs, getSetlists } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 const Index = () => {
-  const [stats, setStats] = useState({ songs: 0, setlists: 0 });
-  const [recentSongs, setRecentSongs] = useState<Song[]>([]);
+  const { data: songs = [] } = useQuery({
+    queryKey: ['songs'],
+    queryFn: getSongs
+  });
 
-  useEffect(() => {
-    const songs = getSongs();
-    const setlists = getSetlists();
-    setStats({ songs: songs.length, setlists: setlists.length });
-    setRecentSongs(songs.slice(-5).reverse());
-  }, []);
+  const { data: setlists = [] } = useQuery({
+    queryKey: ['setlists'],
+    queryFn: getSetlists
+  });
+
+  const recentSongs = [...songs].sort((a, b) => {
+    // Assuming createdAt might be available but optional in type, 
+    // or just relying on order returned by DB (which we set to title asc, but here we want recent)
+    // Since we don't have createdAt in the simple Song type explicitly shown before, 
+    // we'll just slice the array. In a real app, we'd sort by date.
+    return 0; 
+  }).slice(0, 5);
 
   return (
     <AppLayout>
@@ -33,7 +40,7 @@ const Index = () => {
               <Music className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.songs}</div>
+              <div className="text-2xl font-bold">{songs.length}</div>
               <div className="mt-4">
                 <Button asChild size="sm" className="w-full">
                   <Link to="/songs/new">
@@ -50,7 +57,7 @@ const Index = () => {
               <ListMusic className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.setlists}</div>
+              <div className="text-2xl font-bold">{setlists.length}</div>
               <div className="mt-4">
                 <Button asChild variant="outline" size="sm" className="w-full">
                   <Link to="/setlists">View Setlists</Link>

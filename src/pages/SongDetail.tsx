@@ -1,18 +1,19 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getSongs, deleteSong } from "@/lib/storage";
-import { Song } from "@/types";
+import { getSong, deleteSong } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   ChevronLeft, 
   Edit, 
   Trash2, 
   Music2, 
   Timer, 
-  StickyNote 
+  StickyNote,
+  Loader2
 } from "lucide-react";
 import {
   AlertDialog,
@@ -29,25 +30,45 @@ import {
 const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [song, setSong] = useState<Song | null>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (id) {
-      const songs = getSongs();
-      const found = songs.find((s) => s.id === id);
-      if (found) setSong(found);
+  const { data: song, isLoading } = useQuery({
+    queryKey: ['song', id],
+    queryFn: () => getSong(id!),
+    enabled: !!id
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteSong,
+    onSuccess: () => {
+      toast.success("Song deleted");
+      queryClient.invalidateQueries({ queryKey: ['songs'] });
+      navigate("/songs");
+    },
+    onError: () => {
+      toast.error("Failed to delete song");
     }
-  }, [id]);
+  });
 
   const handleDelete = () => {
     if (id) {
-      deleteSong(id);
-      toast.success("Song deleted");
-      navigate("/songs");
+      deleteMutation.mutate(id);
     }
   };
 
-  if (!song) return <AppLayout><div>Loading...</div></AppLayout>;
+  if (isLoading) return (
+    <AppLayout>
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    </AppLayout>
+  );
+
+  if (!song) return (
+    <AppLayout>
+      <div className="text-center p-8">Song not found</div>
+    </AppLayout>
+  );
 
   return (
     <AppLayout>
@@ -117,7 +138,7 @@ const SongDetail = () => {
               <StickyNote className="h-3 w-3 text-muted-foreground" />
               <span className="text-xs text-muted-foreground uppercase">Note</span>
             </div>
-            <span className="font-semibold truncate w-full" title={song.note}>{song.note || "-"}</span>
+            <span className="font-semibold truncate w-full" title={song.note || ""}>{song.note || "-"}</span>
           </Card>
         </div>
 

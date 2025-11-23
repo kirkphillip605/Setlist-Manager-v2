@@ -3,18 +3,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { SongFormFields } from "@/components/SongFormFields";
-import { getSongs, saveSong } from "@/lib/storage";
+import { getSong, saveSong } from "@/lib/api";
 import { searchMusic, fetchLyrics } from "@/lib/musicApi";
 import { Song } from "@/types";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Save, Search, Music, Loader2, ArrowRight } from "lucide-react";
 
 const SongEdit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState<'search' | 'edit'>(id ? 'edit' : 'search');
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -28,25 +30,35 @@ const SongEdit = () => {
     formState: { errors },
   } = useForm<Song>();
 
+  // Fetch song if editing
+  const { data: song, isLoading: isSongLoading } = useQuery({
+    queryKey: ['song', id],
+    queryFn: () => getSong(id!),
+    enabled: !!id,
+  });
+
   useEffect(() => {
-    if (id) {
-      const songs = getSongs();
-      const song = songs.find((s) => s.id === id);
-      if (song) {
-        reset(song);
-        setMode('edit');
-      }
+    if (song) {
+      reset(song);
+      setMode('edit');
     }
-  }, [id, reset]);
+  }, [song, reset]);
+
+  const saveMutation = useMutation({
+    mutationFn: saveSong,
+    onSuccess: () => {
+      toast.success(id ? "Song updated!" : "Song added!");
+      queryClient.invalidateQueries({ queryKey: ['songs'] });
+      navigate("/songs");
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error("Failed to save song");
+    }
+  });
 
   const onSubmit = (data: Song) => {
-    const songToSave = {
-      ...data,
-      id: id || crypto.randomUUID(),
-    };
-    saveSong(songToSave);
-    toast.success(id ? "Song updated!" : "Song added!");
-    navigate("/songs");
+    saveMutation.mutate(data);
   };
 
   const handleSearch = async (e?: React.FormEvent) => {
@@ -81,8 +93,6 @@ const SongEdit = () => {
         toast.info("Could not find lyrics automatically.");
       }
       
-      // Note: Public APIs for Key/Tempo are rare/paid. 
-      // Leaving these blank for user to fill.
       setValue("key", "");
       setValue("tempo", "");
       
@@ -149,6 +159,14 @@ const SongEdit = () => {
     </div>
   );
 
+  if (isSongLoading) return (
+    <AppLayout>
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    </AppLayout>
+  );
+
   return (
     <AppLayout>
       <div className="space-y-6 pb-20">
@@ -175,7 +193,8 @@ const SongEdit = () => {
             <SongFormFields register={register} errors={errors} />
             
             <div className="flex gap-4">
-              <Button type="submit" className="w-full sm:w-auto">
+              <Button type="submit" className="w-full sm:w-auto" disabled={saveMutation.isPending}>
+                {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 <Save className="mr-2 h-4 w-4" />
                 Save Song
               </Button>
