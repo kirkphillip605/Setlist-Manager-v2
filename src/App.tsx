@@ -16,6 +16,7 @@ import SongDetail from "./pages/SongDetail";
 import Setlists from "./pages/Setlists";
 import SetlistDetail from "./pages/SetlistDetail";
 import Profile from "./pages/Profile";
+import AdminUsers from "./pages/AdminUsers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -67,6 +68,7 @@ const App = () => {
               <Route path="/setlists" element={<ProtectedRoute session={session}><Setlists /></ProtectedRoute>} />
               <Route path="/setlists/:id" element={<ProtectedRoute session={session}><SetlistDetail /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute session={session}><Profile /></ProtectedRoute>} />
+              <Route path="/admin/users" element={<ProtectedRoute session={session}><AdminUsers /></ProtectedRoute>} />
               
               <Route path="*" element={<NotFound />} />
             </Routes>

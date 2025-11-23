@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -21,6 +22,23 @@ interface AppLayoutProps {
 const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        
+        setIsAdmin(data?.role === 'admin');
+      }
+    };
+    checkAdmin();
+  }, []);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -32,6 +50,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     { icon: Music, label: "Songs", path: "/songs" },
     { icon: ListMusic, label: "Setlists", path: "/setlists" },
   ];
+
+  if (isAdmin) {
+    navItems.push({ icon: Shield, label: "Admin", path: "/admin/users" });
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-[140px] md:pb-0 md:pl-64 transition-colors duration-300">
