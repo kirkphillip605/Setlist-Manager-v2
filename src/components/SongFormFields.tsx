@@ -49,7 +49,7 @@ export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="space-y-2">
           <Label htmlFor="key">Key</Label>
           <Input
@@ -69,9 +69,18 @@ export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
           <Label htmlFor="tempo">Tempo (BPM)</Label>
           <Input
             id="tempo"
-            placeholder="e.g. 120"
+            placeholder="120"
             type="number"
             {...register("tempo")}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="duration">Duration</Label>
+          <Input
+            id="duration"
+            placeholder="3:45"
+            {...register("duration")}
           />
         </div>
 

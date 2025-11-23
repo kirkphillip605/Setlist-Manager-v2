@@ -5,6 +5,7 @@ export interface Song {
   lyrics: string;
   key: string;
   tempo: string;
+  duration: string; // "MM:SS" format
   note: string;
   cover_url?: string;
   spotify_url?: string;

@@ -1,5 +1,6 @@
 const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
+const RAPIDAPI_KEY = import.meta.env.VITE_RAPIDAPI_KEY;
 
 export interface MusicResult {
   id: string; // Spotify ID
@@ -13,23 +14,38 @@ export interface MusicResult {
 export interface AudioFeatures {
   key?: string;
   tempo?: string;
+  duration?: string;
 }
 
-// Helper: Fetch with timeout to prevent hanging UI
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 5000) => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
+// Helper: Fetch with timeout and retry logic
+const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 2, timeoutMs = 8000): Promise<Response> => {
+  const fetchOne = async () => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      // For 429 (Too Many Requests) or 5xx server errors, we might want to throw to trigger retry
+      if (res.status === 429 || res.status >= 500) {
+        throw new Error(`Request failed with status ${res.status}`);
+      }
+      return res;
+    } catch (error) {
+      clearTimeout(id);
+      throw error;
+    }
+  };
+
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fetchOne();
+    } catch (error) {
+      if (i === retries) throw error;
+      // Exponential backoff: 500ms, 1000ms, etc.
+      await new Promise(r => setTimeout(r, 500 * Math.pow(2, i)));
+    }
   }
+  throw new Error("Unreachable code");
 };
 
 let spotifyToken: string | null = null;
@@ -42,14 +58,14 @@ const getSpotifyToken = async () => {
 
   try {
     const auth = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
-    const response = await fetchWithTimeout('https://accounts.spotify.com/api/token', {
+    const response = await fetchWithRetry('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${auth}`,
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: 'grant_type=client_credentials'
-    }, 5000); // 5s timeout for auth
+    }, 1, 5000);
 
     if (!response.ok) {
       console.error("Spotify Auth Error", await response.text());
@@ -71,12 +87,13 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
 
   try {
     const token = await getSpotifyToken();
-    const response = await fetchWithTimeout(
+    const response = await fetchWithRetry(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`, 
       {
         headers: { 'Authorization': `Bearer ${token}` }
       },
-      8000 // 8s timeout for search
+      1, // 1 retry
+      8000 // 8s timeout
     );
 
     if (!response.ok) throw new Error("Spotify search failed");
@@ -115,63 +132,61 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
   }
 };
 
-// Enharmonic mappings favored for guitarists
-// Mode 1 = Major, Mode 0 = Minor
-const MAJOR_KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
-const MINOR_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B'];
-
 export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatures> => {
-  if (!spotifyId) return {};
+  if (!spotifyId || !RAPIDAPI_KEY) {
+    console.warn("Missing Spotify ID or RapidAPI Key");
+    return {};
+  }
   
-  console.log(`Fetching audio features for ID: ${spotifyId}`);
+  console.log(`Fetching track analysis for ID: ${spotifyId}`);
   try {
-    const token = await getSpotifyToken();
-    // Direct call to audio-features endpoint with the track ID
-    const response = await fetchWithTimeout(
-      `https://api.spotify.com/v1/audio-features/${spotifyId}`,
+    const response = await fetchWithRetry(
+      `https://track-analysis.p.rapidapi.com/pktx/spotify/${spotifyId}`,
       {
-        headers: { 'Authorization': `Bearer ${token}` }
+        method: 'GET',
+        headers: {
+          'x-rapidapi-host': 'track-analysis.p.rapidapi.com',
+          'x-rapidapi-key': RAPIDAPI_KEY
+        }
       },
-      6000 // 6s timeout for features
+      2, // 2 retries
+      10000 // 10s timeout
     );
 
     if (!response.ok) {
-        console.error("Audio Features API Error:", await response.text());
+        console.error("Track Analysis API Error:", await response.text());
         return {};
     }
 
     const data = await response.json();
-    console.log("Spotify Audio Features Response:", data);
+    console.log("Track Analysis Response:", data);
     
+    // Parse Key: e.g. key="C", mode="major" -> "C Major"
     let keyString = "";
-    
-    // Check if key is a valid number (0-11)
-    if (data && typeof data.key === 'number' && data.key >= 0 && data.key < 12) {
-      const pitchClass = data.key;
-      const mode = data.mode; // 1 = Major, 0 = Minor
-
-      if (mode === 1) {
-        keyString = `${MAJOR_KEYS[pitchClass]} Major`;
-      } else {
-        keyString = `${MINOR_KEYS[pitchClass]} Minor`;
-      }
+    if (data.key && data.mode) {
+      const modeCapitalized = data.mode.charAt(0).toUpperCase() + data.mode.slice(1);
+      keyString = `${data.key} ${modeCapitalized}`;
     }
 
     // Parse Tempo: Round to nearest whole number
     let tempoString = "";
-    if (data && typeof data.tempo === 'number') {
-      tempoString = Math.round(data.tempo).toString();
+    if (data.tempo) {
+      tempoString = Math.round(Number(data.tempo)).toString();
     }
+
+    // Parse Duration: Already in "MM:SS" format or similar from API
+    const durationString = data.duration || "";
 
     const result = {
       key: keyString,
-      tempo: tempoString
+      tempo: tempoString,
+      duration: durationString
     };
     
-    console.log("Parsed Audio Features:", result);
+    console.log("Parsed Analysis:", result);
     return result;
   } catch (error) {
-    console.error("Audio Features Exception:", error);
+    console.error("Track Analysis Exception:", error);
     return {};
   }
 };
@@ -190,11 +205,11 @@ export const fetchLyrics = async (artist: string, title: string) => {
   console.log(`Fetching lyrics for: ${artist} - ${title}`);
   try {
     const attemptFetch = async (a: string, t: string) => {
-      // 4 second timeout for lyrics as this API can be slow/unreliable
-      const res = await fetchWithTimeout(
+      const res = await fetchWithRetry(
         `https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(t)}`,
         {},
-        4000
+        1, // 1 retry
+        5000 // 5s timeout
       );
       if (res.ok) {
         const data = await res.json();
@@ -210,15 +225,13 @@ export const fetchLyrics = async (artist: string, title: string) => {
     const cleanTitle = cleanForLyrics(title);
     
     if (cleanArtist !== artist || cleanTitle !== title) {
-      // Short delay before retry not needed with fetchWithTimeout logic usually, 
-      // but keeping logic simple. 
       lyrics = await attemptFetch(cleanArtist, cleanTitle);
       if (lyrics) return lyrics;
     }
 
     return "";
   } catch (error) {
-    console.warn("Lyrics fetch failed or timed out", error);
+    console.warn("Lyrics fetch failed", error);
     return "";
   }
 };

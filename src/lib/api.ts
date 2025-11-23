@@ -28,21 +28,24 @@ export const saveSong = async (song: Partial<Song>) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user found");
 
+  const songData = {
+    title: song.title,
+    artist: song.artist,
+    lyrics: song.lyrics,
+    key: song.key,
+    tempo: song.tempo,
+    duration: song.duration,
+    note: song.note,
+    cover_url: song.cover_url,
+    spotify_url: song.spotify_url,
+    updated_at: new Date().toISOString()
+  };
+
   if (song.id) {
     // UPDATE
     const { data, error } = await supabase
       .from('songs')
-      .update({
-        title: song.title,
-        artist: song.artist,
-        lyrics: song.lyrics,
-        key: song.key,
-        tempo: song.tempo,
-        note: song.note,
-        cover_url: song.cover_url,
-        spotify_url: song.spotify_url,
-        updated_at: new Date().toISOString()
-      })
+      .update(songData)
       .eq('id', song.id)
       .select()
       .single();
@@ -53,7 +56,7 @@ export const saveSong = async (song: Partial<Song>) => {
     const { data, error } = await supabase
       .from('songs')
       .insert({ 
-        ...song, 
+        ...songData, 
         user_id: user.id,
         // Ensure undefined fields are not passed as undefined if they are optional in DB but we want null
         cover_url: song.cover_url || null,

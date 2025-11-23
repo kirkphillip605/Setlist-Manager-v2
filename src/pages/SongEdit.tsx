@@ -86,7 +86,7 @@ const SongEdit = () => {
 
   const selectSong = async (result: MusicResult) => {
     setIsProcessing(true);
-    const toastId = toast.loading("Fetching song details (Key, Tempo, Lyrics)...");
+    const toastId = toast.loading("Fetching details (Key, Tempo, Duration, Lyrics)...");
     
     try {
       console.log("Selected song:", result);
@@ -100,7 +100,6 @@ const SongEdit = () => {
       ]);
 
       console.log("Fetched features:", features);
-      console.log("Fetched lyrics length:", lyrics ? lyrics.length : 0);
 
       // Construct the full song object with all data available
       const newSongData: Song = {
@@ -112,23 +111,23 @@ const SongEdit = () => {
         lyrics: lyrics || "",
         key: features.key || "",
         tempo: features.tempo || "",
+        duration: features.duration || "",
         note: ""
       };
 
       // Reset the form with the populated data
-      // This ensures that when we switch to 'edit' mode and the inputs mount,
-      // they will initialize with these values.
       reset(newSongData);
 
       // Feedback to user
-      if (lyrics && features.key) {
-        toast.success("Lyrics and Audio features found!", { id: toastId });
-      } else if (lyrics) {
-        toast.success("Lyrics found! (Audio features missing)", { id: toastId });
-      } else if (features.key) {
-        toast.success("Audio features found! (Lyrics missing)", { id: toastId });
+      let messages = [];
+      if (lyrics) messages.push("Lyrics");
+      if (features.key) messages.push("Key/Tempo");
+      if (features.duration) messages.push("Duration");
+      
+      if (messages.length > 0) {
+        toast.success(`Found: ${messages.join(", ")}`, { id: toastId });
       } else {
-        toast.info("Metadata set (Lyrics/Features not found)", { id: toastId });
+        toast.info("Basic metadata set (details not found)", { id: toastId });
       }
 
       // Finally switch to the form view
