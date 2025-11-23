@@ -92,15 +92,17 @@ const SongEdit = () => {
       console.log("Selected song:", result);
       
       // Parallel Fetch: Lyrics and Audio Features
-      // We start fetching immediately
+      // This waits for BOTH to complete (or fail/timeout handled internally in musicApi)
+      // We pass result.id (Spotify ID) to fetchAudioFeatures
       const [lyrics, features] = await Promise.all([
         fetchLyrics(result.artist, result.title),
         fetchAudioFeatures(result.id)
       ]);
 
       console.log("Fetched features:", features);
+      console.log("Fetched lyrics length:", lyrics ? lyrics.length : 0);
 
-      // Construct the full song object
+      // Construct the full song object with all data available
       const newSongData: Song = {
         id: "", // Empty ID for new song
         title: result.title,
@@ -118,21 +120,23 @@ const SongEdit = () => {
       // they will initialize with these values.
       reset(newSongData);
 
-      // Feedback
+      // Feedback to user
       if (lyrics && features.key) {
         toast.success("Lyrics and Audio features found!", { id: toastId });
       } else if (lyrics) {
-        toast.success("Lyrics found!", { id: toastId });
+        toast.success("Lyrics found! (Audio features missing)", { id: toastId });
       } else if (features.key) {
         toast.success("Audio features found! (Lyrics missing)", { id: toastId });
       } else {
         toast.info("Metadata set (Lyrics/Features not found)", { id: toastId });
       }
 
+      // Finally switch to the form view
       setMode('edit');
     } catch (error) {
       console.error("Error in selectSong:", error);
       toast.error("Error fetching details", { id: toastId });
+      // Even if something catastrophic fails, we let them edit manually
       setMode('edit'); 
     } finally {
       setIsProcessing(false);

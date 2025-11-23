@@ -15,6 +15,23 @@ export interface AudioFeatures {
   tempo?: string;
 }
 
+// Helper: Fetch with timeout to prevent hanging UI
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 5000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
+
 let spotifyToken: string | null = null;
 let tokenExpiration: number = 0;
 
@@ -25,14 +42,14 @@ const getSpotifyToken = async () => {
 
   try {
     const auth = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
-    const response = await fetch('https://accounts.spotify.com/api/token', {
+    const response = await fetchWithTimeout('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${auth}`,
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: 'grant_type=client_credentials'
-    });
+    }, 5000); // 5s timeout for auth
 
     if (!response.ok) {
       console.error("Spotify Auth Error", await response.text());
@@ -54,11 +71,12 @@ export const searchMusic = async (query: string): Promise<MusicResult[]> => {
 
   try {
     const token = await getSpotifyToken();
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`, 
       {
         headers: { 'Authorization': `Bearer ${token}` }
-      }
+      },
+      8000 // 8s timeout for search
     );
 
     if (!response.ok) throw new Error("Spotify search failed");
@@ -109,11 +127,12 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
   try {
     const token = await getSpotifyToken();
     // Direct call to audio-features endpoint with the track ID
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://api.spotify.com/v1/audio-features/${spotifyId}`,
       {
         headers: { 'Authorization': `Bearer ${token}` }
-      }
+      },
+      6000 // 6s timeout for features
     );
 
     if (!response.ok) {
@@ -168,9 +187,15 @@ const cleanForLyrics = (str: string) => {
 };
 
 export const fetchLyrics = async (artist: string, title: string) => {
+  console.log(`Fetching lyrics for: ${artist} - ${title}`);
   try {
     const attemptFetch = async (a: string, t: string) => {
-      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(t)}`);
+      // 4 second timeout for lyrics as this API can be slow/unreliable
+      const res = await fetchWithTimeout(
+        `https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(t)}`,
+        {},
+        4000
+      );
       if (res.ok) {
         const data = await res.json();
         return data.lyrics || "";
@@ -185,14 +210,15 @@ export const fetchLyrics = async (artist: string, title: string) => {
     const cleanTitle = cleanForLyrics(title);
     
     if (cleanArtist !== artist || cleanTitle !== title) {
-      await new Promise(r => setTimeout(r, 200)); 
+      // Short delay before retry not needed with fetchWithTimeout logic usually, 
+      // but keeping logic simple. 
       lyrics = await attemptFetch(cleanArtist, cleanTitle);
       if (lyrics) return lyrics;
     }
 
     return "";
   } catch (error) {
-    console.warn("Lyrics fetch failed", error);
+    console.warn("Lyrics fetch failed or timed out", error);
     return "";
   }
 };
