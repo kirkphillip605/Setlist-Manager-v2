@@ -103,9 +103,12 @@ const MAJOR_KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 
 const MINOR_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'Bb', 'B'];
 
 export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatures> => {
+  if (!spotifyId) return {};
+  
   console.log(`Fetching audio features for ID: ${spotifyId}`);
   try {
     const token = await getSpotifyToken();
+    // Direct call to audio-features endpoint with the track ID
     const response = await fetch(
       `https://api.spotify.com/v1/audio-features/${spotifyId}`,
       {

@@ -27,7 +27,6 @@ const SongEdit = () => {
     register,
     handleSubmit,
     reset,
-    setValue,
     watch,
     control,
     formState: { errors },
@@ -92,13 +91,7 @@ const SongEdit = () => {
     try {
       console.log("Selected song:", result);
       
-      // 1. Set Basic Info & Metadata
-      setValue("title", result.title, { shouldDirty: true });
-      setValue("artist", result.artist, { shouldDirty: true });
-      if (result.coverUrl) setValue("cover_url", result.coverUrl);
-      if (result.spotifyUrl) setValue("spotify_url", result.spotifyUrl);
-
-      // 2. Parallel Fetch: Lyrics and Audio Features
+      // Parallel Fetch: Lyrics and Audio Features
       // We start fetching immediately
       const [lyrics, features] = await Promise.all([
         fetchLyrics(result.artist, result.title),
@@ -107,25 +100,25 @@ const SongEdit = () => {
 
       console.log("Fetched features:", features);
 
-      // 3. Set Lyrics
-      if (lyrics) {
-        setValue("lyrics", lyrics, { shouldDirty: true });
-      } else {
-        setValue("lyrics", "");
-      }
+      // Construct the full song object
+      const newSongData: Song = {
+        id: "", // Empty ID for new song
+        title: result.title,
+        artist: result.artist,
+        cover_url: result.coverUrl,
+        spotify_url: result.spotifyUrl,
+        lyrics: lyrics || "",
+        key: features.key || "",
+        tempo: features.tempo || "",
+        note: ""
+      };
 
-      // 4. Set Features
-      if (features.key) {
-        console.log("Setting Key:", features.key);
-        setValue("key", features.key, { shouldValidate: true, shouldDirty: true });
-      }
-      
-      if (features.tempo) {
-        console.log("Setting Tempo:", features.tempo);
-        setValue("tempo", features.tempo, { shouldValidate: true, shouldDirty: true });
-      }
+      // Reset the form with the populated data
+      // This ensures that when we switch to 'edit' mode and the inputs mount,
+      // they will initialize with these values.
+      reset(newSongData);
 
-      // 5. Feedback
+      // Feedback
       if (lyrics && features.key) {
         toast.success("Lyrics and Audio features found!", { id: toastId });
       } else if (lyrics) {
