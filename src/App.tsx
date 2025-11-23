@@ -8,6 +8,7 @@ import SongList from "./pages/SongList";
 import SongEdit from "./pages/SongEdit";
 import SongDetail from "./pages/SongDetail";
 import Setlists from "./pages/Setlists";
+import SetlistDetail from "./pages/SetlistDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/songs/:id" element={<SongDetail />} />
           <Route path="/songs/:id/edit" element={<SongEdit />} />
           <Route path="/setlists" element={<Setlists />} />
+          <Route path="/setlists/:id" element={<SetlistDetail />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Song {
+  id        String   @id @default(uuid())
+  title     String
+  artist    String
+  lyrics    String?
+  key       String?
+  tempo     String? // Stored as string to allow "120-130" or "Fast"
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  setSongs  SetSong[]
+}
+
+model Setlist {
+  id        String   @id @default(uuid())
+  name      String
+  date      DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  sets      Set[]
+}
+
+model Set {
+  id        String   @id @default(uuid())
+  name      String   // e.g. "Set 1", "Encore"
+  position  Int      // Order of the set in the setlist
+  setlistId String
+  
+  // Relations
+  setlist   Setlist  @relation(fields: [setlistId], references: [id], onDelete: Cascade)
+  songs     SetSong[]
+}
+
+model SetSong {
+  id        String   @id @default(uuid())
+  position  Int      // Order of the song in the set
+  songId    String
+  setId     String
+  
+  // Relations
+  song      Song     @relation(fields: [songId], references: [id])
+  set       Set      @relation(fields: [setId], references: [id], onDelete: Cascade)
+  
+  @@unique([setId, position])
+}

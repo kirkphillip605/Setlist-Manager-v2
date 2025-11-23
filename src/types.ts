@@ -8,9 +8,23 @@ export interface Song {
   note: string;
 }
 
+export interface SetSong {
+  id: string;
+  position: number;
+  songId: string;
+  song?: Song; // Hydrated song data
+}
+
+export interface Set {
+  id: string;
+  name: string;
+  position: number;
+  songs: SetSong[];
+}
+
 export interface Setlist {
   id: string;
   name: string;
   date: string;
-  songs: string[]; // Array of song IDs
+  sets: Set[];
 }

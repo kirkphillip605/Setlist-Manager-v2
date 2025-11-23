@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { getSetlists, saveSetlist, deleteSetlist, getSongs } from "@/lib/storage";
-import { Setlist, Song } from "@/types";
+import { getSetlists, saveSetlist, deleteSetlist } from "@/lib/storage";
+import { Setlist } from "@/types";
 import { Plus, Calendar, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 const Setlists = () => {
   const [setlists, setSetlists] = useState<Setlist[]>([]);
@@ -29,7 +30,7 @@ const Setlists = () => {
       id: crypto.randomUUID(),
       name: newListName,
       date: new Date().toISOString().split('T')[0],
-      songs: []
+      sets: []
     };
     
     saveSetlist(newSetlist);
@@ -39,7 +40,8 @@ const Setlists = () => {
     toast.success("Setlist created");
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.preventDefault(); // Prevent navigation
     deleteSetlist(id);
     loadData();
     toast.success("Setlist deleted");
@@ -85,24 +87,25 @@ const Setlists = () => {
             </div>
           ) : (
             setlists.map((list) => (
-              <Card key={list.id}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(list.id)}>
-                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center text-sm text-muted-foreground mb-2">
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {list.date}
-                  </div>
-                  <div className="text-sm font-medium">
-                    {list.songs.length} songs
-                  </div>
-                  {/* Note: Full setlist editing would go in a detail view, keeping it simple for now */}
-                </CardContent>
-              </Card>
+              <Link key={list.id} to={`/setlists/${list.id}`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={(e) => handleDelete(e, list.id)}>
+                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center text-sm text-muted-foreground mb-2">
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {list.date}
+                    </div>
+                    <div className="text-sm font-medium">
+                      {list.sets.length} Sets • {list.sets.reduce((acc, set) => acc + set.songs.length, 0)} Songs
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             ))
           )}
         </div>
