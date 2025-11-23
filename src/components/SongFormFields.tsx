@@ -1,13 +1,34 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { UseFormRegister, FieldErrors } from "react-hook-form";
+import { UseFormRegister, FieldErrors, Control } from "react-hook-form";
 import { Song } from "@/types";
 
 interface SongFormFieldsProps {
   register: UseFormRegister<Song>;
   errors: FieldErrors<Song>;
+  control: Control<Song>;
 }
+
+const KEYS = [
+  "C Major", "C Minor",
+  "C# Major", "C# Minor",
+  "Db Major", "Db Minor",
+  "D Major", "D Minor",
+  "D# Major", "D# Minor",
+  "Eb Major", "Eb Minor",
+  "E Major", "E Minor",
+  "F Major", "F Minor",
+  "F# Major", "F# Minor",
+  "Gb Major", "Gb Minor",
+  "G Major", "G Minor",
+  "G# Major", "G# Minor",
+  "Ab Major", "Ab Minor",
+  "A Major", "A Minor",
+  "A# Major", "A# Minor",
+  "Bb Major", "Bb Minor",
+  "B Major", "B Minor"
+];
 
 export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
   return (
@@ -43,9 +64,15 @@ export const SongFormFields = ({ register, errors }: SongFormFieldsProps) => {
           <Label htmlFor="key">Key</Label>
           <Input
             id="key"
+            list="keys-list"
             placeholder="e.g. Am"
             {...register("key")}
           />
+          <datalist id="keys-list">
+            {KEYS.map((k) => (
+              <option key={k} value={k} />
+            ))}
+          </datalist>
         </div>
         
         <div className="space-y-2">

@@ -1,98 +1,176 @@
-export interface iTunesResult {
-  trackName: string;
-  artistName: string;
-  previewUrl: string;
-  trackTimeMillis: number;
-  collectionName?: string;
+const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
+// const GENIUS_ACCESS_TOKEN = import.meta.env.VITE_GENIUS_ACCESS_TOKEN;
+
+export interface MusicResult {
+  id: string; // Spotify ID
+  title: string;
+  artist: string;
+  album?: string;
 }
 
-export const searchMusic = async (query: string) => {
-  if (!query) return [];
-  
-  // Increase limit to 25 to allow for de-duplication filtering downstream
-  const response = await fetch(
-    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=25`
-  );
-  
-  if (!response.ok) {
-    throw new Error("Failed to fetch from music service");
+export interface AudioFeatures {
+  key?: string;
+  tempo?: string;
+}
+
+let spotifyToken: string | null = null;
+let tokenExpiration: number = 0;
+
+const getSpotifyToken = async () => {
+  if (spotifyToken && Date.now() < tokenExpiration) {
+    return spotifyToken;
   }
 
-  const data = await response.json();
-  const results = data.results as iTunesResult[];
-  
-  // De-duplicate results based on normalized Artist + Title
-  // This prevents seeing "Song A", "Song A (Remastered)", "Song A (Live)" as clutter if they are essentially the same for lyrics.
-  // We prioritize the shortest title (usually the original) or the first one found.
-  const uniqueResults: iTunesResult[] = [];
-  const seen = new Set<string>();
+  try {
+    const auth = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
+    const response = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'grant_type=client_credentials'
+    });
 
-  for (const result of results) {
-    const key = `${result.artistName.toLowerCase().trim()}|${result.trackName.toLowerCase().trim()}`;
-    
-    // Simple de-dupe logic: if we haven't seen this combo, add it.
-    if (!seen.has(key)) {
-      seen.add(key);
-      uniqueResults.push(result);
+    if (!response.ok) {
+      console.error("Spotify Auth Error", await response.text());
+      throw new Error('Failed to authenticate with Spotify');
     }
-  }
 
-  // Return top 10 unique results
-  return uniqueResults.slice(0, 10);
+    const data = await response.json();
+    spotifyToken = data.access_token;
+    tokenExpiration = Date.now() + (data.expires_in * 1000);
+    return spotifyToken;
+  } catch (error) {
+    console.error("Spotify Token Error:", error);
+    throw error;
+  }
 };
 
-// Helper to clean strings for better lyrics matching (e.g. remove "Remastered", "(Live)", etc.)
+export const searchMusic = async (query: string): Promise<MusicResult[]> => {
+  if (!query) return [];
+
+  try {
+    const token = await getSpotifyToken();
+    const response = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`, 
+      {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+
+    if (!response.ok) throw new Error("Spotify search failed");
+
+    const data = await response.json();
+    const tracks = data.tracks.items;
+
+    // Map to our interface and simple De-duplication
+    // We'll key by "Artist-Title" to remove obvious duplicates
+    const seen = new Set<string>();
+    const results: MusicResult[] = [];
+
+    for (const track of tracks) {
+      const artist = track.artists[0].name;
+      const title = track.name;
+      const key = `${artist.toLowerCase()}-${title.toLowerCase()}`;
+
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push({
+          id: track.id,
+          title: track.name,
+          artist: track.artists.map((a: any) => a.name).join(", "), // Join multiple artists
+          album: track.album.name
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Search Error:", error);
+    return [];
+  }
+};
+
+const PITCH_CLASS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatures> => {
+  try {
+    const token = await getSpotifyToken();
+    const response = await fetch(
+      `https://api.spotify.com/v1/audio-features/${spotifyId}`,
+      {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+
+    if (!response.ok) return {};
+
+    const data = await response.json();
+    
+    // Convert Pitch Class + Mode to String
+    // key: integer 0-11
+    // mode: 0 (Minor), 1 (Major)
+    let keyString = "";
+    if (data.key !== null && data.key >= 0 && data.key < 12) {
+      const note = PITCH_CLASS[data.key];
+      const mode = data.mode === 1 ? "Major" : "Minor";
+      keyString = `${note} ${mode}`;
+    }
+
+    return {
+      key: keyString,
+      tempo: data.tempo ? Math.round(data.tempo).toString() : ""
+    };
+  } catch (error) {
+    console.error("Audio Features Error:", error);
+    return {};
+  }
+};
+
+// Helper to clean strings for better lyrics matching
 const cleanForLyrics = (str: string) => {
   return str
-    .replace(/\s*\(.*?\)\s*/g, '') // Remove content in parentheses
-    .replace(/\s*\[.*?\]\s*/g, '') // Remove content in brackets
-    .replace(/\s*-\s*.*remaster.*/i, '') // Remove " - ... Remaster..."
-    .replace(/\s*-\s*.*live.*/i, '') // Remove " - ... Live..."
-    .replace(/\s*feat\..*/i, '') // Remove "feat. ..."
+    .replace(/\s*\(.*?\)\s*/g, '')
+    .replace(/\s*\[.*?\]\s*/g, '')
+    .replace(/\s*-\s*.*remaster.*/i, '')
+    .replace(/\s*-\s*.*live.*/i, '')
+    .replace(/\s*feat\..*/i, '')
     .trim();
 };
 
 export const fetchLyrics = async (artist: string, title: string) => {
+  // We will stick to lyrics.ovh for now as it's the most reliable free text API 
+  // without needing a backend proxy for CORS which Genius requires for scraping text.
   try {
-    // 1. Try exact match first
-    let response = await fetch(
-      `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`
-    );
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data.lyrics) return data.lyrics;
-    }
-
-    // 2. Try cleaned versions if exact match failed
-    const cleanArtist = cleanForLyrics(artist);
-    const cleanTitle = cleanForLyrics(title);
-
-    // Only retry if cleaning actually changed the string to avoid redundant 404 calls
-    if (cleanArtist !== artist || cleanTitle !== title) {
-      // Small delay to be nice to the API if we are retrying immediately
-      await new Promise(r => setTimeout(r, 200)); 
-      
-      response = await fetch(
-        `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTitle)}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
+    const attemptFetch = async (a: string, t: string) => {
+      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(t)}`);
+      if (res.ok) {
+        const data = await res.json();
         return data.lyrics || "";
       }
+      return null;
+    };
+
+    // 1. Exact match
+    let lyrics = await attemptFetch(artist, title);
+    if (lyrics) return lyrics;
+
+    // 2. Cleaned match
+    const cleanArtist = cleanForLyrics(artist);
+    const cleanTitle = cleanForLyrics(title);
+    
+    if (cleanArtist !== artist || cleanTitle !== title) {
+      // Small delay
+      await new Promise(r => setTimeout(r, 200));
+      lyrics = await attemptFetch(cleanArtist, cleanTitle);
+      if (lyrics) return lyrics;
     }
 
     return "";
   } catch (error) {
-    console.warn("Failed to fetch lyrics", error);
+    console.warn("Lyrics fetch failed", error);
     return "";
   }
-};
-
-export const fetchAudioFeatures = async (artist: string, title: string) => {
-  return {
-    key: "",
-    tempo: "",
-  };
 };

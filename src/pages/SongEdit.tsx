@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { SongFormFields } from "@/components/SongFormFields";
 import { getSong, saveSong } from "@/lib/api";
-import { searchMusic, fetchLyrics, iTunesResult } from "@/lib/musicApi";
+import { searchMusic, fetchLyrics, fetchAudioFeatures, MusicResult } from "@/lib/musicApi";
 import { Song } from "@/types";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -20,13 +20,15 @@ const SongEdit = () => {
   const [mode, setMode] = useState<'search' | 'edit'>(id ? 'edit' : 'search');
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<iTunesResult[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false); // For fetching details
+  const [searchResults, setSearchResults] = useState<MusicResult[]>([]);
 
   const {
     register,
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors },
   } = useForm<Song>();
 
@@ -79,34 +81,50 @@ const SongEdit = () => {
     }
   };
 
-  const selectSong = async (result: iTunesResult) => {
-    setIsSearching(true);
+  const selectSong = async (result: MusicResult) => {
+    setIsProcessing(true);
+    const toastId = toast.loading("Fetching song details...");
+    
     try {
-      // 1. Populate metadata immediately
-      setValue("title", result.trackName);
-      setValue("artist", result.artistName);
-      setValue("key", "");
-      setValue("tempo", "");
+      // 1. Set Basic Info
+      setValue("title", result.title);
+      setValue("artist", result.artist);
 
-      // 2. Attempt to fetch lyrics
-      const lyrics = await fetchLyrics(result.artistName, result.trackName);
-      
+      // 2. Parallel Fetch: Lyrics and Audio Features
+      const [lyrics, features] = await Promise.all([
+        fetchLyrics(result.artist, result.title),
+        fetchAudioFeatures(result.id) // Spotify ID
+      ]);
+
+      // 3. Set Lyrics
       if (lyrics) {
         setValue("lyrics", lyrics);
-        toast.success("Lyrics found and auto-filled!");
       } else {
-        // Fallback logic as requested
-        setValue("lyrics", ""); 
-        toast.info("Lyrics not found. Metadata added.");
+        setValue("lyrics", "");
       }
-      
+
+      // 4. Set Features
+      if (features.key) setValue("key", features.key);
+      if (features.tempo) setValue("tempo", features.tempo);
+
+      // 5. Feedback
+      if (lyrics && features.key) {
+        toast.success("Lyrics and Audio features found!", { id: toastId });
+      } else if (lyrics) {
+        toast.success("Lyrics found!", { id: toastId });
+      } else if (features.key) {
+        toast.success("Audio features found! (Lyrics missing)", { id: toastId });
+      } else {
+        toast.info("Metadata set (Lyrics/Features not found)", { id: toastId });
+      }
+
       setMode('edit');
     } catch (error) {
       console.error(error);
-      // Even if lyrics fetch crashes, we let the user edit the metadata we already set
-      setMode('edit');
+      toast.error("Error fetching details", { id: toastId });
+      setMode('edit'); // Still go to edit mode so user isn't stuck
     } finally {
-      setIsSearching(false);
+      setIsProcessing(false);
     }
   };
 
@@ -114,7 +132,7 @@ const SongEdit = () => {
     <div className="space-y-6 max-w-2xl mx-auto">
        <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold">Add New Song</h2>
-        <p className="text-muted-foreground">Search to auto-fill details or skip to manual entry.</p>
+        <p className="text-muted-foreground">Search Spotify to auto-fill details or skip to manual entry.</p>
       </div>
 
       <Card>
@@ -126,7 +144,7 @@ const SongEdit = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1"
             />
-            <Button type="submit" disabled={isSearching}>
+            <Button type="submit" disabled={isSearching || isProcessing}>
               {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </form>
@@ -134,33 +152,35 @@ const SongEdit = () => {
       </Card>
 
       <div className="space-y-2">
-        {searchResults.map((result, index) => (
+        {searchResults.map((result) => (
           <Card 
-            key={index} 
-            className="hover:bg-accent cursor-pointer transition-colors"
+            key={result.id} 
+            className={`hover:bg-accent cursor-pointer transition-colors ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}
             onClick={() => selectSong(result)}
           >
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="bg-primary/10 p-2 rounded-full">
-                  <Music className="h-4 w-4 text-primary" />
+                <div className="bg-[#1DB954]/10 p-2 rounded-full">
+                  <Music className="h-4 w-4 text-[#1DB954]" />
                 </div>
                 <div>
-                  <p className="font-medium">{result.trackName}</p>
-                  <p className="text-sm text-muted-foreground">{result.artistName}</p>
-                  {result.collectionName && (
-                    <p className="text-xs text-muted-foreground">{result.collectionName}</p>
+                  <p className="font-medium">{result.title}</p>
+                  <p className="text-sm text-muted-foreground">{result.artist}</p>
+                  {result.album && (
+                    <p className="text-xs text-muted-foreground">{result.album}</p>
                   )}
                 </div>
               </div>
-              <Button variant="ghost" size="sm">Select</Button>
+              <Button variant="ghost" size="sm" disabled={isProcessing}>
+                {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Select"}
+              </Button>
             </CardContent>
           </Card>
         ))}
       </div>
 
       <div className="text-center pt-4">
-        <Button variant="link" onClick={() => setMode('edit')}>
+        <Button variant="link" onClick={() => setMode('edit')} disabled={isProcessing}>
           Skip to manual entry <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
@@ -198,7 +218,7 @@ const SongEdit = () => {
           renderSearch()
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 max-w-2xl">
-            <SongFormFields register={register} errors={errors} />
+            <SongFormFields register={register} errors={errors} control={control} />
             
             <div className="flex gap-4">
               <Button type="submit" className="w-full sm:w-auto" disabled={saveMutation.isPending}>
