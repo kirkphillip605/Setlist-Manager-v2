@@ -95,9 +95,8 @@ const Profile = () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
       toast.error(error.message);
-    } else {
-      navigate("/login");
     }
+    // No manual navigate needed; App.tsx listens to state change and redirects
   };
 
   if (loading) return (

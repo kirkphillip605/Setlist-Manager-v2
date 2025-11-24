@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { MetronomeProvider } from "@/components/MetronomeContext";
+import { Loader2 } from "lucide-react";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -36,21 +37,43 @@ const App = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    // 1. Check active session on startup
+    const initSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+      } catch (error) {
+        console.error("Error checking session:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
+    initSession();
+
+    // 2. Listen for auth changes (login, logout, token refresh, auto-logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      
+      if (_event === 'SIGNED_OUT') {
+        // Clear all data from the cache when user logs out
+        queryClient.clear();
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
