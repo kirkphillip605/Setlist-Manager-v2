@@ -55,7 +55,7 @@ const App = () => {
       <TooltipProvider>
         <MetronomeProvider>
           <Toaster />
-          <Sonner />
+          <Sonner position="top-center" />
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />

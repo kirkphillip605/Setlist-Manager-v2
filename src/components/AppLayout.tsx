@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -133,8 +134,15 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </header>
 
       {/* Mobile Content Area */}
-      <main className="container mx-auto max-w-5xl p-4 pt-20 md:p-8 md:pt-8 animate-in fade-in duration-500">
-        {children}
+      <main className="container mx-auto max-w-5xl p-4 pt-20 md:p-8 md:pt-8">
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          {children}
+        </motion.div>
       </main>
 
       {/* Mobile Metronome - Renders above bottom nav */}

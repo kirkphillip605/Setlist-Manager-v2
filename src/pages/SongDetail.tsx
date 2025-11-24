@@ -9,6 +9,7 @@ import { useMetronome } from "@/components/MetronomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { searchMusic, fetchAudioFeatures } from "@/lib/musicApi";
+import { motion } from "framer-motion";
 import { 
   ChevronLeft, 
   Edit, 
@@ -119,7 +120,6 @@ const SongDetail = () => {
     if (!song) return;
     setIsFetchingDetails(true);
     try {
-        // 1. Search for the song
         const results = await searchMusic(`${song.artist} ${song.title}`);
         if (results.length === 0) {
             toast.error("No matches found on Spotify");
@@ -177,7 +177,12 @@ const SongDetail = () => {
 
   return (
     <AppLayout>
-      <div className="space-y-6 pb-20">
+      <motion.div 
+        className="space-y-6 pb-20"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => navigate("/songs")}>
@@ -230,7 +235,12 @@ const SongDetail = () => {
 
         {/* Hero Section with Art */}
         <div className="flex flex-col sm:flex-row gap-6 items-start">
-          <div className="shrink-0 mx-auto sm:mx-0">
+          <motion.div 
+            className="shrink-0 mx-auto sm:mx-0"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.1, duration: 0.3 }}
+          >
              {song.cover_url ? (
                <img 
                  src={song.cover_url} 
@@ -242,17 +252,18 @@ const SongDetail = () => {
                  <Music className="w-16 h-16 text-muted-foreground opacity-50" />
                </div>
              )}
-          </div>
+          </motion.div>
 
           <div className="flex-1 w-full space-y-4">
-             <div>
+             <div className="text-center sm:text-left">
                <h2 className="text-2xl font-semibold">{song.title}</h2>
                <p className="text-lg text-muted-foreground">{song.artist}</p>
              </div>
              
-             <div className="flex flex-wrap gap-2">
+             {/* Action Buttons - Grid on mobile, Flex on desktop */}
+             <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
                {song.spotify_url && (
-                 <Button asChild variant="outline" className="gap-2 text-[#1DB954] hover:text-[#1DB954] border-[#1DB954]/20 hover:bg-[#1DB954]/10">
+                 <Button asChild variant="outline" className="w-full sm:w-auto gap-2 text-[#1DB954] hover:text-[#1DB954] border-[#1DB954]/20 hover:bg-[#1DB954]/10">
                    <a href={song.spotify_url} target="_blank" rel="noopener noreferrer">
                      <Music className="w-4 h-4" />
                      Open in Spotify
@@ -264,7 +275,7 @@ const SongDetail = () => {
                <Button 
                 onClick={toggleMetronome} 
                 variant={isPlaying ? "destructive" : "outline"} 
-                className="gap-2"
+                className="w-full sm:w-auto gap-2"
                >
                   {isPlaying ? (
                     <>
@@ -308,15 +319,21 @@ const SongDetail = () => {
           </div>
         </div>
 
-        <Card className="min-h-[400px] p-8 bg-card relative">
-          {song.lyrics ? (
-            <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
-              {song.lyrics}
-            </div>
-          ) : (
-            <div className="text-muted-foreground italic">No lyrics/chords added.</div>
-          )}
-        </Card>
+        <motion.div
+           initial={{ opacity: 0, y: 20 }}
+           animate={{ opacity: 1, y: 0 }}
+           transition={{ delay: 0.2, duration: 0.4 }}
+        >
+          <Card className="min-h-[400px] p-8 bg-card relative">
+            {song.lyrics ? (
+              <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                {song.lyrics}
+              </div>
+            ) : (
+              <div className="text-muted-foreground italic">No lyrics/chords added.</div>
+            )}
+          </Card>
+        </motion.div>
 
         {/* Admin Search Dialog */}
         <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
@@ -345,7 +362,7 @@ const SongDetail = () => {
             </DialogContent>
         </Dialog>
 
-      </div>
+      </motion.div>
     </AppLayout>
   );
 };
