@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -50,6 +50,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     { icon: Home, label: "Home", path: "/" },
     { icon: Music, label: "Songs", path: "/songs" },
     { icon: ListMusic, label: "Setlists", path: "/setlists" },
+    { icon: PlayCircle, label: "Perform", path: "/performance" },
   ];
 
   if (isAdmin) {

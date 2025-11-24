@@ -17,6 +17,8 @@ import Setlists from "./pages/Setlists";
 import SetlistDetail from "./pages/SetlistDetail";
 import Profile from "./pages/Profile";
 import AdminUsers from "./pages/AdminUsers";
+import PerformanceSelection from "./pages/PerformanceSelection";
+import PerformanceMode from "./pages/PerformanceMode";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -67,6 +69,11 @@ const App = () => {
               <Route path="/songs/:id/edit" element={<ProtectedRoute session={session}><SongEdit /></ProtectedRoute>} />
               <Route path="/setlists" element={<ProtectedRoute session={session}><Setlists /></ProtectedRoute>} />
               <Route path="/setlists/:id" element={<ProtectedRoute session={session}><SetlistDetail /></ProtectedRoute>} />
+              
+              {/* Performance Mode Routes */}
+              <Route path="/performance" element={<ProtectedRoute session={session}><PerformanceSelection /></ProtectedRoute>} />
+              <Route path="/performance/:id" element={<ProtectedRoute session={session}><PerformanceMode /></ProtectedRoute>} />
+
               <Route path="/profile" element={<ProtectedRoute session={session}><Profile /></ProtectedRoute>} />
               <Route path="/admin/users" element={<ProtectedRoute session={session}><AdminUsers /></ProtectedRoute>} />
               
