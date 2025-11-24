@@ -1,16 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
-import { Persister, createSyncStoragePersister } from "@tanstack/react-query-persist-client";
+import { Persister } from "@tanstack/react-query-persist-client";
 import { get, set, del } from 'idb-keyval';
-
-// Custom persister using idb-keyval for IndexedDB support (Async storage)
-// We need to wrap the async idb-keyval in a sync-like interface or use the async persister creator if available.
-// Actually, createSyncStoragePersister is for localStorage. 
-// For async storage like IndexedDB, we define the persister manually or use createAsyncStoragePersister 
-// (but that is often experimental or requires specific adapter).
-// The simplest robust way for React Query v5 is providing a persistFn.
-
-// However, @tanstack/react-query-persist-client provides a createPersister interface.
-// Let's create a persister that works with idb-keyval.
 
 export const createIDBPersister = (idbValidKey: IDBValidKey = "reactQuery"): Persister => {
   return {
