@@ -2,14 +2,36 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Define allowed origins. In production, these should come from Deno.env.get('ALLOWED_ORIGINS')
+// For now, we allow * if the env var isn't set, or check against the list.
+const getAllowedOrigin = (req: Request) => {
+  const origin = req.headers.get('Origin');
+  const allowedOriginsStr = Deno.env.get('ALLOWED_ORIGINS') || '*';
+  
+  if (allowedOriginsStr === '*') return '*';
+  
+  const allowedOrigins = allowedOriginsStr.split(',').map(u => u.trim());
+  if (origin && allowedOrigins.includes(origin)) {
+    return origin;
+  }
+  
+  return null; // Or return a specific default allowed origin
 };
 
 serve(async (req) => {
+  const allowedOrigin = getAllowedOrigin(req);
+  
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': allowedOrigin || '',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (!allowedOrigin) {
+    return new Response("CORS Not Allowed", { status: 403 });
   }
 
   try {
