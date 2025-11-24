@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,11 +26,57 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Protected Route Wrapper
+// Protected Route Wrapper with Profile Check
 const ProtectedRoute = ({ children, session }: { children: JSX.Element, session: Session | null }) => {
+  const location = useLocation();
+  const [isProfileChecked, setIsProfileChecked] = useState(false);
+  const [isProfileComplete, setIsProfileComplete] = useState(true);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const checkProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!data?.first_name || !data?.last_name) {
+          setIsProfileComplete(false);
+        } else {
+          setIsProfileComplete(true);
+        }
+      } catch (err) {
+        console.error("Profile check failed", err);
+        // Assume incomplete on error to be safe, or handle otherwise
+      } finally {
+        setIsProfileChecked(true);
+      }
+    };
+
+    checkProfile();
+  }, [session]);
+
   if (!session) {
     return <Navigate to="/login" replace />;
   }
+
+  // Show loader while checking profile status
+  if (!isProfileChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Redirect to profile if incomplete and not already there
+  if (!isProfileComplete && location.pathname !== '/profile') {
+    return <Navigate to="/profile" replace />;
+  }
+
   return children;
 };
 
@@ -53,14 +99,12 @@ const App = () => {
 
     initSession();
 
-    // 2. Listen for auth changes (login, logout, token refresh, auto-logout)
+    // 2. Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      
       if (_event === 'SIGNED_OUT') {
-        // Clear all data from the cache when user logs out
         queryClient.clear();
       }
     });

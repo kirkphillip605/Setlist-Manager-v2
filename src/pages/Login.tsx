@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Turnstile } from '@marsidev/react-turnstile';
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -16,7 +15,6 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   // Reset Password State
   const [resetEmail, setResetEmail] = useState("");
@@ -35,38 +33,25 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!captchaToken) {
-      toast.error("Please complete the captcha verification");
-      return;
-    }
-    
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({
       email,
-      password,
-      options: { captchaToken }
+      password
     });
 
     if (error) {
       toast.error(error.message);
       setLoading(false);
-      setCaptchaToken(null); 
     }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!captchaToken) {
-      toast.error("Please complete the captcha verification");
-      return;
-    }
-
     setLoading(true);
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: { 
-        captchaToken,
         emailRedirectTo: `${window.location.origin}/auth/callback`
       }
     });
@@ -77,16 +62,14 @@ const Login = () => {
       toast.success("Check your email for the confirmation link!");
     }
     setLoading(false);
-    setCaptchaToken(null);
   };
 
   const handleGoogleLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        captchaToken: captchaToken || undefined
-      } as any
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
     });
 
     if (error) toast.error(error.message);
@@ -98,8 +81,7 @@ const Login = () => {
     setResetLoading(true);
 
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/update-password`,
-      captchaToken: captchaToken || undefined
+      redirectTo: `${window.location.origin}/update-password`
     });
 
     if (error) {
@@ -111,8 +93,6 @@ const Login = () => {
     }
     setResetLoading(false);
   };
-
-  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -183,20 +163,7 @@ const Login = () => {
                   />
                 </div>
 
-                <div className="flex justify-center py-2">
-                   {turnstileSiteKey ? (
-                      <Turnstile 
-                        siteKey={turnstileSiteKey} 
-                        onSuccess={(token) => setCaptchaToken(token)}
-                      />
-                   ) : (
-                     <div className="text-sm text-destructive border border-destructive/50 p-2 rounded bg-destructive/10">
-                       Error: Captcha Key Missing
-                     </div>
-                   )}
-                </div>
-
-                <Button type="submit" className="w-full" disabled={loading || !captchaToken}>
+                <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Sign In
                 </Button>
@@ -227,16 +194,7 @@ const Login = () => {
                   />
                 </div>
 
-                <div className="flex justify-center py-2">
-                   {turnstileSiteKey && (
-                      <Turnstile 
-                        siteKey={turnstileSiteKey} 
-                        onSuccess={(token) => setCaptchaToken(token)}
-                      />
-                   )}
-                </div>
-
-                <Button type="submit" className="w-full" disabled={loading || !captchaToken}>
+                <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Sign Up
                 </Button>
