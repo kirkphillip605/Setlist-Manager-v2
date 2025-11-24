@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: bad-habits-app
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production
+    # Load environment variables from .env file
+    env_file:
+      - .env

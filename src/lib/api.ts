@@ -1,5 +1,25 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Song, Setlist } from "@/types";
+import { Song, Setlist, Set as SetType, SetSong } from "@/types";
+
+// --- Types Helper ---
+// Helper interfaces to match Supabase raw response structure which differs from our App types
+interface SupabaseSetSong {
+  id: string;
+  position: number;
+  song_id: string; // Matches DB column name
+  song: Song | null;
+}
+
+interface SupabaseSet {
+  id: string;
+  name: string;
+  position: number;
+  set_songs: SupabaseSetSong[];
+}
+
+interface SupabaseSetlist extends Omit<Setlist, 'sets'> {
+  sets: SupabaseSet[];
+}
 
 // --- Songs ---
 
@@ -28,16 +48,17 @@ export const saveSong = async (song: Partial<Song>) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user found");
 
+  // Sanitize undefined values for optional fields
   const songData = {
     title: song.title,
     artist: song.artist,
-    lyrics: song.lyrics,
-    key: song.key,
-    tempo: song.tempo,
-    duration: song.duration,
-    note: song.note,
-    cover_url: song.cover_url,
-    spotify_url: song.spotify_url,
+    lyrics: song.lyrics || "",
+    key: song.key || "",
+    tempo: song.tempo || "",
+    duration: song.duration || "",
+    note: song.note || "",
+    cover_url: song.cover_url || null,
+    spotify_url: song.spotify_url || null,
     updated_at: new Date().toISOString()
   };
 
@@ -57,10 +78,7 @@ export const saveSong = async (song: Partial<Song>) => {
       .from('songs')
       .insert({ 
         ...songData, 
-        user_id: user.id,
-        // Ensure undefined fields are not passed as undefined if they are optional in DB but we want null
-        cover_url: song.cover_url || null,
-        spotify_url: song.spotify_url || null
+        user_id: user.id
       })
       .select()
       .single();
@@ -77,7 +95,7 @@ export const deleteSong = async (id: string) => {
 // --- Setlists ---
 
 export const getSetlists = async (): Promise<Setlist[]> => {
-  const { data: setlists, error } = await supabase
+  const { data, error } = await supabase
     .from('setlists')
     .select(`
       *,
@@ -93,22 +111,27 @@ export const getSetlists = async (): Promise<Setlist[]> => {
 
   if (error) throw error;
 
-  // Use any to bypass type mismatch between DB response (set_songs) and App Type (songs)
-  return (setlists as any[]).map(list => ({
+  // Type assertion step to ensure data matches our expected Supabase structure
+  const rawSetlists = data as unknown as SupabaseSetlist[];
+
+  return rawSetlists.map(list => ({
     ...list,
     sets: list.sets
-      .sort((a: any, b: any) => a.position - b.position)
-      .map((set: any) => ({
-        ...set,
+      .sort((a, b) => a.position - b.position)
+      .map(set => ({
+        id: set.id,
+        name: set.name,
+        position: set.position,
         songs: set.set_songs
-          .sort((a: any, b: any) => a.position - b.position)
-          .map((ss: any) => ({
-            ...ss,
-            songId: ss.song_id,
-            song: ss.song
+          .sort((a, b) => a.position - b.position)
+          .map(ss => ({
+            id: ss.id,
+            position: ss.position,
+            songId: ss.song_id, // Map snake_case to camelCase
+            song: ss.song || undefined 
           }))
       }))
-  })) as Setlist[];
+  }));
 };
 
 export const getSetlist = async (id: string): Promise<Setlist | null> => {
@@ -129,19 +152,23 @@ export const getSetlist = async (id: string): Promise<Setlist | null> => {
 
   if (error) return null;
 
-  const list = data as any;
+  const list = data as unknown as SupabaseSetlist;
+
   return {
     ...list,
     sets: list.sets
-      .sort((a: any, b: any) => a.position - b.position)
-      .map((set: any) => ({
-        ...set,
+      .sort((a, b) => a.position - b.position)
+      .map(set => ({
+        id: set.id,
+        name: set.name,
+        position: set.position,
         songs: set.set_songs
-          .sort((a: any, b: any) => a.position - b.position)
-          .map((ss: any) => ({
-            ...ss,
-            songId: ss.song_id,
-            song: ss.song
+          .sort((a, b) => a.position - b.position)
+          .map(ss => ({
+            id: ss.id,
+            position: ss.position,
+            songId: ss.song_id, // Map snake_case to camelCase
+            song: ss.song || undefined
           }))
       }))
   };
@@ -172,6 +199,7 @@ export const createSet = async (setlistId: string, name: string, position: numbe
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
+  // Get owner of setlist to ensure data consistency
   const { data: parent } = await supabase
     .from('setlists')
     .select('user_id')
@@ -262,9 +290,10 @@ export const removeSongFromSet = async (setSongId: string) => {
 };
 
 export const updateSetSongOrder = async (items: {id: string, position: number}[]) => {
-  for (const item of items) {
-    await supabase.from('set_songs').update({ position: item.position }).eq('id', item.id);
-  }
+  // Using Promise.all for parallel execution to improve speed
+  await Promise.all(items.map(item => 
+    supabase.from('set_songs').update({ position: item.position }).eq('id', item.id)
+  ));
 };
 
 export const moveSetSongToSet = async (setSongId: string, targetSetId: string, position: number) => {
