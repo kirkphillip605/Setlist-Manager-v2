@@ -11,6 +11,8 @@ import { Loader2 } from "lucide-react";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
+import UpdatePassword from "./pages/UpdatePassword";
 import SongList from "./pages/SongList";
 import SongEdit from "./pages/SongEdit";
 import SongDetail from "./pages/SongDetail";
@@ -84,6 +86,8 @@ const App = () => {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/update-password" element={<UpdatePassword />} />
               
               <Route path="/" element={<ProtectedRoute session={session}><Index /></ProtectedRoute>} />
               <Route path="/songs" element={<ProtectedRoute session={session}><SongList /></ProtectedRoute>} />

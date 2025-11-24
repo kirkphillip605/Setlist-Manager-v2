@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Turnstile } from '@marsidev/react-turnstile';
 import { toast } from "sonner";
-import { Loader2, Mail } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -16,6 +17,11 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  // Reset Password State
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -44,10 +50,8 @@ const Login = () => {
     if (error) {
       toast.error(error.message);
       setLoading(false);
-      // Reset captcha on error so user can try again
       setCaptchaToken(null); 
     }
-    // Navigation handled by auth state listener
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -61,7 +65,10 @@ const Login = () => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { captchaToken }
+      options: { 
+        captchaToken,
+        emailRedirectTo: `${window.location.origin}/auth/callback`
+      }
     });
 
     if (error) {
@@ -74,24 +81,38 @@ const Login = () => {
   };
 
   const handleGoogleLogin = async () => {
-    // Note: Captcha is typically not required for OAuth initiation unless strictly enforced by Supabase settings.
-    // If enforced, pass options: { captchaToken } here as well.
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/auth/callback`,
         captchaToken: captchaToken || undefined
-      }
+      } as any
     });
 
     if (error) toast.error(error.message);
   };
 
-  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail) return;
+    setResetLoading(true);
 
-  if (!turnstileSiteKey) {
-    console.error("Missing VITE_TURNSTILE_SITE_KEY environment variable");
-  }
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: `${window.location.origin}/update-password`,
+      captchaToken: captchaToken || undefined
+    });
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Password reset link sent to your email!");
+      setIsResetOpen(false);
+      setResetEmail("");
+    }
+    setResetLoading(false);
+  };
+
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -121,7 +142,38 @@ const Login = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password-login">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password-login">Password</Label>
+                    <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="link" className="px-0 h-auto text-xs font-normal">Forgot password?</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Reset Password</DialogTitle>
+                                <DialogDescription>Enter your email address and we'll send you a link to reset your password.</DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleForgotPassword} className="space-y-4 py-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="reset-email">Email</Label>
+                                    <Input 
+                                        id="reset-email" 
+                                        type="email" 
+                                        value={resetEmail}
+                                        onChange={(e) => setResetEmail(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <DialogFooter>
+                                    <Button type="submit" disabled={resetLoading}>
+                                        {resetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Send Reset Link
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                  </div>
                   <Input 
                     id="password-login" 
                     type="password" 
