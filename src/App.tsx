@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Session } from "@supabase/supabase-js";
@@ -24,7 +24,9 @@ import PerformanceSelection from "./pages/PerformanceSelection";
 import PerformanceMode from "./pages/PerformanceMode";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+// Import the persisted client configuration
+import { queryClient, persister } from "@/lib/queryClient";
+import { SyncIndicator } from "@/components/SyncIndicator";
 
 // Protected Route Wrapper with Profile Check
 const ProtectedRoute = ({ children, session }: { children: JSX.Element, session: Session | null }) => {
@@ -50,7 +52,6 @@ const ProtectedRoute = ({ children, session }: { children: JSX.Element, session:
         }
       } catch (err) {
         console.error("Profile check failed", err);
-        // Assume incomplete on error to be safe, or handle otherwise
       } finally {
         setIsProfileChecked(true);
       }
@@ -122,11 +123,19 @@ const App = () => {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider 
+      client={queryClient} 
+      persistOptions={{ persister }}
+      onSuccess={() => {
+        // Optional: Data restored from cache successfully
+        console.log("App data restored from offline cache");
+      }}
+    >
       <TooltipProvider>
         <MetronomeProvider>
           <Toaster />
           <Sonner position="top-center" />
+          <SyncIndicator />
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />
@@ -153,7 +162,7 @@ const App = () => {
           </BrowserRouter>
         </MetronomeProvider>
       </TooltipProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 };
 
