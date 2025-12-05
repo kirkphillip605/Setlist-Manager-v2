@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMetronome } from "@/components/MetronomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
-import { searchMusic, fetchAudioFeatures } from "@/lib/musicApi";
+import { searchMusic, fetchAudioFeatures, fetchLyrics } from "@/lib/musicApi";
 import { motion } from "framer-motion";
 import { 
   ChevronLeft, 
@@ -22,7 +22,8 @@ import {
   Music,
   Square,
   Play,
-  Wand2
+  Wand2,
+  AlertTriangle
 } from "lucide-react";
 import {
   AlertDialog,
@@ -39,9 +40,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Song } from "@/types";
 
 const SongDetail = () => {
   const { id } = useParams();
@@ -49,9 +52,16 @@ const SongDetail = () => {
   const queryClient = useQueryClient();
   const { openMetronome, closeMetronome, isPlaying } = useMetronome();
   const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Search State
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Conflict Resolution State
+  const [candidateData, setCandidateData] = useState<Partial<Song> | null>(null);
+  const [isConflictOpen, setIsConflictOpen] = useState(false);
+  const [conflictingFields, setConflictingFields] = useState<string[]>([]);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -86,8 +96,10 @@ const SongDetail = () => {
     mutationFn: saveSong,
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['song', id] });
-        toast.success("Song updated with new details");
+        toast.success("Song updated successfully");
         setIsSearchOpen(false);
+        setIsConflictOpen(false);
+        setCandidateData(null);
     }
   });
 
@@ -137,28 +149,79 @@ const SongDetail = () => {
   const confirmMatch = async (result: any) => {
       if (!song) return;
       setIsFetchingDetails(true);
-      const toastId = toast.loading("Fetching audio features...");
+      const toastId = toast.loading("Fetching metadata (Key, Tempo, Lyrics)...");
       
       try {
-        const features = await fetchAudioFeatures(result.id);
+        // Parallel fetch for speed
+        const [features, lyrics] = await Promise.all([
+            fetchAudioFeatures(result.id),
+            fetchLyrics(result.artist, result.title)
+        ]);
         
-        const updates: any = {
+        // Prepare potential new data
+        const newData: Partial<Song> = {
             id: song.id,
-            spotify_url: result.spotifyUrl || song.spotify_url,
-            cover_url: result.coverUrl || song.cover_url,
+            spotify_url: result.spotifyUrl || "", // Always update link if they selected a match
         };
 
-        if (features.key) updates.key = features.key;
-        if (features.tempo) updates.tempo = features.tempo;
-        if (result.duration) updates.duration = result.duration;
-        
-        updateSongMutation.mutate(updates);
+        // Collect fields we found
+        if (features.key) newData.key = features.key;
+        if (features.tempo) newData.tempo = features.tempo;
+        if (result.duration) newData.duration = result.duration;
+        if (result.coverUrl) newData.cover_url = result.coverUrl;
+        if (lyrics) newData.lyrics = lyrics;
+
+        // Check for conflicts
+        const conflicts: string[] = [];
+        if (newData.key && song.key && newData.key !== song.key) conflicts.push("Key");
+        if (newData.tempo && song.tempo && newData.tempo !== song.tempo) conflicts.push("Tempo");
+        if (newData.duration && song.duration && newData.duration !== song.duration) conflicts.push("Duration");
+        if (newData.cover_url && song.cover_url && newData.cover_url !== song.cover_url) conflicts.push("Album Art");
+        if (newData.lyrics && song.lyrics && newData.lyrics !== song.lyrics) conflicts.push("Lyrics");
+
+        setCandidateData(newData);
+        setConflictingFields(conflicts);
+
         toast.dismiss(toastId);
+
+        if (conflicts.length > 0) {
+            // If we have conflicts, ask the user
+            setIsConflictOpen(true);
+        } else {
+            // No conflicts (either fields matched or were empty), safe to merge
+            // Use "Fill Missing" logic effectively, which here is just merging since no conflicts exist
+            handleApplyUpdate(newData, 'overwrite'); 
+        }
+
       } catch (error) {
+          console.error(error);
           toast.error("Failed to fetch details", { id: toastId });
       } finally {
           setIsFetchingDetails(false);
       }
+  };
+
+  const handleApplyUpdate = (data: Partial<Song>, strategy: 'missing' | 'overwrite') => {
+      if (!song) return;
+
+      const finalUpdate: any = { id: song.id, spotify_url: data.spotify_url };
+
+      const fields = ['key', 'tempo', 'duration', 'cover_url', 'lyrics', 'note'] as const;
+
+      fields.forEach(field => {
+          const existingVal = song[field];
+          const newVal = data[field as keyof typeof data];
+
+          if (strategy === 'overwrite') {
+              // Use new value if present, else keep existing
+              finalUpdate[field] = newVal || existingVal;
+          } else {
+              // 'missing': Only use new value if existing is empty
+              finalUpdate[field] = existingVal || newVal;
+          }
+      });
+
+      updateSongMutation.mutate(finalUpdate);
   };
 
   if (isLoading) return (
@@ -341,7 +404,7 @@ const SongDetail = () => {
                 <DialogHeader>
                     <DialogTitle>Select Match</DialogTitle>
                     <DialogDescription>
-                        Choose the correct Spotify track to update Key, Tempo, and Cover Art.
+                        Choose the correct Spotify track to auto-fill metadata.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[300px] overflow-y-auto space-y-2">
@@ -359,6 +422,43 @@ const SongDetail = () => {
                         </div>
                     ))}
                 </div>
+            </DialogContent>
+        </Dialog>
+
+        {/* Conflict Resolution Dialog */}
+        <Dialog open={isConflictOpen} onOpenChange={setIsConflictOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-orange-500" />
+                        Data Conflict
+                    </DialogTitle>
+                    <DialogDescription>
+                        The data found differs from what is currently saved for: 
+                        <span className="block mt-2 font-medium text-foreground">
+                            {conflictingFields.join(", ")}
+                        </span>
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-2 text-sm text-muted-foreground">
+                    How would you like to proceed?
+                </div>
+                <DialogFooter className="flex-col sm:flex-row gap-2">
+                    <Button variant="outline" onClick={() => setIsConflictOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button 
+                        variant="secondary" 
+                        onClick={() => candidateData && handleApplyUpdate(candidateData, 'missing')}
+                    >
+                        Fill Missing Only
+                    </Button>
+                    <Button 
+                        onClick={() => candidateData && handleApplyUpdate(candidateData, 'overwrite')}
+                    >
+                        Overwrite All
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
 
