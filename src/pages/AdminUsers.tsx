@@ -29,8 +29,9 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, UserPlus, Shield, Mail, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, UserPlus, Shield, Mail, Trash2, RefreshCw, ChevronLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "react-router-dom";
 
 interface Profile {
     id: string;
@@ -145,40 +146,46 @@ const AdminUsers = () => {
     return (
         <AppLayout>
             <div className="space-y-6 pb-20">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-                        <p className="text-muted-foreground">Manage band members, roles, and access.</p>
-                    </div>
-                    <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-                        <DialogTrigger asChild>
-                            <Button>
-                                <UserPlus className="mr-2 h-4 w-4" /> Invite User
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Invite New Member</DialogTitle>
-                                <DialogDescription>
-                                    Send an email invitation to a new band member. They will receive a link to set up their account.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4">
-                                <Input 
-                                    placeholder="Email address" 
-                                    value={inviteEmail}
-                                    onChange={(e) => setInviteEmail(e.target.value)}
-                                />
-                            </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Cancel</Button>
-                                <Button onClick={handleInvite} disabled={processing}>
-                                    {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Send Invite
+                <div className="flex flex-col gap-2">
+                    <Link to="/admin" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors w-fit">
+                        <ChevronLeft className="w-4 h-4 mr-1" />
+                        Back to Dashboard
+                    </Link>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
+                            <p className="text-muted-foreground">Manage band members, roles, and access.</p>
+                        </div>
+                        <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <UserPlus className="mr-2 h-4 w-4" /> Invite User
                                 </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Invite New Member</DialogTitle>
+                                    <DialogDescription>
+                                        Send an email invitation to a new band member. They will receive a link to set up their account.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="py-4">
+                                    <Input 
+                                        placeholder="Email address" 
+                                        value={inviteEmail}
+                                        onChange={(e) => setInviteEmail(e.target.value)}
+                                    />
+                                </div>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Cancel</Button>
+                                    <Button onClick={handleInvite} disabled={processing}>
+                                        {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Send Invite
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
 
                 <Card>

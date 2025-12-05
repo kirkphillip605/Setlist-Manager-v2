@@ -19,6 +19,7 @@ import SongDetail from "./pages/SongDetail";
 import Setlists from "./pages/Setlists";
 import SetlistDetail from "./pages/SetlistDetail";
 import Profile from "./pages/Profile";
+import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
 import PerformanceSelection from "./pages/PerformanceSelection";
 import PerformanceMode from "./pages/PerformanceMode";
@@ -155,6 +156,9 @@ const App = () => {
               <Route path="/performance/:id" element={<ProtectedRoute session={session}><PerformanceMode /></ProtectedRoute>} />
 
               <Route path="/profile" element={<ProtectedRoute session={session}><Profile /></ProtectedRoute>} />
+              
+              {/* Admin Routes */}
+              <Route path="/admin" element={<ProtectedRoute session={session}><AdminDashboard /></ProtectedRoute>} />
               <Route path="/admin/users" element={<ProtectedRoute session={session}><AdminUsers /></ProtectedRoute>} />
               
               <Route path="*" element={<NotFound />} />

@@ -60,7 +60,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   ];
 
   if (isAdmin) {
-    navItems.push({ icon: Shield, label: "Admin", path: "/admin/users" });
+    navItems.push({ icon: Shield, label: "Admin", path: "/admin" });
   }
 
   return (
@@ -107,7 +107,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               title={isCollapsed ? item.label : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium",
-                location.pathname === item.path
+                location.pathname === item.path || (item.path === '/admin' && location.pathname.startsWith('/admin'))
                   ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                   : "hover:bg-accent hover:text-accent-foreground text-muted-foreground",
                 isCollapsed && "justify-center px-2"
@@ -186,7 +186,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             to={item.path}
             className={cn(
               "flex flex-col items-center justify-center gap-1 w-16 h-full rounded-lg transition-colors",
-              location.pathname === item.path
+              location.pathname === item.path || (item.path === '/admin' && location.pathname.startsWith('/admin'))
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground"
             )}
