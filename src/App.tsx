@@ -21,6 +21,7 @@ import SetlistDetail from "./pages/SetlistDetail";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
+import AdminUserDetail from "./pages/AdminUserDetail";
 import PerformanceSelection from "./pages/PerformanceSelection";
 import PerformanceMode from "./pages/PerformanceMode";
 import NotFound from "./pages/NotFound";
@@ -160,6 +161,7 @@ const App = () => {
               {/* Admin Routes */}
               <Route path="/admin" element={<ProtectedRoute session={session}><AdminDashboard /></ProtectedRoute>} />
               <Route path="/admin/users" element={<ProtectedRoute session={session}><AdminUsers /></ProtectedRoute>} />
+              <Route path="/admin/users/:id" element={<ProtectedRoute session={session}><AdminUserDetail /></ProtectedRoute>} />
               
               <Route path="*" element={<NotFound />} />
             </Routes>
