@@ -97,8 +97,17 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-border shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl font-bold">Bad Habits</CardTitle>
+        <CardHeader className="flex flex-col items-center gap-4 pb-2">
+          <div className="w-full max-w-[280px] h-20 relative flex items-center justify-center">
+            {/* Using the full logo. Assuming transparent background works on both themes, 
+                or adding a container if needed. */}
+            <img 
+              src="/setlist-logo-transparent.png" 
+              alt="SetlistPro Logo" 
+              className="object-contain w-full h-full"
+            />
+          </div>
+          <CardTitle className="sr-only">SetlistPro</CardTitle>
           <CardDescription className="text-center">Setlist Management System</CardDescription>
         </CardHeader>
         <CardContent>

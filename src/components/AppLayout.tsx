@@ -87,17 +87,29 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             "flex items-center mb-8 py-6 transition-all", 
             isCollapsed ? "flex-col justify-center gap-4" : "justify-between px-2"
         )}>
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="bg-primary text-primary-foreground p-2 rounded-xl shadow-lg shadow-primary/20 shrink-0">
-              <Music className="w-5 h-5" />
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="shrink-0">
+               <img src="/setlist-icon.png" alt="Icon" className="w-10 h-10 object-contain" />
             </div>
             <div className={cn("transition-opacity duration-200", isCollapsed ? "opacity-0 w-0 hidden" : "opacity-100")}>
-                <h1 className="text-sm font-bold tracking-tight leading-none whitespace-nowrap">Bad Habits</h1>
-                <p className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">Setlist Management</p>
+                <h1 className="text-lg font-bold tracking-tight leading-none whitespace-nowrap">SetlistPro</h1>
+                <p className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">Manage Your Gigs</p>
             </div>
           </div>
-          <ModeToggle />
+          {!isCollapsed && <ModeToggle />}
         </div>
+        
+        {/* If collapsed, show mode toggle in a cleaner way if needed, or just hide it/move it to bottom. 
+            For now, I'll keep it hidden in the top bar when collapsed to save space, or I could move it. 
+            Let's put it at the bottom or just hide it. The previous design had it in the header row.
+            Let's add it to the bottom if collapsed, or just leave it. 
+            Actually, let's just render it centered if collapsed. 
+        */}
+        {isCollapsed && (
+             <div className="flex justify-center mb-4">
+                 <ModeToggle />
+             </div>
+        )}
         
         <nav className="space-y-2 flex-1">
           {navItems.map((item) => (
@@ -113,7 +125,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                 isCollapsed && "justify-center px-2"
               )}
             >
-              <item.icon className="w-4 h-4 shrink-0" />
+              <item.icon className="w-5 h-5 shrink-0" />
               {!isCollapsed && <span>{item.label}</span>}
             </Link>
           ))}
@@ -124,7 +136,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className={cn("w-full gap-2 px-2 hover:bg-accent", isCollapsed ? "justify-center" : "justify-start")}>
-                        <User className="w-4 h-4 shrink-0" />
+                        <User className="w-5 h-5 shrink-0" />
                         {!isCollapsed && <span>Profile & Settings</span>}
                     </Button>
                 </DropdownMenuTrigger>
@@ -148,10 +160,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       {/* Mobile Header (Top Bar) */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 border-b bg-background/80 backdrop-blur-md z-40 px-4 flex items-center justify-between">
          <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
-              <Music className="w-4 h-4" />
-            </div>
-            <span className="font-bold text-sm">Bad Habits</span>
+            <img src="/setlist-icon.png" alt="Icon" className="w-8 h-8 object-contain" />
+            <span className="font-bold text-lg">SetlistPro</span>
          </div>
          <div className="flex items-center gap-2">
              <ModeToggle />
