@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils";
 interface MetronomeControlsProps {
   variant: "mobile" | "desktop";
   className?: string;
+  minimized?: boolean;
 }
 
-export const MetronomeControls = ({ variant, className }: MetronomeControlsProps) => {
+export const MetronomeControls = ({ variant, className, minimized }: MetronomeControlsProps) => {
   const { isOpen, isPlaying, bpm, togglePlay, closeMetronome, setBpm } = useMetronome();
 
   if (!isOpen) return null;
@@ -19,6 +20,26 @@ export const MetronomeControls = ({ variant, className }: MetronomeControlsProps
   };
 
   if (variant === "desktop") {
+    if (minimized) {
+      return (
+        <div className={cn("mt-auto border-t pt-4 pb-4 bg-card flex flex-col items-center gap-3", className)}>
+           <div className="text-xs font-mono font-bold text-primary">{bpm}</div>
+           <Button 
+            size="icon" 
+            variant={isPlaying ? "destructive" : "secondary"} 
+            className="h-8 w-8 rounded-full"
+            onClick={togglePlay}
+            title={isPlaying ? "Stop" : "Start"}
+          >
+            {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={closeMetronome} title="Close">
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      );
+    }
+
     return (
       <div className={cn("mt-auto border-t pt-4 bg-card", className)}>
         <div className="flex items-center justify-between mb-3">

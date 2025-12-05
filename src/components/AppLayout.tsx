@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -25,6 +25,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -63,17 +64,36 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground pb-[140px] md:pb-0 md:pl-64 transition-colors duration-300">
+    <div className={cn(
+        "min-h-screen bg-background text-foreground pb-[140px] md:pb-0 transition-all duration-300",
+        isCollapsed ? "md:pl-[80px]" : "md:pl-64"
+    )}>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r bg-card/50 backdrop-blur-xl px-4 py-6 z-20">
-        <div className="flex items-center justify-between mb-8 px-2">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground p-2 rounded-xl shadow-lg shadow-primary/20">
+      <aside className={cn(
+          "hidden md:flex fixed left-0 top-0 h-full flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
+          isCollapsed ? "w-[80px] px-2" : "w-64 px-4"
+      )}>
+        {/* Toggle Button */}
+        <Button
+            variant="ghost"
+            size="icon"
+            className="absolute -right-3 top-6 h-6 w-6 rounded-full border bg-background shadow-md hover:bg-accent z-50 text-muted-foreground"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+        >
+            {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
+        </Button>
+
+        <div className={cn(
+            "flex items-center mb-8 py-6 transition-all", 
+            isCollapsed ? "flex-col justify-center gap-4" : "justify-between px-2"
+        )}>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <div className="bg-primary text-primary-foreground p-2 rounded-xl shadow-lg shadow-primary/20 shrink-0">
               <Music className="w-5 h-5" />
             </div>
-            <div>
-                <h1 className="text-sm font-bold tracking-tight leading-none">Bad Habits</h1>
-                <p className="text-[10px] text-muted-foreground font-medium">Setlist Management</p>
+            <div className={cn("transition-opacity duration-200", isCollapsed ? "opacity-0 w-0 hidden" : "opacity-100")}>
+                <h1 className="text-sm font-bold tracking-tight leading-none whitespace-nowrap">Bad Habits</h1>
+                <p className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">Setlist Management</p>
             </div>
           </div>
           <ModeToggle />
@@ -84,15 +104,17 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <Link
               key={item.path}
               to={item.path}
+              title={isCollapsed ? item.label : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium",
                 location.pathname === item.path
                   ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                  : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                  : "hover:bg-accent hover:text-accent-foreground text-muted-foreground",
+                isCollapsed && "justify-center px-2"
               )}
             >
-              <item.icon className="w-4 h-4" />
-              {item.label}
+              <item.icon className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span>{item.label}</span>}
             </Link>
           ))}
         </nav>
@@ -101,12 +123,12 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         <div className="mb-4">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-start gap-2 px-2 hover:bg-accent">
-                        <User className="w-4 h-4" />
-                        <span>Profile & Settings</span>
+                    <Button variant="ghost" className={cn("w-full gap-2 px-2 hover:bg-accent", isCollapsed ? "justify-center" : "justify-start")}>
+                        <User className="w-4 h-4 shrink-0" />
+                        {!isCollapsed && <span>Profile & Settings</span>}
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent align={isCollapsed ? "center" : "end"} side={isCollapsed ? "right" : "top"} className="w-56">
                     <DropdownMenuLabel>My Account</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => navigate("/profile")}>
@@ -120,7 +142,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         </div>
 
         {/* Desktop Metronome */}
-        <MetronomeControls variant="desktop" />
+        <MetronomeControls variant="desktop" minimized={isCollapsed} />
       </aside>
 
       {/* Mobile Header (Top Bar) */}
