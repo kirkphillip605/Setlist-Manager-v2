@@ -2,12 +2,12 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getSong, deleteSong, saveSong } from "@/lib/api";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMetronome } from "@/components/MetronomeContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { searchMusic, fetchAudioFeatures, fetchLyrics } from "@/lib/musicApi";
 import { motion } from "framer-motion";
 import { 
@@ -23,7 +23,8 @@ import {
   Square,
   Play,
   Wand2,
-  AlertTriangle
+  AlertTriangle,
+  SkipForward
 } from "lucide-react";
 import {
   AlertDialog,
@@ -46,13 +47,25 @@ import {
 } from "@/components/ui/dialog";
 import { Song } from "@/types";
 
+interface BatchState {
+  batchMode: boolean;
+  queue: string[];
+  total: number;
+  current: number;
+}
+
 const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { openMetronome, closeMetronome, isPlaying } = useMetronome();
   const [isAdmin, setIsAdmin] = useState(false);
   
+  // Batch State
+  const batchState = location.state as BatchState | undefined;
+  const hasTriggeredRef = useRef(false);
+
   // Search State
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -80,12 +93,55 @@ const SongDetail = () => {
     enabled: !!id
   });
 
+  // Auto-trigger for batch mode
+  useEffect(() => {
+    if (batchState?.batchMode && song && !isFetchingDetails && !isSearchOpen && !candidateData && !hasTriggeredRef.current) {
+        // Simple heuristic to prevent infinite loop or double trigger
+        hasTriggeredRef.current = true;
+        // Small delay to let UI render first
+        const timer = setTimeout(() => {
+            handleFetchDetails();
+        }, 500);
+        return () => clearTimeout(timer);
+    }
+  }, [song, batchState]);
+
+  // Reset trigger ref when ID changes
+  useEffect(() => {
+    hasTriggeredRef.current = false;
+  }, [id]);
+
+  const handleNextBatch = () => {
+    if (!batchState) return;
+    
+    if (batchState.queue.length === 0) {
+        toast.success("Batch update complete!");
+        navigate("/songs");
+        return;
+    }
+
+    const [nextId, ...remaining] = batchState.queue;
+    navigate(`/songs/${nextId}`, {
+        state: {
+            ...batchState,
+            queue: remaining,
+            current: batchState.current + 1
+        },
+        replace: true // Replace history to avoid back button hell
+    });
+  };
+
   const deleteMutation = useMutation({
     mutationFn: deleteSong,
     onSuccess: () => {
       toast.success("Song deleted");
       queryClient.invalidateQueries({ queryKey: ['songs'] });
-      navigate("/songs");
+      
+      if (batchState?.batchMode) {
+        handleNextBatch();
+      } else {
+        navigate("/songs");
+      }
     },
     onError: () => {
       toast.error("Failed to delete song");
@@ -100,6 +156,10 @@ const SongDetail = () => {
         setIsSearchOpen(false);
         setIsConflictOpen(false);
         setCandidateData(null);
+        
+        if (batchState?.batchMode) {
+            handleNextBatch();
+        }
     }
   });
 
@@ -246,6 +306,24 @@ const SongDetail = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
+        {/* Batch Mode Progress Banner */}
+        {batchState && (
+            <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 flex items-center justify-between mb-4 sticky top-[56px] z-20 backdrop-blur">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                    <Wand2 className="h-4 w-4 text-primary" />
+                    <span>Auto-Filling: Song {batchState.current} of {batchState.total}</span>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" className="h-7" onClick={() => navigate('/songs')}>
+                        Exit
+                    </Button>
+                    <Button size="sm" variant="secondary" className="h-7" onClick={handleNextBatch}>
+                        Skip <SkipForward className="ml-1 h-3 w-3" />
+                    </Button>
+                </div>
+            </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => navigate("/songs")}>
@@ -399,7 +477,11 @@ const SongDetail = () => {
         </motion.div>
 
         {/* Admin Search Dialog */}
-        <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+        <Dialog open={isSearchOpen} onOpenChange={(open) => {
+            setIsSearchOpen(open);
+            // If closed without action in batch mode, we do nothing. 
+            // The user must click Skip or Exit in banner.
+        }}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle>Select Match</DialogTitle>

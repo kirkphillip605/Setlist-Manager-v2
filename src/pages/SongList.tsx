@@ -2,13 +2,14 @@ import AppLayout from "@/components/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getSongs, deleteSong } from "@/lib/api";
-import { Plus, Search, Loader2, Trash2, Edit, Music } from "lucide-react";
-import { useState } from "react";
+import { Plus, Search, Loader2, Trash2, Edit, Music, Wand2 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, PanInfo, useAnimation } from "framer-motion";
 import { toast } from "sonner";
 import { Song } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -113,9 +114,22 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
 };
 
 const SongList = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        setIsAdmin(data?.role === 'admin');
+      }
+    };
+    checkAdmin();
+  }, []);
 
   const { data: songs = [], isLoading } = useQuery({
     queryKey: ['songs'],
@@ -140,6 +154,31 @@ const SongList = () => {
       song.artist.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const startBatchUpdate = () => {
+    // Identify songs missing key metadata
+    const songsToUpdate = songs.filter(s => 
+      !s.key || !s.tempo || !s.duration || !s.lyrics || !s.cover_url
+    );
+
+    if (songsToUpdate.length === 0) {
+      toast.success("All songs have complete metadata!");
+      return;
+    }
+
+    const [first, ...rest] = songsToUpdate;
+    
+    toast.info(`Starting batch update for ${songsToUpdate.length} songs`);
+    
+    navigate(`/songs/${first.id}`, { 
+      state: { 
+        batchMode: true,
+        queue: rest.map(s => s.id),
+        total: songsToUpdate.length,
+        current: 1
+      } 
+    });
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6 pb-20">
@@ -150,11 +189,18 @@ const SongList = () => {
               Swipe left to delete, right to edit.
             </p>
           </div>
-          <Button asChild className="rounded-full shadow-lg hover:shadow-xl transition-all">
-            <Link to="/songs/new">
-              <Plus className="mr-2 h-4 w-4" /> Add Song
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            {isAdmin && (
+              <Button variant="outline" onClick={startBatchUpdate} disabled={isLoading || songs.length === 0}>
+                <Wand2 className="mr-2 h-4 w-4" /> Auto-Fill Data
+              </Button>
+            )}
+            <Button asChild className="rounded-full shadow-lg hover:shadow-xl transition-all">
+              <Link to="/songs/new">
+                <Plus className="mr-2 h-4 w-4" /> Add Song
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="relative">
