@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSetlist, getSongs } from "@/lib/api";
@@ -22,10 +22,11 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Search, 
-  X, 
   Loader2, 
   Music, 
-  Minimize2
+  Minimize2,
+  ZoomIn,
+  ZoomOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -43,6 +44,11 @@ const PerformanceMode = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [tempSong, setTempSong] = useState<Song | null>(null);
 
+  // Zoom State
+  const [fontSize, setFontSize] = useState(24); // Default px
+  const [initialPinchDist, setInitialPinchDist] = useState<number | null>(null);
+  const [lastPinchFontSize, setLastPinchFontSize] = useState<number>(24);
+
   // Fetch Data
   const { data: setlist, isLoading } = useQuery({
     queryKey: ['setlist', id],
@@ -58,25 +64,19 @@ const PerformanceMode = () => {
 
   // Derived Data
   const currentSet = setlist?.sets[currentSetIndex];
-  // If we have a temp song (from search), show it. Otherwise show current setlist song.
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
 
   // Handlers
   const handleNext = () => {
-    // If we are viewing a temp song, clear it and resume setlist at current position
     if (tempSong) {
       setTempSong(null);
       return;
     }
-
     if (!setlist || !currentSet) return;
 
-    // Check if there are more songs in this set
     if (currentSongIndex < currentSet.songs.length - 1) {
       setCurrentSongIndex(prev => prev + 1);
-    } 
-    // Check if there are more sets
-    else if (currentSetIndex < setlist.sets.length - 1) {
+    } else if (currentSetIndex < setlist.sets.length - 1) {
       setCurrentSetIndex(prev => prev + 1);
       setCurrentSongIndex(0);
     }
@@ -87,7 +87,6 @@ const PerformanceMode = () => {
       setTempSong(null);
       return;
     }
-
     if (!setlist) return;
 
     if (currentSongIndex > 0) {
@@ -115,6 +114,38 @@ const PerformanceMode = () => {
     setSearchQuery("");
   };
 
+  const adjustFontSize = (delta: number) => {
+    setFontSize(prev => Math.min(Math.max(prev + delta, 14), 80));
+  };
+
+  // Pinch Handlers
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      setInitialPinchDist(dist);
+      setLastPinchFontSize(fontSize);
+    }
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialPinchDist !== null) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const scale = dist / initialPinchDist;
+      const newSize = Math.min(Math.max(lastPinchFontSize * scale, 14), 80);
+      setFontSize(newSize);
+    }
+  };
+
+  const onTouchEnd = () => {
+    setInitialPinchDist(null);
+  };
+
   // Filter songs for search
   const filteredSongs = allSongs.filter(s => 
     s.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -137,7 +168,7 @@ const PerformanceMode = () => {
   return (
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
       {/* Top Bar */}
-      <div className="flex items-center justify-between p-2 border-b bg-card shadow-sm shrink-0 h-14">
+      <div className="flex items-center justify-between p-2 border-b bg-card shadow-sm shrink-0 h-14 gap-2">
         <div className="flex-1 max-w-[200px] md:max-w-xs">
           <Select 
             value={currentSetIndex.toString()} 
@@ -157,21 +188,35 @@ const PerformanceMode = () => {
           </Select>
         </div>
         
-        <div className="flex-1 text-center hidden md:block">
+        <div className="flex-1 text-center hidden md:block truncate px-4">
             <span className="font-bold text-lg">{activeSong?.title}</span>
             <span className="text-muted-foreground ml-2 text-sm">{activeSong?.artist}</span>
         </div>
 
-        <div className="flex-1 flex justify-end">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/performance')}>
-            <span className="mr-2 hidden sm:inline">Exit Mode</span>
-            <Minimize2 className="h-4 w-4" />
+        <div className="flex-1 flex justify-end items-center gap-1">
+          <div className="flex items-center bg-accent/50 rounded-md mr-2">
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => adjustFontSize(-4)}>
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => adjustFontSize(4)}>
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <Button variant="ghost" size="sm" onClick={() => navigate('/performance')} className="px-2">
+            <Minimize2 className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Exit</span>
           </Button>
         </div>
       </div>
 
       {/* Main Content (Lyrics) */}
-      <div className="flex-1 overflow-hidden relative bg-background">
+      <div 
+        className="flex-1 overflow-hidden relative bg-background touch-manipulation"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
         <ScrollArea className="h-full w-full">
           <div className="p-4 md:p-8 max-w-4xl mx-auto min-h-full">
             {activeSong ? (
@@ -199,9 +244,12 @@ const PerformanceMode = () => {
                     )}
                 </div>
 
-                <div className="whitespace-pre-wrap font-mono text-lg md:text-xl leading-relaxed pb-20">
+                <div 
+                  className="whitespace-pre-wrap font-mono leading-relaxed pb-40 transition-all duration-75"
+                  style={{ fontSize: `${fontSize}px` }}
+                >
                   {activeSong.lyrics || (
-                    <span className="text-muted-foreground italic">No lyrics available for this song.</span>
+                    <span className="text-muted-foreground italic text-lg">No lyrics available for this song.</span>
                   )}
                 </div>
               </div>
@@ -216,7 +264,7 @@ const PerformanceMode = () => {
         
         {/* Ad-hoc Indicator */}
         {tempSong && (
-            <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">
+            <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse pointer-events-none">
                 Ad-Hoc Request
             </div>
         )}
