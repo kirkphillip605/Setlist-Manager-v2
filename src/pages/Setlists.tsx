@@ -46,17 +46,22 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Setlist } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Setlists = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("public");
   
   // Create Dialog States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<"public" | "personal" | "clone">("public");
+  
+  // Clone Source Picker State
+  const [isSourcePickerOpen, setIsSourcePickerOpen] = useState(false);
   
   // Form States
   const [newListName, setNewListName] = useState("");
@@ -73,20 +78,19 @@ const Setlists = () => {
     queryFn: getSetlists
   });
 
-  // Get current user ID to filter personal lists correctly
-  const [userId, setUserId] = useState<string | null>(null);
-  useState(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null));
-  });
-
   const filteredSetlists = useMemo(() => {
     if (activeTab === "public") {
       return setlists.filter(l => !l.is_personal);
     } else {
-      // Show only MY personal setlists (though API should technically restrict, filtering here is safe UI practice)
       return setlists.filter(l => l.is_personal);
     }
   }, [setlists, activeTab]);
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+    const [y, m, d] = dateString.split('-');
+    return `${m}/${d}/${y}`;
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -99,15 +103,17 @@ const Setlists = () => {
          return cloneSetlist(sourceSetlistId, newListName, date, isPersonal);
       } else {
          const isPersonal = createMode === "personal";
-         // Personal lists don't need a date strictly, but we can store empty or current
          const date = isPersonal ? "" : (newListDate || new Date().toISOString().split('T')[0]);
          return createSetlist(newListName, date, isPersonal);
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['setlists'] });
       resetForm();
       toast.success("Setlist created");
+      if (data?.id) {
+          navigate(`/setlists/${data.id}`);
+      }
     },
     onError: (err) => {
       console.error(err);
@@ -132,18 +138,32 @@ const Setlists = () => {
       setNewListDate("");
       setSourceSetlistId("");
       setIsCreateOpen(false);
+      setIsSourcePickerOpen(false);
   };
 
   const openCreateModal = (mode: "public" | "personal" | "clone", sourceId?: string) => {
+      if (mode === "clone" && !sourceId) {
+          // Trigger source picker first
+          setIsSourcePickerOpen(true);
+          return;
+      }
+
       setCreateMode(mode);
       if (mode === "clone" && sourceId) {
           setSourceSetlistId(sourceId);
-          // Default to personal copy when cloning from list
+          // Auto-fill name if cloning
+          const source = setlists.find(l => l.id === sourceId);
+          if (source) {
+              setNewListName(`${source.name} (Copy)`);
+          }
           setCloneType("personal");
       }
-      // If cloning generally, we'll let them pick source in UI (not implemented fully in this snippet, assumes context menu trigger)
-      
       setIsCreateOpen(true);
+  };
+
+  const selectCloneSource = (id: string) => {
+      setIsSourcePickerOpen(false);
+      openCreateModal("clone", id);
   };
 
   const handleDeleteClick = (e: React.MouseEvent, id: string) => {
@@ -155,7 +175,6 @@ const Setlists = () => {
   const handlePrintClick = (e: React.MouseEvent, list: Setlist) => {
     e.preventDefault();
     e.stopPropagation();
-    // (Existing print logic...)
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
         toast.error("Please allow popups to print setlists");
@@ -218,37 +237,32 @@ const Setlists = () => {
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button className="rounded-full shadow-lg">
-                <Plus className="mr-2 h-4 w-4" /> Create Setlist
+              <Button className="rounded-full shadow-lg h-12 px-6 text-base">
+                <Plus className="mr-2 h-5 w-5" /> Create Setlist
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Create New</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => openCreateModal("public")}>
+            <DropdownMenuContent align="end" className="w-64 p-2">
+                <DropdownMenuLabel className="px-2 py-2 text-base">Create New</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => openCreateModal("public")} className="py-3 text-base">
                     <Globe className="mr-2 h-4 w-4" /> Public Band Setlist
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openCreateModal("personal")}>
+                <DropdownMenuItem onClick={() => openCreateModal("personal")} className="py-3 text-base">
                     <Lock className="mr-2 h-4 w-4" /> Private Personal Setlist
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => {
-                   // This is a generic clone, we need to show a picker ideally, 
-                   // but for now we can just show the modal and let them pick from a list if implemented
-                   // For this implementation, we will assume they use the context menu on an existing list
-                   toast.info("Please use the context menu on an existing setlist to clone it.");
-                }}>
-                    <Copy className="mr-2 h-4 w-4" /> Clone Existing...
+                <DropdownMenuSeparator className="my-2" />
+                <DropdownMenuItem onClick={() => openCreateModal("clone")} className="py-3 text-base">
+                    <Copy className="mr-2 h-4 w-4" /> Create from Existing...
                 </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="public" className="gap-2">
+            <TabsList className="grid w-full grid-cols-2 mb-4 h-12">
+                <TabsTrigger value="public" className="gap-2 h-full text-base">
                     <Globe className="h-4 w-4" /> Band Setlists
                 </TabsTrigger>
-                <TabsTrigger value="personal" className="gap-2">
+                <TabsTrigger value="personal" className="gap-2 h-full text-base">
                     <Lock className="h-4 w-4" /> My Personal Lists
                 </TabsTrigger>
             </TabsList>
@@ -281,9 +295,10 @@ const Setlists = () => {
                             <div className="space-y-1">
                                 <CardTitle className="text-lg font-bold truncate leading-none">{list.name}</CardTitle>
                                 {list.date && (
-                                    <div className="flex items-center text-xs text-muted-foreground">
+                                    <div className="flex items-center text-sm text-muted-foreground">
                                         <Calendar className="mr-1 h-3 w-3" />
-                                        {list.date}
+                                        <span className="font-medium mr-1">Gig Date:</span>
+                                        {formatDate(list.date)}
                                     </div>
                                 )}
                             </div>
@@ -308,24 +323,24 @@ const Setlists = () => {
                             <div className="absolute top-2 right-2">
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                            <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                            <MoreVertical className="h-5 w-5 text-muted-foreground" />
                                         </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={(e) => handlePrintClick(e, list)}>
+                                    <DropdownMenuContent align="end" className="w-56 p-2">
+                                        <DropdownMenuItem onClick={(e) => handlePrintClick(e, list)} className="py-3 text-base">
                                             <Printer className="mr-2 h-4 w-4" /> Print PDF
                                         </DropdownMenuItem>
                                         <DropdownMenuItem onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
                                             openCreateModal("clone", list.id);
-                                        }}>
+                                        }} className="py-3 text-base">
                                             <Copy className="mr-2 h-4 w-4" /> Create Copy...
                                         </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
+                                        <DropdownMenuSeparator className="my-2" />
                                         <DropdownMenuItem 
-                                            className="text-destructive focus:text-destructive"
+                                            className="text-destructive focus:text-destructive py-3 text-base"
                                             onClick={(e) => handleDeleteClick(e, list.id)}
                                         >
                                             <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -341,6 +356,35 @@ const Setlists = () => {
                 )}
             </TabsContent>
         </Tabs>
+
+        {/* Source Picker Dialog */}
+        <Dialog open={isSourcePickerOpen} onOpenChange={setIsSourcePickerOpen}>
+            <DialogContent className="max-w-md h-[80vh] flex flex-col p-0">
+                <DialogHeader className="p-4 border-b">
+                    <DialogTitle>Select Setlist to Clone</DialogTitle>
+                </DialogHeader>
+                <ScrollArea className="flex-1">
+                    <div className="divide-y">
+                        {setlists.map(list => (
+                            <div 
+                                key={list.id} 
+                                className="p-4 hover:bg-accent cursor-pointer transition-colors"
+                                onClick={() => selectCloneSource(list.id)}
+                            >
+                                <div className="font-medium">{list.name}</div>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    {list.is_personal ? <Lock className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+                                    {list.date ? formatDate(list.date) : "No Date"}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </ScrollArea>
+                <DialogFooter className="p-4 border-t">
+                    <Button variant="outline" onClick={() => setIsSourcePickerOpen(false)} className="w-full">Cancel</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
 
         {/* Create / Clone Modal */}
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -362,7 +406,7 @@ const Setlists = () => {
                                 type="button" 
                                 variant={cloneType === 'personal' ? 'default' : 'outline'}
                                 onClick={() => setCloneType('personal')}
-                                className="text-xs"
+                                className="text-sm h-10"
                             >
                                 <Lock className="mr-2 h-3 w-3" /> Private Copy
                             </Button>
@@ -370,7 +414,7 @@ const Setlists = () => {
                                 type="button" 
                                 variant={cloneType === 'public' ? 'default' : 'outline'}
                                 onClick={() => setCloneType('public')}
-                                className="text-xs"
+                                className="text-sm h-10"
                             >
                                 <Globe className="mr-2 h-3 w-3" /> Public Copy
                             </Button>
@@ -385,6 +429,7 @@ const Setlists = () => {
                     placeholder="e.g. Summer Tour 2024" 
                     value={newListName}
                     onChange={(e) => setNewListName(e.target.value)}
+                    className="h-11"
                   />
                 </div>
 
@@ -396,15 +441,17 @@ const Setlists = () => {
                             type="date"
                             value={newListDate}
                             onChange={(e) => setNewListDate(e.target.value)}
+                            className="h-11"
                         />
                     </div>
                 )}
 
                 <DialogFooter className="pt-4">
-                    <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                    <Button variant="outline" onClick={() => setIsCreateOpen(false)} className="h-11">Cancel</Button>
                     <Button 
                         onClick={() => createMutation.mutate()} 
                         disabled={createMutation.isPending || !newListName}
+                        className="h-11"
                     >
                         {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {createMode === 'clone' ? "Clone Setlist" : "Create Setlist"}

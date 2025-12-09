@@ -20,7 +20,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, PanInfo, useAnimation } from "framer-motion";
 import { toast } from "sonner";
 import { Song } from "@/types";
-import Fuse from "fuse.js";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,7 +75,7 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
         onDragEnd={handleDragEnd}
         animate={controls}
         whileTap={{ scale: 0.98 }}
-        className={`relative bg-card rounded-xl border shadow-sm touch-pan-y ${song.is_retired ? 'opacity-60 bg-muted/40' : ''}`}
+        className={`relative bg-card rounded-xl border shadow-sm touch-pan-y ${song.is_retired ? 'border-2 border-dashed border-destructive/40 bg-muted/20' : ''}`}
         style={{ x: 0 }}
       >
         <Link to={`/songs/${song.id}`} className="flex items-center p-3 gap-4">
@@ -103,7 +102,7 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
                 {song.title}
               </h3>
               {song.is_retired && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 border-muted-foreground/40 text-muted-foreground">Retired</Badge>
+                <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 border-destructive/40 text-destructive">Retired</Badge>
               )}
             </div>
             <p className="text-sm text-muted-foreground truncate">
@@ -175,22 +174,21 @@ const SongList = () => {
   });
 
   // --- Search & Filter Logic ---
-
-  const fuse = useMemo(() => {
-    return new Fuse(songs, {
-      keys: ['title', 'artist', 'lyrics'],
-      threshold: 0.35, // Fuzzy threshold
-      ignoreLocation: true, 
-      useExtendedSearch: true,
-    });
-  }, [songs]);
+  
+  const cleanString = (str: string) => {
+      return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
 
   const filteredAndSortedSongs = useMemo(() => {
     let result = songs;
 
-    // 1. Search (Fuzzy)
+    // 1. Search (Strict Cleaner)
     if (searchTerm.trim()) {
-      result = fuse.search(searchTerm).map(r => r.item);
+      const cleanTerm = cleanString(searchTerm);
+      result = result.filter(s => {
+          return cleanString(s.title).includes(cleanTerm) || 
+                 cleanString(s.artist).includes(cleanTerm);
+      });
     }
 
     // 2. Filter Retired - STRICT CHECK
@@ -214,7 +212,7 @@ const SongList = () => {
           return a.title.localeCompare(b.title);
       }
     });
-  }, [songs, searchTerm, sortBy, showRetired, fuse]);
+  }, [songs, searchTerm, sortBy, showRetired]);
 
 
   // --- Handlers ---
@@ -244,9 +242,9 @@ const SongList = () => {
               Manage your repertoire.
             </p>
           </div>
-          <Button asChild className="rounded-full shadow-lg hover:shadow-xl transition-all">
+          <Button asChild className="rounded-full shadow-lg hover:shadow-xl transition-all h-12 px-6 text-base">
             <Link to="/songs/new">
-              <Plus className="mr-2 h-4 w-4" /> Add Song
+              <Plus className="mr-2 h-5 w-5" /> Add Song
             </Link>
           </Button>
         </div>
@@ -265,30 +263,31 @@ const SongList = () => {
             
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-xl relative">
-                        <Filter className="h-4 w-4" />
+                    <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-xl">
+                        <Filter className="h-5 w-5" />
                         {showRetired && (
                             <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />
                         )}
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuLabel>Filters</DropdownMenuLabel>
+                <DropdownMenuContent align="end" className="w-56 p-2">
+                    <DropdownMenuLabel className="px-2 py-2 text-base">Filters</DropdownMenuLabel>
                     <DropdownMenuCheckboxItem 
                         checked={showRetired} 
                         onCheckedChange={setShowRetired}
+                        className="py-3 text-base"
                     >
                         Show Retired Songs
                     </DropdownMenuCheckboxItem>
                     
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="my-2" />
+                    <DropdownMenuLabel className="px-2 py-2 text-base">Sort By</DropdownMenuLabel>
                     <DropdownMenuRadioGroup value={sortBy} onValueChange={setSortBy}>
-                        <DropdownMenuRadioItem value="title">Title (A-Z)</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="artist">Artist (A-Z)</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="key">Key</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="bpm_asc">BPM (Low-High)</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="bpm_desc">BPM (High-Low)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="title" className="py-3 text-base">Title (A-Z)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="artist" className="py-3 text-base">Artist (A-Z)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="key" className="py-3 text-base">Key</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="bpm_asc" className="py-3 text-base">BPM (Low-High)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="bpm_desc" className="py-3 text-base">BPM (High-Low)</DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
             </DropdownMenu>

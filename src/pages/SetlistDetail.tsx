@@ -37,7 +37,8 @@ import {
   addSongsToSet, 
   removeSongFromSet, 
   updateSetSongOrder,
-  moveSetSongToSet
+  moveSetSongToSet,
+  updateSetlist
 } from "@/lib/api";
 import { Song } from "@/types";
 import { parseDurationToSeconds, formatSecondsToDuration } from "@/lib/utils";
@@ -57,9 +58,12 @@ import {
   MoreVertical,
   Check,
   Clock,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Calendar
 } from "lucide-react";
 import Fuse from "fuse.js";
+
+const MAX_SET_DURATION = 90 * 60; // 90 minutes in seconds
 
 const SetlistDetail = () => {
   const { id } = useParams();
@@ -74,9 +78,13 @@ const SetlistDetail = () => {
   // Confirmation States
   const [setToDelete, setSetToDelete] = useState<string | null>(null);
   const [songToRemove, setSongToRemove] = useState<string | null>(null);
+  const [showDurationWarning, setShowDurationWarning] = useState(false);
 
   // Selection State for Add Songs
   const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
+
+  // Local state for editing date
+  const [editDate, setEditDate] = useState("");
 
   const { data: setlist, isLoading } = useQuery({
     queryKey: ['setlist', id],
@@ -89,14 +97,16 @@ const SetlistDetail = () => {
     queryFn: getSongs
   });
 
+  useEffect(() => {
+    if (setlist?.date) setEditDate(setlist.date);
+  }, [setlist?.date]);
+
   // --- Derived State ---
   
-  // Helper to calculate total seconds for a set
   const calculateSetDuration = (songs: { song?: Song }[]) => {
     return songs.reduce((acc, s) => acc + parseDurationToSeconds(s.song?.duration), 0);
   };
 
-  // Get all song IDs currently used in the ENTIRE setlist to prevent duplicates
   const usedSongIds = useMemo(() => {
     const ids = new Set<string>();
     setlist?.sets.forEach(set => {
@@ -105,24 +115,39 @@ const SetlistDetail = () => {
     return ids;
   }, [setlist]);
 
-  // Fuse instance for adding songs
-  const fuse = useMemo(() => {
-    // Only search ACTIVE (non-retired) songs
-    const activeSongs = availableSongs.filter(s => !s.is_retired);
-    return new Fuse(activeSongs, {
-        keys: ['title', 'artist'],
-        threshold: 0.35,
-        ignoreLocation: true
-    });
-  }, [availableSongs]);
+  // Clean Search Logic
+  const cleanString = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const filteredAvailableSongs = useMemo(() => {
+    let result = availableSongs.filter(s => !s.is_retired);
+    if (songSearch.trim()) {
+        const cleanTerm = cleanString(songSearch);
+        result = result.filter(s => 
+            cleanString(s.title).includes(cleanTerm) || 
+            cleanString(s.artist).includes(cleanTerm)
+        );
+    }
+    return result;
+  }, [availableSongs, songSearch]);
 
   // --- Mutations ---
+
+  const updateSetlistMutation = useMutation({
+    mutationFn: async (date: string) => {
+        if(!id) return;
+        return updateSetlist(id, { date });
+    },
+    onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+        toast.success("Date updated");
+    }
+  });
 
   const addSetMutation = useMutation({
     mutationFn: async () => {
       if (!setlist) return;
       const newPosition = setlist.sets.length + 1;
-      await createSet(setlist.id, `Set ${newPosition}`, newPosition);
+      return await createSet(setlist.id, `Set ${newPosition}`, newPosition);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
@@ -140,19 +165,41 @@ const SetlistDetail = () => {
   });
 
   const addSongsMutation = useMutation({
-    mutationFn: async () => {
-      if (!activeSetId || !setlist || selectedSongIds.length === 0) return;
-      const targetSet = setlist.sets.find(s => s.id === activeSetId);
-      if (!targetSet) return;
+    mutationFn: async (targetSetId: string) => {
+      if (!targetSetId || !setlist || selectedSongIds.length === 0) return;
+      const targetSet = setlist.sets.find(s => s.id === targetSetId);
+      // For new sets that might not be in cache yet, allow fallback or assume 0
+      const startPosition = targetSet ? targetSet.songs.length + 1 : 1;
       
-      const startPosition = targetSet.songs.length + 1;
-      await addSongsToSet(activeSetId, selectedSongIds, startPosition);
+      await addSongsToSet(targetSetId, selectedSongIds, startPosition);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
       setIsAddSongOpen(false);
       setSelectedSongIds([]);
       toast.success(`${selectedSongIds.length} song(s) added`);
+      setShowDurationWarning(false);
+    }
+  });
+
+  const createSetAndAddSongsMutation = useMutation({
+    mutationFn: async () => {
+        if (!setlist) return;
+        // 1. Create new set
+        const newPosition = setlist.sets.length + 1;
+        const newSet = await createSet(setlist.id, `Set ${newPosition}`, newPosition);
+        
+        // 2. Add songs to new set
+        if (newSet?.id) {
+            await addSongsToSet(newSet.id, selectedSongIds, 1);
+        }
+    },
+    onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+        setIsAddSongOpen(false);
+        setSelectedSongIds([]);
+        setShowDurationWarning(false);
+        toast.success("Created new set and added songs");
     }
   });
 
@@ -213,6 +260,9 @@ const SetlistDetail = () => {
   };
 
   const toggleSongSelection = (songId: string) => {
+    // Clear search on selection for rapid entry
+    setSongSearch("");
+    
     setSelectedSongIds(prev => {
       if (prev.includes(songId)) {
         return prev.filter(id => id !== songId);
@@ -222,14 +272,28 @@ const SetlistDetail = () => {
     });
   };
 
-  // Filter available songs using Fuse for fuzzy, AND ensure retired songs are excluded (via Fuse init)
-  const filteredAvailableSongs = useMemo(() => {
-    if (!songSearch.trim()) {
-        // Return all active songs
-        return availableSongs.filter(s => !s.is_retired);
-    }
-    return fuse.search(songSearch).map(r => r.item);
-  }, [availableSongs, songSearch, fuse]);
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setEditDate(e.target.value);
+      updateSetlistMutation.mutate(e.target.value);
+  };
+
+  const handleAddSongsClick = () => {
+      if (!activeSetId) return;
+      const activeSet = setlist?.sets.find(s => s.id === activeSetId);
+      const currentDuration = activeSet ? calculateSetDuration(activeSet.songs) : 0;
+      const addedDuration = selectedSongIds.reduce((acc, id) => {
+        const song = availableSongs.find(s => s.id === id);
+        return acc + parseDurationToSeconds(song?.duration);
+      }, 0);
+      
+      const projected = currentDuration + addedDuration;
+      
+      if (projected > MAX_SET_DURATION) {
+          setShowDurationWarning(true);
+      } else {
+          addSongsMutation.mutate(activeSetId);
+      }
+  };
 
   // Calculate stats for the Add Song Modal
   const activeSet = setlist?.sets.find(s => s.id === activeSetId);
@@ -239,7 +303,7 @@ const SetlistDetail = () => {
     return acc + parseDurationToSeconds(song?.duration);
   }, 0);
   const totalProjectedDuration = currentDuration + addedDuration;
-
+  const isOverTime = totalProjectedDuration > MAX_SET_DURATION;
 
   if (isLoading || !setlist) return (
     <AppLayout>
@@ -258,13 +322,21 @@ const SetlistDetail = () => {
             <Button variant="ghost" size="icon" onClick={() => navigate("/setlists")}>
               <ChevronLeft className="h-5 w-5" />
             </Button>
-            <div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <h1 className="text-2xl font-bold tracking-tight">{setlist.name}</h1>
-              <p className="text-muted-foreground text-sm">{setlist.date} • {setlist.sets.length} Sets</p>
+              <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <Input 
+                     type="date" 
+                     className="h-8 w-[140px]" 
+                     value={editDate}
+                     onChange={handleDateChange}
+                  />
+              </div>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => addSetMutation.mutate()} variant="outline" disabled={addSetMutation.isPending}>
+            <Button onClick={() => addSetMutation.mutate()} variant="outline" disabled={addSetMutation.isPending} className="h-10">
               <Plus className="mr-2 h-4 w-4" /> Add Set
             </Button>
           </div>
@@ -291,16 +363,16 @@ const SetlistDetail = () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openAddSongModal(set.id)} className="h-8">
-                          <Plus className="mr-1 h-3 w-3" /> Add Song
+                        <Button variant="ghost" size="sm" onClick={() => openAddSongModal(set.id)} className="h-10 px-3">
+                          <Plus className="mr-1 h-4 w-4" /> Add Song
                         </Button>
                         <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive" 
+                            className="h-10 w-10 text-muted-foreground hover:text-destructive" 
                             onClick={() => setSetToDelete(set.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-5 w-5" />
                         </Button>
                       </div>
                     </CardHeader>
@@ -346,32 +418,32 @@ const SetlistDetail = () => {
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
-                                    className="h-6 w-6" 
+                                    className="h-8 w-8" 
                                     disabled={index === 0}
                                     onClick={() => moveSongOrder(set.id, index, 'up')}
                                   >
-                                    <ArrowUp className="h-3 w-3" />
+                                    <ArrowUp className="h-4 w-4" />
                                   </Button>
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
-                                    className="h-6 w-6"
+                                    className="h-8 w-8"
                                     disabled={index === set.songs.length - 1}
                                     onClick={() => moveSongOrder(set.id, index, 'down')}
                                   >
-                                    <ArrowDown className="h-3 w-3" />
+                                    <ArrowDown className="h-4 w-4" />
                                   </Button>
                                 </div>
                                 
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                            <MoreVertical className="h-4 w-4" />
+                                        <Button variant="ghost" size="icon" className="h-10 w-10">
+                                            <MoreVertical className="h-5 w-5" />
                                         </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
+                                    <DropdownMenuContent align="end" className="p-2">
                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                        <DropdownMenuItem onClick={() => setSongToRemove(setSong.id)} className="text-destructive focus:text-destructive">
+                                        <DropdownMenuItem onClick={() => setSongToRemove(setSong.id)} className="text-destructive focus:text-destructive py-3">
                                             <Trash2 className="mr-2 h-4 w-4" /> Remove from Set
                                         </DropdownMenuItem>
                                         
@@ -382,6 +454,7 @@ const SetlistDetail = () => {
                                                 key={targetSet.id}
                                                 disabled={targetSet.id === set.id}
                                                 onClick={() => moveSetSongMutation.mutate({ setSongId: setSong.id, targetSetId: targetSet.id })}
+                                                className="py-3"
                                             >
                                                 <ArrowRightLeft className="mr-2 h-4 w-4" /> {targetSet.name}
                                             </DropdownMenuItem>
@@ -409,10 +482,10 @@ const SetlistDetail = () => {
             
             <div className="p-4 border-b bg-muted/20">
               <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                 <Input
                   placeholder="Search repertoire..."
-                  className="pl-9"
+                  className="pl-10 h-11 text-base"
                   value={songSearch}
                   onChange={(e) => setSongSearch(e.target.value)}
                   autoFocus
@@ -435,41 +508,33 @@ const SetlistDetail = () => {
                     return (
                       <div
                         key={song.id}
-                        className={`flex items-center p-3 gap-3 transition-colors ${isUsed ? 'opacity-50 bg-muted/50' : 'hover:bg-accent/50'}`}
+                        className={`flex items-center p-3 gap-3 transition-colors cursor-pointer ${isUsed ? 'opacity-50 bg-muted/50' : 'hover:bg-accent/50'}`}
+                        onClick={() => !isUsed && toggleSongSelection(song.id)}
                       >
                          <div className="shrink-0">
                             {isUsed ? (
                                 <div className="w-8 h-8 flex items-center justify-center">
-                                    <Check className="w-4 h-4 text-muted-foreground" />
+                                    <Check className="w-5 h-5 text-muted-foreground" />
                                 </div>
                             ) : (
-                                <Button
-                                    size="icon"
-                                    variant={isSelected ? "default" : "outline"}
-                                    className="w-8 h-8 rounded-full"
-                                    onClick={() => toggleSongSelection(song.id)}
-                                >
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center border transition-colors ${isSelected ? 'bg-primary text-primary-foreground border-primary' : 'border-input'}`}>
                                     {isSelected ? (
-                                        <span className="text-xs font-bold">{selectionIndex}</span>
+                                        <span className="text-sm font-bold">{selectionIndex}</span>
                                     ) : (
-                                        <Plus className="w-4 h-4" />
+                                        <Plus className="w-5 h-5" />
                                     )}
-                                </Button>
+                                </div>
                             )}
                          </div>
 
                          <div className="flex-1 min-w-0">
-                             <div className="font-medium truncate">{song.title}</div>
-                             <div className="text-xs text-muted-foreground truncate">{song.artist}</div>
+                             <div className="font-medium truncate text-base">{song.title}</div>
+                             <div className="text-sm text-muted-foreground truncate">{song.artist}</div>
                          </div>
                          
-                         <div className="text-xs text-muted-foreground tabular-nums">
+                         <div className="text-sm text-muted-foreground tabular-nums">
                             {song.duration || "3:00"}
                          </div>
-
-                        {isUsed && (
-                          <Badge variant="secondary" className="text-[10px]">In Setlist</Badge>
-                        )}
                       </div>
                     );
                   })
@@ -481,15 +546,16 @@ const SetlistDetail = () => {
                 <div className="flex items-center gap-4 w-full sm:w-auto text-sm text-muted-foreground">
                     <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
                         <span>Selected: <span className="font-medium text-foreground">{selectedSongIds.length}</span></span>
-                        <span>Est. Duration: <span className="font-medium text-foreground">{formatSecondsToDuration(totalProjectedDuration)}</span></span>
+                        <span>Est. Duration: <span className={`font-medium ${isOverTime ? "text-destructive" : "text-foreground"}`}>{formatSecondsToDuration(totalProjectedDuration)}</span></span>
                     </div>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
-                    <Button variant="outline" onClick={() => setIsAddSongOpen(false)} className="flex-1 sm:flex-none">Cancel</Button>
+                    <Button variant="outline" onClick={() => setIsAddSongOpen(false)} className="flex-1 sm:flex-none h-11">Cancel</Button>
                     <Button 
-                        onClick={() => addSongsMutation.mutate()} 
+                        onClick={handleAddSongsClick} 
                         disabled={selectedSongIds.length === 0 || addSongsMutation.isPending}
-                        className="flex-1 sm:flex-none"
+                        className="flex-1 sm:flex-none h-11"
+                        variant={isOverTime ? "destructive" : "default"}
                     >
                         {addSongsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Add {selectedSongIds.length > 0 ? `${selectedSongIds.length} ` : ''}Song{selectedSongIds.length !== 1 ? 's' : ''}
@@ -498,6 +564,27 @@ const SetlistDetail = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Duration Warning Alert */}
+        <AlertDialog open={showDurationWarning} onOpenChange={setShowDurationWarning}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Set Duration Warning</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Adding these songs will make the set duration <b>{formatSecondsToDuration(totalProjectedDuration)}</b>, which exceeds the recommended 90 minutes limit.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                    <AlertDialogCancel onClick={() => setShowDurationWarning(false)}>Cancel</AlertDialogCancel>
+                    <Button variant="outline" onClick={() => activeSetId && addSongsMutation.mutate(activeSetId)}>
+                        Add Anyway
+                    </Button>
+                    <AlertDialogAction onClick={() => createSetAndAddSongsMutation.mutate()}>
+                        Create New Set & Add
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         
         {/* Delete Set Alert */}
         <AlertDialog open={!!setToDelete} onOpenChange={(open) => !open && setSetToDelete(null)}>
