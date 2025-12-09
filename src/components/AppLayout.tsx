@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -28,6 +28,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   
   const { theme } = useTheme();
   const [isDarkMode, setIsDarkMode] = useState(theme === 'dark');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (theme === 'system') {
@@ -64,15 +65,33 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground pb-[140px] md:pb-0 md:pl-64 transition-colors duration-300">
+    <div className={cn(
+        "min-h-screen bg-background text-foreground transition-all duration-300",
+        "pb-[140px] md:pb-0", // Mobile bottom spacing
+        isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64" // Sidebar width adjustment
+    )}>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r bg-card/50 backdrop-blur-xl px-4 py-6 z-20">
-        <div className="flex items-center justify-between mb-8 px-2">
+      <aside className={cn(
+        "hidden md:flex fixed left-0 top-0 h-full flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
+        isSidebarCollapsed ? "w-[80px] px-2" : "w-64 px-4"
+      )}>
+        <div className={cn("flex items-center mb-8 pt-6", isSidebarCollapsed ? "justify-center flex-col gap-4" : "justify-between px-2")}>
           <div className="flex items-center gap-2">
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
-            <img src={logoPath} alt="Bad Habits Logo" className="h-6" />
+            {!isSidebarCollapsed && <img src={logoPath} alt="Bad Habits Logo" className="h-6" />}
           </div>
-          <ModeToggle />
+          
+          <div className="flex flex-col gap-2">
+            {!isSidebarCollapsed && <ModeToggle />}
+            <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8 text-muted-foreground"
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            >
+                {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </Button>
+          </div>
         </div>
         
         <nav className="space-y-2 flex-1">
@@ -81,14 +100,16 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               key={item.path}
               to={item.path}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium",
+                "flex items-center gap-3 rounded-lg transition-all duration-200 font-medium",
+                isSidebarCollapsed ? "justify-center p-3" : "px-3 py-2.5 text-sm",
                 location.pathname === item.path
                   ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                   : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
               )}
+              title={isSidebarCollapsed ? item.label : undefined}
             >
-              <item.icon className="w-4 h-4" />
-              {item.label}
+              <item.icon className={cn("shrink-0", isSidebarCollapsed ? "w-5 h-5" : "w-4 h-4")} />
+              {!isSidebarCollapsed && <span>{item.label}</span>}
             </Link>
           ))}
         </nav>
@@ -97,9 +118,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         <div className="mb-4">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-start gap-2 px-2 hover:bg-accent">
+                    <Button variant="ghost" className={cn("w-full hover:bg-accent", isSidebarCollapsed ? "justify-center px-0" : "justify-start gap-2 px-2")}>
                         <User className="w-4 h-4" />
-                        <span>Profile & Settings</span>
+                        {!isSidebarCollapsed && <span>Profile</span>}
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -116,7 +137,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         </div>
 
         {/* Desktop Metronome */}
-        <MetronomeControls variant="desktop" />
+        {!isSidebarCollapsed && <MetronomeControls variant="desktop" />}
       </aside>
 
       {/* Mobile Header (Top Bar) */}

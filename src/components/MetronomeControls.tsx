@@ -5,7 +5,7 @@ import { Play, Pause, X, Minus, Plus, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MetronomeControlsProps {
-  variant: "mobile" | "desktop";
+  variant: "mobile" | "desktop" | "embedded";
   className?: string;
 }
 
@@ -69,7 +69,41 @@ export const MetronomeControls = ({ variant, className }: MetronomeControlsProps
     );
   }
 
-  // Mobile Variant
+  // Embedded Variant (for Performance Mode)
+  if (variant === "embedded") {
+      return (
+        <div className={cn(
+            "bg-background/95 backdrop-blur border-t shadow-lg p-3 animate-in slide-in-from-bottom-2",
+            className
+        )}>
+            <div className="flex items-center justify-between gap-3 max-w-2xl mx-auto">
+                <div className="flex items-center gap-2">
+                     <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => adjustBpm(-1)}>
+                        <Minus className="w-4 h-4" />
+                    </Button>
+                    <span className="font-mono font-bold text-xl w-10 text-center">{bpm}</span>
+                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => adjustBpm(1)}>
+                        <Plus className="w-4 h-4" />
+                    </Button>
+                </div>
+
+                <Button 
+                    className={cn("flex-1", isPlaying ? "bg-destructive hover:bg-destructive/90" : "")} 
+                    onClick={togglePlay}
+                >
+                    {isPlaying ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+                    {isPlaying ? "Stop" : "Start"}
+                </Button>
+
+                <Button variant="ghost" size="icon" onClick={closeMetronome}>
+                    <X className="w-5 h-5" />
+                </Button>
+            </div>
+        </div>
+      );
+  }
+
+  // Mobile Variant (Fixed Bottom)
   return (
     <div className={cn(
       "fixed bottom-[65px] left-0 right-0 z-40 bg-background/95 backdrop-blur border-t shadow-lg p-3 animate-in slide-in-from-bottom-10",

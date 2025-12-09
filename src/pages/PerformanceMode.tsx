@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getSetlist, getSongs, addSkippedSong, getSkippedSongs, removeSkippedSong } from "@/lib/api";
+import { getSetlist, getSongs, addSkippedSong, getSkippedSongs, removeSkippedSong, saveSong } from "@/lib/api";
 import { Song, Setlist } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMetronome } from "@/components/MetronomeContext";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { MetronomeControls } from "@/components/MetronomeControls";
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
@@ -31,7 +32,7 @@ const PerformanceMode = () => {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { openMetronome } = useMetronome();
+  const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome } = useMetronome();
   
   // Navigation State
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
@@ -45,6 +46,10 @@ const PerformanceMode = () => {
   // Skipped Songs State
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
+  // Tempo Save Prompt
+  const [showTempoSave, setShowTempoSave] = useState(false);
+  const initialTempoRef = useRef<number | null>(null);
+
   // Fetch Data
   const { data: setlist, isLoading } = useQuery({
     queryKey: ['setlist', id],
@@ -55,7 +60,7 @@ const PerformanceMode = () => {
   const { data: allSongs = [] } = useQuery({
     queryKey: ['songs'],
     queryFn: getSongs,
-    enabled: !isGigMode && isSearchOpen // Only fetch in practice mode search
+    enabled: isSearchOpen // Fetch when search opens
   });
 
   const { data: skippedSongs = [] } = useQuery({
@@ -63,6 +68,41 @@ const PerformanceMode = () => {
     queryFn: () => getSkippedSongs(gigId!),
     enabled: isGigMode
   });
+
+  // Derived Data
+  const sets = useMemo(() => {
+      if (!setlist) return [];
+      const baseSets = [...setlist.sets];
+      if (isGigMode && skippedSongs.length > 0) {
+          // Add virtual set
+          baseSets.push({
+              id: 'skipped-set',
+              name: 'Skipped Songs',
+              position: 999,
+              songs: skippedSongs.map((s, idx) => ({
+                  id: `skip-${s.id}-${idx}`,
+                  position: idx,
+                  songId: s.id,
+                  song: s
+              }))
+          });
+      }
+      return baseSets;
+  }, [setlist, skippedSongs, isGigMode]);
+
+  const currentSet = sets[currentSetIndex];
+  const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
+
+  // Track initial tempo to detect changes
+  useEffect(() => {
+      if (activeSong && activeSong.tempo) {
+          initialTempoRef.current = parseInt(activeSong.tempo);
+      } else {
+          initialTempoRef.current = null;
+      }
+      // Close metronome on song change
+      if (isMetronomeOpen) closeMetronome();
+  }, [activeSong?.id]);
 
   // Mutations
   const skipSongMutation = useMutation({
@@ -89,29 +129,18 @@ const PerformanceMode = () => {
       }
   });
 
-  // Derived Data
-  const sets = useMemo(() => {
-      if (!setlist) return [];
-      const baseSets = [...setlist.sets];
-      if (isGigMode && skippedSongs.length > 0) {
-          // Add virtual set
-          baseSets.push({
-              id: 'skipped-set',
-              name: 'Skipped Songs',
-              position: 999,
-              songs: skippedSongs.map((s, idx) => ({
-                  id: `skip-${s.id}-${idx}`,
-                  position: idx,
-                  songId: s.id,
-                  song: s
-              }))
-          });
+  const updateTempoMutation = useMutation({
+      mutationFn: async () => {
+          if (!activeSong) return;
+          await saveSong({ ...activeSong, tempo: bpm.toString() });
+      },
+      onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['songs'] });
+          queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+          toast.success("Tempo updated");
+          setShowTempoSave(false);
       }
-      return baseSets;
-  }, [setlist, skippedSongs, isGigMode]);
-
-  const currentSet = sets[currentSetIndex];
-  const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
+  });
 
   // Handlers
   const handleNext = () => {
@@ -156,11 +185,17 @@ const PerformanceMode = () => {
   const handleStartMetronome = () => {
       if(activeSong?.tempo) {
           openMetronome(parseInt(activeSong.tempo));
-          toast.success(`Metronome: ${activeSong.tempo} BPM`);
       } else {
           openMetronome(120);
-          toast.info("Metronome started (Default 120)");
       }
+  };
+
+  const handleMetronomeClose = () => {
+      // Check if tempo changed and ask to save (Practice mode only)
+      if (!isGigMode && activeSong && initialTempoRef.current && bpm !== initialTempoRef.current) {
+          setShowTempoSave(true);
+      }
+      closeMetronome();
   };
 
   const handleEditSong = () => {
@@ -191,14 +226,14 @@ const PerformanceMode = () => {
   return (
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
       {/* Top Bar */}
-      <div className="flex items-center justify-between p-2 border-b bg-card shadow-sm shrink-0 h-14">
-        <div className="flex-1 max-w-[200px] md:max-w-xs">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-card shadow-sm shrink-0 h-14 gap-2">
+        <div className="flex-1 max-w-[200px] md:max-w-xs shrink-0">
           <Select 
             value={currentSetIndex.toString()} 
             onValueChange={handleSetChange}
             disabled={!!tempSong}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9 w-full">
               <SelectValue placeholder="Select Set" />
             </SelectTrigger>
             <SelectContent>
@@ -211,28 +246,29 @@ const PerformanceMode = () => {
           </Select>
         </div>
         
-        {/* Top Center Actions (Gig Mode Skip) */}
-        {isGigMode && activeSong && !tempSong && currentSet?.id !== 'skipped-set' ? (
-             <Button 
-                variant="outline" 
-                size="sm" 
-                className="mx-2 text-orange-600 border-orange-200 hover:bg-orange-50"
-                onClick={() => setShowSkipConfirm(true)}
-             >
-                 <Forward className="w-4 h-4 mr-2" /> Skip
-             </Button>
-        ) : (
-            <div className="flex-1 text-center hidden md:block">
-                <span className="font-bold text-lg">{activeSong?.title}</span>
-                <span className="text-muted-foreground ml-2 text-sm">{activeSong?.artist}</span>
-            </div>
-        )}
+        {/* Title Display */}
+        <div className="flex-1 text-center hidden md:flex items-center justify-center min-w-0 px-2">
+            <span className="font-bold text-lg truncate">{activeSong?.title}</span>
+            <span className="text-muted-foreground ml-2 text-sm truncate max-w-[150px]">{activeSong?.artist}</span>
+        </div>
 
-        <div className="flex-1 flex justify-end">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/performance')}>
-            <span className="mr-2 hidden sm:inline">Exit Mode</span>
-            <Minimize2 className="h-4 w-4" />
-          </Button>
+        <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
+             {/* Skip Action (Gig Mode) */}
+            {isGigMode && activeSong && !tempSong && currentSet?.id !== 'skipped-set' && (
+                 <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-orange-600 border-orange-200 hover:bg-orange-50 h-9"
+                    onClick={() => setShowSkipConfirm(true)}
+                 >
+                     <Forward className="w-4 h-4 mr-2" /> Skip
+                 </Button>
+            )}
+
+            <Button variant="ghost" size="sm" onClick={() => navigate('/performance')} className="h-9">
+                <span className="mr-2 hidden sm:inline">Exit</span>
+                <Minimize2 className="h-4 w-4" />
+            </Button>
         </div>
       </div>
 
@@ -297,11 +333,18 @@ const PerformanceMode = () => {
                 Ad-Hoc
             </div>
         )}
+
+        {/* Embedded Metronome (Practice Mode Only) */}
+        {!isGigMode && isMetronomeOpen && (
+            <div className="absolute bottom-0 left-0 right-0 z-10">
+                <MetronomeControls variant="embedded" />
+            </div>
+        )}
       </div>
 
       {/* Bottom Navigation Bar */}
-      <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3">
-        {/* Hamburger Context Menu (PRACTICE ONLY) */}
+      <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3 z-20 relative">
+        {/* Practice Mode Menu */}
         {!isGigMode ? (
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -311,7 +354,7 @@ const PerformanceMode = () => {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-48 mb-2">
                     <DropdownMenuItem onClick={handleStartMetronome} className="py-3">
-                        <Timer className="mr-2 h-4 w-4" /> Start Metronome
+                        <Timer className="mr-2 h-4 w-4" /> Metronome
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleEditSong} className="py-3">
                         <Edit className="mr-2 h-4 w-4" /> Edit Song
@@ -322,8 +365,10 @@ const PerformanceMode = () => {
                 </DropdownMenuContent>
             </DropdownMenu>
         ) : (
-             // Placeholder for alignment in Gig Mode if needed, or remove
-             <div className="w-0" />
+            // Gig Mode Ad-Hoc Search
+            <Button variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={() => setIsSearchOpen(true)}>
+                <Search className="h-5 w-5" />
+            </Button>
         )}
 
         <Button 
@@ -344,52 +389,50 @@ const PerformanceMode = () => {
         </Button>
       </div>
 
-      {/* Search Dialog (Practice Only) */}
-      {!isGigMode && (
-          <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-            <DialogContent className="max-w-md h-[80vh] flex flex-col p-0 gap-0">
-                <DialogHeader className="px-4 py-4 border-b">
-                    <DialogTitle>Quick Find</DialogTitle>
-                </DialogHeader>
-                <div className="p-4 border-b bg-muted/20">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Search song to play next..." 
-                            className="pl-9"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            autoFocus
-                        />
-                    </div>
+      {/* Search Dialog (Available in both modes now) */}
+      <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+        <DialogContent className="max-w-md h-[80vh] flex flex-col p-0 gap-0">
+            <DialogHeader className="px-4 py-4 border-b">
+                <DialogTitle>Quick Find</DialogTitle>
+            </DialogHeader>
+            <div className="p-4 border-b bg-muted/20">
+                <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Search song to play next..." 
+                        className="pl-9"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        autoFocus
+                    />
                 </div>
-                <ScrollArea className="flex-1">
-                    <div className="divide-y">
-                        {filteredSongs.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground">No songs found</div>
-                        ) : (
-                            filteredSongs.map(song => (
-                                <div 
-                                    key={song.id} 
-                                    className="flex items-center p-4 hover:bg-accent cursor-pointer transition-colors"
-                                    onClick={() => {
-                                        setTempSong(song);
-                                        setIsSearchOpen(false);
-                                        setSearchQuery("");
-                                    }}
-                                >
-                                    <div className="flex-1">
-                                        <div className="font-medium">{song.title}</div>
-                                        <div className="text-sm text-muted-foreground">{song.artist}</div>
-                                    </div>
+            </div>
+            <ScrollArea className="flex-1">
+                <div className="divide-y">
+                    {filteredSongs.length === 0 ? (
+                        <div className="p-8 text-center text-muted-foreground">No songs found</div>
+                    ) : (
+                        filteredSongs.map(song => (
+                            <div 
+                                key={song.id} 
+                                className="flex items-center p-4 hover:bg-accent cursor-pointer transition-colors"
+                                onClick={() => {
+                                    setTempSong(song);
+                                    setIsSearchOpen(false);
+                                    setSearchQuery("");
+                                }}
+                            >
+                                <div className="flex-1">
+                                    <div className="font-medium">{song.title}</div>
+                                    <div className="text-sm text-muted-foreground">{song.artist}</div>
                                 </div>
-                            ))
-                        )}
-                    </div>
-                </ScrollArea>
-            </DialogContent>
-          </Dialog>
-      )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* Skip Confirmation Dialog */}
       <AlertDialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
@@ -403,6 +446,22 @@ const PerformanceMode = () => {
               <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction onClick={() => skipSongMutation.mutate()}>Skip Song</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Tempo Save Dialog */}
+      <AlertDialog open={showTempoSave} onOpenChange={setShowTempoSave}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>Save new tempo?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      You changed the tempo to {bpm} BPM. Would you like to update the song record?
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel>No</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => updateTempoMutation.mutate()}>Yes, Save</AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>

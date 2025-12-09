@@ -52,7 +52,7 @@ const Index = () => {
                     </div>
                 )}
                 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                     <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
                         <Link to="/gigs">
                             <Plus className="mr-2 h-4 w-4" /> Create Gig
@@ -77,15 +77,15 @@ const Index = () => {
                     <div className="text-2xl font-bold">{songs.length}</div>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex gap-3 mt-4">
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
                         <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
                             <Link to="/songs/new">
-                                <Plus className="mr-2 h-4 w-4" /> Create Song
+                                <Plus className="mr-2 h-4 w-4" /> Add
                             </Link>
                         </Button>
                         <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
                             <Link to="/songs">
-                                <Eye className="mr-2 h-4 w-4" /> View Songs
+                                <Eye className="mr-2 h-4 w-4" /> View
                             </Link>
                         </Button>
                     </div>
@@ -101,15 +101,15 @@ const Index = () => {
                     <div className="text-2xl font-bold">{bandSetlists.length}</div>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex gap-3 mt-4">
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
                         <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
                             <Link to="/setlists">
-                                <Plus className="mr-2 h-4 w-4" /> Create Setlist
+                                <Plus className="mr-2 h-4 w-4" /> Create
                             </Link>
                         </Button>
                         <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
                             <Link to="/setlists">
-                                <Eye className="mr-2 h-4 w-4" /> View Setlists
+                                <Eye className="mr-2 h-4 w-4" /> View
                             </Link>
                         </Button>
                     </div>
@@ -125,15 +125,15 @@ const Index = () => {
                     <div className="text-2xl font-bold">{personalSetlists.length}</div>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex gap-3 mt-4">
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
                         <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
                             <Link to="/setlists">
-                                <Plus className="mr-2 h-4 w-4" /> Create Setlist
+                                <Plus className="mr-2 h-4 w-4" /> Create
                             </Link>
                         </Button>
                         <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
                             <Link to="/setlists">
-                                <Eye className="mr-2 h-4 w-4" /> View Setlists
+                                <Eye className="mr-2 h-4 w-4" /> View
                             </Link>
                         </Button>
                     </div>
