@@ -22,25 +22,15 @@ import {
   Plus, Calendar, Trash2, Loader2, Copy, MoreVertical, 
   Lock, Globe, Printer, Star, Clock 
 } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 
 const Setlists = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("public");
   
-  // Auth Check
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-        if (!data.session) navigate('/login');
-        // Simple manual refresh check on mount
-        await supabase.auth.refreshSession();
-    });
-  }, [navigate]);
-
   // Create Form State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<"public" | "personal" | "clone">("public");

@@ -44,10 +44,9 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   }
 
   // Ensure profile is loaded before rendering app content to avoid flicker
-  // or incomplete data states in children
+  // or incomplete data states in children. 
+  // We only block if we have a session but absolutely no profile data yet.
   if (!profile) {
-     // If session exists but no profile yet, we are likely still fetching it 
-     // (AuthProvider handles this in parallel, but just in case)
      return (
         <div className="min-h-screen flex items-center justify-center bg-background">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -72,7 +71,6 @@ const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
     if (loading) return null;
 
     if (session) {
-        // Redirect to where they came from or home
         const from = (location.state as any)?.from?.pathname || "/";
         return <Navigate to={from} replace />;
     }
