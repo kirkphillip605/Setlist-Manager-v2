@@ -63,7 +63,7 @@ const SongDetail = () => {
 
   // Safe Delete State
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [usageData, setUsageData] = useState<{setlistName: string, date: string}[]>([]);
+  const [usageData, setUsageData] = useState<{setlistName: string, date?: string}[]>([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
   // BPM Monitoring State

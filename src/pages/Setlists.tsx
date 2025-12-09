@@ -9,27 +9,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger
+  DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { 
-  getSetlists, createSetlist, deleteSetlist, cloneSetlist 
+  getSetlists, createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage 
 } from "@/lib/api";
 import { 
-  Plus, Calendar, Trash2, Loader2, Copy, MoreVertical, 
-  Lock, Globe, Printer, Star, Clock 
+  Plus, Trash2, Loader2, Copy, MoreVertical, 
+  Lock, Globe, Star, Filter, AlertTriangle, ArrowRight
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Gig } from "@/types";
 
 const Setlists = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("public");
+  const [sortBy, setSortBy] = useState<"name" | "created" | "updated">("name");
   
   // Create Form State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -38,63 +41,41 @@ const Setlists = () => {
   const [cloneType, setCloneType] = useState<"public" | "personal">("personal");
   
   const [newListName, setNewListName] = useState("");
-  const [newListDate, setNewListDate] = useState("");
-  const [isTbd, setIsTbd] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
 
-  // Filters
-  const [showPast, setShowPast] = useState(false);
+  // Safe Delete
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [usageData, setUsageData] = useState<Gig[]>([]);
+  const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
   const queryClient = useQueryClient();
   const { data: setlists = [], isLoading } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
 
-  // Grouping Logic
-  const groupedSetlists = useMemo(() => {
-    let base = activeTab === "public" ? setlists.filter(l => !l.is_personal) : setlists.filter(l => l.is_personal);
+  const filteredSetlists = useMemo(() => {
+    let list = activeTab === "public" ? setlists.filter(l => !l.is_personal) : setlists.filter(l => l.is_personal);
     
-    // Default
-    const defaultList = base.find(l => l.is_default);
-    
-    // Remove default from others
-    if (defaultList) base = base.filter(l => l.id !== defaultList.id);
+    // Sort
+    return list.sort((a, b) => {
+        if (a.is_default) return -1;
+        if (b.is_default) return 1;
 
-    // Date Logic
-    const today = new Date().toISOString().split('T')[0];
-    
-    const upcoming: any[] = [];
-    const tbd: any[] = [];
-    const past: any[] = [];
-
-    base.forEach(l => {
-        if (l.is_tbd) {
-            tbd.push(l);
-        } else if (l.date && l.date < today) {
-            past.push(l);
-        } else {
-            upcoming.push(l);
-        }
+        if (sortBy === 'name') return a.name.localeCompare(b.name);
+        if (sortBy === 'created') return (b.created_at || "").localeCompare(a.created_at || "");
+        if (sortBy === 'updated') return (b.updated_at || "").localeCompare(a.updated_at || "");
+        return 0;
     });
-
-    // Sort upcoming by date asc
-    upcoming.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-    // Sort past by date desc
-    past.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-
-    return { defaultList, upcoming, tbd, past };
-  }, [setlists, activeTab]);
+  }, [setlists, activeTab, sortBy]);
 
   const hasDefault = useMemo(() => setlists.some(l => l.is_default), [setlists]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const isPersonal = createMode === "personal" || (createMode === "clone" && cloneType === "personal");
-      const date = isTbd || isPersonal ? "" : newListDate;
       
       if (createMode === "clone") {
-         return cloneSetlist(sourceSetlistId, newListName, date, isPersonal);
+         return cloneSetlist(sourceSetlistId, newListName, isPersonal);
       } else {
-         return createSetlist(newListName, date, isPersonal, isTbd, isDefault);
+         return createSetlist(newListName, isPersonal, isDefault);
       }
     },
     onSuccess: (data) => {
@@ -109,14 +90,13 @@ const Setlists = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlists'] });
       setDeleteId(null);
+      setUsageData([]);
       toast.success("Setlist deleted");
     }
   });
 
   const resetForm = () => {
       setNewListName("");
-      setNewListDate("");
-      setIsTbd(false);
       setIsDefault(false);
       setIsCreateOpen(false);
   };
@@ -132,52 +112,18 @@ const Setlists = () => {
       setIsCreateOpen(true);
   };
 
-  const SetlistGrid = ({ lists }: { lists: any[] }) => (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {lists.map(list => (
-              <Link key={list.id} to={`/setlists/${list.id}`}>
-                  <Card className={`hover:bg-accent/40 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
-                      <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
-                          <div className="space-y-1">
-                              <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
-                              {list.is_default && <Badge variant="default" className="text-[10px] h-5">Default</Badge>}
-                              <div className="flex items-center text-xs text-muted-foreground">
-                                  {list.is_tbd ? (
-                                      <><Clock className="mr-1 h-3 w-3" /> Gig Date: TBD</>
-                                  ) : list.date ? (
-                                      <><Calendar className="mr-1 h-3 w-3" /> {new Date(list.date).toLocaleDateString()}</>
-                                  ) : null}
-                              </div>
-                          </div>
-                      </CardHeader>
-                      <CardContent>
-                         <div className="text-sm text-muted-foreground">
-                            {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
-                         </div>
-                      </CardContent>
-                      <div className="absolute top-2 right-2">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
-                                    <Copy className="mr-2 h-4 w-4" /> Clone...
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteId(list.id); }}>
-                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                  </Card>
-              </Link>
-          ))}
-      </div>
-  );
+  const handleDeleteRequest = async (id: string) => {
+      setDeleteId(id);
+      setIsCheckingUsage(true);
+      try {
+          const usage = await getSetlistUsage(id);
+          setUsageData(usage);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setIsCheckingUsage(false);
+      }
+  };
 
   return (
     <AppLayout>
@@ -185,7 +131,7 @@ const Setlists = () => {
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Setlists</h1>
-                <p className="text-muted-foreground text-sm">Organize your gigs.</p>
+                <p className="text-muted-foreground text-sm">Manage song collections.</p>
             </div>
             
             <DropdownMenu>
@@ -199,49 +145,69 @@ const Setlists = () => {
             </DropdownMenu>
          </div>
 
-         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="public" className="gap-2"><Globe className="h-4 w-4" /> Band</TabsTrigger>
-                <TabsTrigger value="personal" className="gap-2"><Lock className="h-4 w-4" /> Personal</TabsTrigger>
-            </TabsList>
+         <div className="flex items-center justify-between gap-4">
+             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-[400px]">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="public" className="gap-2"><Globe className="h-4 w-4" /> Band</TabsTrigger>
+                    <TabsTrigger value="personal" className="gap-2"><Lock className="h-4 w-4" /> Personal</TabsTrigger>
+                </TabsList>
+            </Tabs>
+            
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="shrink-0"><Filter className="h-4 w-4" /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuRadioGroup value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                        <DropdownMenuRadioItem value="name">Name (A-Z)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="created">Date Created (Newest)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="updated">Date Updated (Newest)</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
+         </div>
 
-            <TabsContent value={activeTab} className="space-y-8">
-                {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
-                    <>
-                        {groupedSetlists.defaultList && (
-                            <section>
-                                <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                                    <Star className="w-4 h-4 text-primary" /> Default Setlist
-                                </h3>
-                                <SetlistGrid lists={[groupedSetlists.defaultList]} />
-                            </section>
-                        )}
-
-                        {groupedSetlists.upcoming.length > 0 && (
-                            <section>
-                                <h3 className="text-sm font-medium text-muted-foreground mb-3">Upcoming Gigs</h3>
-                                <SetlistGrid lists={groupedSetlists.upcoming} />
-                            </section>
-                        )}
-
-                        {groupedSetlists.tbd.length > 0 && (
-                            <section>
-                                <h3 className="text-sm font-medium text-muted-foreground mb-3">TBD / Drafting</h3>
-                                <SetlistGrid lists={groupedSetlists.tbd} />
-                            </section>
-                        )}
-
-                        <div className="pt-4 border-t">
-                             <div className="flex items-center gap-2 mb-4">
-                                <Checkbox id="showPast" checked={showPast} onCheckedChange={(c) => setShowPast(c === true)} />
-                                <Label htmlFor="showPast">Show Past Setlists</Label>
-                             </div>
-                             {showPast && <SetlistGrid lists={groupedSetlists.past} />}
-                        </div>
-                    </>
-                )}
-            </TabsContent>
-         </Tabs>
+        {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredSetlists.map(list => (
+                    <Link key={list.id} to={`/setlists/${list.id}`}>
+                        <Card className={`hover:bg-accent/40 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
+                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
+                                <div className="space-y-1">
+                                    <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
+                                    {list.is_default && <Badge variant="default" className="text-[10px] h-5">Default</Badge>}
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-sm text-muted-foreground">
+                                {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
+                                </div>
+                            </CardContent>
+                            <div className="absolute top-2 right-2">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
+                                        <Copy className="mr-2 h-4 w-4" /> Clone...
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            </div>
+                        </Card>
+                    </Link>
+                ))}
+            </div>
+        )}
 
          {/* Create Modal */}
          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -258,18 +224,6 @@ const Setlists = () => {
                             <Label htmlFor="isDef">Make Default Band Setlist</Label>
                         </div>
                     )}
-                    {createMode === 'public' && !isDefault && (
-                         <div className="space-y-2">
-                             <Label>Gig Date</Label>
-                             <div className="flex items-center gap-2">
-                                 <Input type="date" value={newListDate} onChange={e => setNewListDate(e.target.value)} disabled={isTbd} />
-                                 <div className="flex items-center gap-2 whitespace-nowrap">
-                                     <Checkbox id="isTbd" checked={isTbd} onCheckedChange={(c) => setIsTbd(c === true)} />
-                                     <Label htmlFor="isTbd">TBD</Label>
-                                 </div>
-                             </div>
-                         </div>
-                    )}
                     <DialogFooter>
                         <Button onClick={() => createMutation.mutate()}>Create</Button>
                     </DialogFooter>
@@ -281,11 +235,44 @@ const Setlists = () => {
          <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Setlist?</AlertDialogTitle>
+                    <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-5 w-5" /> Delete Setlist?
+                    </AlertDialogTitle>
+                    <div className="pt-2 text-sm text-muted-foreground space-y-4">
+                        {isCheckingUsage ? (
+                            <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Checking usage...</div>
+                        ) : usageData.length > 0 ? (
+                            <>
+                                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-600">
+                                    <p className="font-semibold mb-1">Warning: Used in {usageData.length} Gig{usageData.length !== 1 ? 's' : ''}</p>
+                                    <p>Deleting this setlist will delete these gigs unless you replace the setlist first:</p>
+                                </div>
+                                <ScrollArea className="h-24 rounded border p-2">
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {usageData.map((gig, idx) => (
+                                            <li key={idx}>
+                                                <span className="font-medium">{gig.name}</span> 
+                                                <span className="text-xs text-muted-foreground ml-2">({gig.date})</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </ScrollArea>
+                                <p>Please go to the Gigs page and assign a different setlist before deleting this one.</p>
+                            </>
+                        ) : (
+                            <p>Are you sure you want to delete this setlist? This action cannot be undone.</p>
+                        )}
+                    </div>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive">Delete</AlertDialogAction>
+                    <AlertDialogAction 
+                        onClick={() => deleteId && deleteMutation.mutate(deleteId)} 
+                        className="bg-destructive"
+                        disabled={usageData.length > 0} // Prevent delete if used
+                    >
+                        Delete
+                    </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

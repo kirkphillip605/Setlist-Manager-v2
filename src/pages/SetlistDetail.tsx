@@ -4,10 +4,10 @@ import { Loader2 } from "lucide-react";
 import { 
   getSetlist, getSongs, createSet, deleteSet, 
   addSongsToSet, removeSongFromSet, updateSetSongOrder, 
-  moveSetSongToSet, updateSetlist 
+  moveSetSongToSet 
 } from "@/lib/api";
 import { parseDurationToSeconds } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,10 +29,6 @@ const SetlistDetail = () => {
   const [setToDelete, setSetToDelete] = useState<string | null>(null);
   const [songToRemove, setSongToRemove] = useState<string | null>(null);
 
-  // Local Data
-  const [editDate, setEditDate] = useState("");
-  const [isTbd, setIsTbd] = useState(false);
-
   const { data: setlist, isLoading } = useQuery({
     queryKey: ['setlist', id],
     queryFn: () => getSetlist(id!),
@@ -44,27 +40,11 @@ const SetlistDetail = () => {
     queryFn: getSongs
   });
 
-  useEffect(() => {
-    if (setlist) {
-        setEditDate(setlist.date || "");
-        setIsTbd(setlist.is_tbd || false);
-    }
-  }, [setlist?.date, setlist?.is_tbd]);
-
   // --- Mutations ---
-
-  const updateListMutation = useMutation({
-    mutationFn: async (updates: { date?: string, is_tbd?: boolean }) => {
-        if(!id) return;
-        return updateSetlist(id, updates);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['setlist', id] })
-  });
 
   const addSetMutation = useMutation({
     mutationFn: async () => {
       if (!setlist) return;
-      // Prevent adding if current/last set is empty
       if (setlist.sets.length > 0) {
           const lastSet = setlist.sets[setlist.sets.length - 1];
           if (lastSet.songs.length === 0) {
@@ -98,11 +78,6 @@ const SetlistDetail = () => {
   };
 
   const createSetAndAddSongsMutation = async (initialSongs: string[], remainingSongs: string[]) => {
-      // Logic handled by helper, but essentially:
-      // initialSongs are added to activeSet (done by AddDialog logic usually, but here we coordinate)
-      // Actually AddDialog calls onAddSongs for Batch A, then calls this for Batch B.
-      
-      // So this function just needs to create new set and add remainingSongs
       if (!setlist) return;
       const newPosition = setlist.sets.length + 1;
       const newSet = await createSet(setlist.id, `Set ${newPosition}`, newPosition);
@@ -139,15 +114,6 @@ const SetlistDetail = () => {
   });
 
   // --- Handlers ---
-  const handleDateChange = (val: string) => {
-      setEditDate(val);
-      updateListMutation.mutate({ date: val });
-  };
-
-  const handleTbdChange = (val: boolean) => {
-      setIsTbd(val);
-      updateListMutation.mutate({ is_tbd: val });
-  };
 
   const handleMoveOrder = (setId: string, songIndex: number, direction: 'up' | 'down') => {
     if (!setlist) return;
@@ -173,10 +139,6 @@ const SetlistDetail = () => {
       <div className="space-y-6 pb-20">
         <SetlistHeader 
             name={setlist.name}
-            date={editDate}
-            isTbd={isTbd}
-            onDateChange={handleDateChange}
-            onTbdChange={handleTbdChange}
             onAddSet={() => addSetMutation.mutate()}
             isAddingSet={addSetMutation.isPending}
         />

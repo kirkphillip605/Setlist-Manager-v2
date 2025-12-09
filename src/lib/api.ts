@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Song, Setlist, Set as SetType, SetSong } from "@/types";
+import { Song, Setlist, Gig } from "@/types";
 
 // --- Types Helper ---
 interface SupabaseSetSong {
@@ -68,22 +68,61 @@ export const deleteSong = async (id: string) => {
   if (error) throw error;
 };
 
-export const getSongUsage = async (songId: string): Promise<{ setlistName: string; date: string }[]> => {
-  const { data, error } = await supabase.from('set_songs').select(`sets (setlists (name, date))`).eq('song_id', songId);
+export const getSongUsage = async (songId: string): Promise<{ setlistName: string; date?: string }[]> => {
+  const { data, error } = await supabase.from('set_songs').select(`sets (setlists (name))`).eq('song_id', songId);
   if (error) throw error;
-  const usage: { setlistName: string; date: string }[] = [];
+  const usage: { setlistName: string }[] = [];
   const seen = new Set<string>();
   data.forEach((item: any) => {
     const setlist = item.sets?.setlists;
     if (setlist) {
-      const key = `${setlist.name}-${setlist.date}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        usage.push({ setlistName: setlist.name, date: setlist.date });
+      if (!seen.has(setlist.name)) {
+        seen.add(setlist.name);
+        usage.push({ setlistName: setlist.name });
       }
     }
   });
   return usage;
+};
+
+// --- Gigs ---
+
+export const getGigs = async (): Promise<Gig[]> => {
+  const { data, error } = await supabase
+    .from('gigs')
+    .select(`*, setlist:setlists(id, name)`)
+    .order('date', { ascending: true });
+    
+  if (error) throw error;
+  return data as Gig[];
+};
+
+export const saveGig = async (gig: Partial<Gig>) => {
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) throw new Error("No user");
+
+    const gigData = {
+        name: gig.name,
+        date: gig.date,
+        notes: gig.notes,
+        setlist_id: gig.setlist_id,
+        user_id: user.id
+    };
+
+    if (gig.id) {
+        const { data, error } = await supabase.from('gigs').update(gigData).eq('id', gig.id).select().single();
+        if (error) throw error;
+        return data;
+    } else {
+        const { data, error } = await supabase.from('gigs').insert(gigData).select().single();
+        if (error) throw error;
+        return data;
+    }
+};
+
+export const deleteGig = async (id: string) => {
+    const { error } = await supabase.from('gigs').delete().eq('id', id);
+    if (error) throw error;
 };
 
 // --- Setlists ---
@@ -92,7 +131,7 @@ export const getSetlists = async (): Promise<Setlist[]> => {
   const { data, error } = await supabase
     .from('setlists')
     .select(`*, sets (*, set_songs (*, song:songs (*)))`)
-    .order('date', { ascending: false });
+    .order('name', { ascending: true });
 
   if (error) throw error;
 
@@ -148,23 +187,31 @@ export const getSetlist = async (id: string): Promise<Setlist | null> => {
   };
 };
 
-export const createSetlist = async (name: string, date: string, isPersonal: boolean = false, isTbd: boolean = false, isDefault: boolean = false) => {
+export const getSetlistUsage = async (setlistId: string): Promise<Gig[]> => {
+    const { data, error } = await supabase.from('gigs').select('*').eq('setlist_id', setlistId);
+    if (error) throw error;
+    return data as Gig[];
+};
+
+export const createSetlist = async (name: string, isPersonal: boolean = false, isDefault: boolean = false) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
-  // If setting default, unset others first (handled better by DB trigger usually, but manual for now)
   if (isDefault) {
       await supabase.from('setlists').update({ is_default: false }).eq('is_default', true);
   }
 
+  // Note: we just pass dummy date/tbd to satisfy DB constraints if they exist, 
+  // or rely on default values if I could alter table. 
+  // Since I can't drop cols easily, I'll pass defaults.
   const { data, error } = await supabase
     .from('setlists')
     .insert({ 
         name, 
-        date, 
+        date: new Date().toISOString().split('T')[0], // Dummy value
+        is_tbd: false, // Dummy value
         user_id: user.id, 
         is_personal: isPersonal,
-        is_tbd: isTbd,
         is_default: isDefault
     })
     .select()
@@ -190,20 +237,19 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
   return data;
 };
 
-export const cloneSetlist = async (sourceId: string, newName: string, newDate: string, isPersonal: boolean) => {
+export const cloneSetlist = async (sourceId: string, newName: string, isPersonal: boolean) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
   const { data, error } = await supabase.rpc('clone_setlist', {
     source_setlist_id: sourceId,
     new_name: newName,
-    new_date: newDate,
+    new_date: new Date().toISOString().split('T')[0], // Dummy
     is_personal_copy: isPersonal,
     owner_id: user.id
   });
 
   if (error) throw error;
-  // Fetch the created setlist to get its ID, since RPC might just return ID
   return { id: data };
 };
 
@@ -231,11 +277,9 @@ export const createSet = async (setlistId: string, name: string, position: numbe
 };
 
 export const deleteSet = async (setId: string, setlistId: string) => {
-  // 1. Delete the set
   const { error } = await supabase.from('sets').delete().eq('id', setId);
   if (error) throw error;
 
-  // 2. Renumber remaining sets
   const { data: remainingSets } = await supabase
     .from('sets')
     .select('id, position')
@@ -243,10 +287,9 @@ export const deleteSet = async (setId: string, setlistId: string) => {
     .order('position');
 
   if (remainingSets) {
-      // Re-write positions strictly 1, 2, 3...
       const updates = remainingSets.map((s, idx) => ({
           id: s.id,
-          name: `Set ${idx + 1}`, // Also auto-rename sets to keep them clean
+          name: `Set ${idx + 1}`,
           position: idx + 1
       }));
 
@@ -254,21 +297,6 @@ export const deleteSet = async (setId: string, setlistId: string) => {
           await supabase.from('sets').update({ position: update.position, name: update.name }).eq('id', update.id);
       }
   }
-};
-
-export const addSongToSet = async (setId: string, songId: string, position: number) => {
-  const user = (await supabase.auth.getUser()).data.user;
-  if (!user) throw new Error("No user");
-
-  const { data: parent } = await supabase.from('sets').select('user_id').eq('id', setId).single();
-  const ownerId = parent ? parent.user_id : user.id;
-
-  const { data, error } = await supabase
-    .from('set_songs')
-    .insert({ set_id: setId, song_id: songId, position, user_id: ownerId })
-    .select(`*, song:songs(*)`).single();
-  if (error) throw error;
-  return data;
 };
 
 export const addSongsToSet = async (setId: string, songIds: string[], startPosition: number) => {

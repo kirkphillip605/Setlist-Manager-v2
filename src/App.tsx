@@ -15,6 +15,7 @@ import SongEdit from "./pages/SongEdit";
 import SongDetail from "./pages/SongDetail";
 import Setlists from "./pages/Setlists";
 import SetlistDetail from "./pages/SetlistDetail";
+import Gigs from "./pages/Gigs";
 import Profile from "./pages/Profile";
 import AdminUsers from "./pages/AdminUsers";
 import PerformanceSelection from "./pages/PerformanceSelection";
@@ -24,6 +25,7 @@ import NotFound from "./pages/NotFound";
 import { queryClient, persister } from "@/lib/queryClient";
 import { SyncIndicator } from "@/components/SyncIndicator";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { PullToRefresh } from "@/components/PullToRefresh";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -39,13 +41,9 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   }
 
   if (!session) {
-    // Redirect to login, but save the attempted location
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Ensure profile is loaded before rendering app content to avoid flicker
-  // or incomplete data states in children. 
-  // We only block if we have a session but absolutely no profile data yet.
   if (!profile) {
      return (
         <div className="min-h-screen flex items-center justify-center bg-background">
@@ -54,7 +52,6 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
      );
   }
 
-  // Profile Completion Check
   const isProfileComplete = profile.first_name && profile.last_name;
   if (!isProfileComplete && location.pathname !== '/profile') {
     return <Navigate to="/profile" replace />;
@@ -63,7 +60,6 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// Wrapper for public routes to redirect authenticated users
 const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
     const { session, loading } = useAuth();
     const location = useLocation();
@@ -80,32 +76,31 @@ const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
 
 const AppContent = () => {
     return (
-        <Routes>
-            <Route path="/login" element={
-                <PublicOnlyRoute>
-                    <Login />
-                </PublicOnlyRoute>
-            } />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/update-password" element={<UpdatePassword />} />
-            
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/songs" element={<ProtectedRoute><SongList /></ProtectedRoute>} />
-            <Route path="/songs/new" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
-            <Route path="/songs/:id" element={<ProtectedRoute><SongDetail /></ProtectedRoute>} />
-            <Route path="/songs/:id/edit" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
-            <Route path="/setlists" element={<ProtectedRoute><Setlists /></ProtectedRoute>} />
-            <Route path="/setlists/:id" element={<ProtectedRoute><SetlistDetail /></ProtectedRoute>} />
-            
-            {/* Performance Mode Routes */}
-            <Route path="/performance" element={<ProtectedRoute><PerformanceSelection /></ProtectedRoute>} />
-            <Route path="/performance/:id" element={<ProtectedRoute><PerformanceMode /></ProtectedRoute>} />
+        <PullToRefresh>
+            <Routes>
+                <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/update-password" element={<UpdatePassword />} />
+                
+                <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+                <Route path="/songs" element={<ProtectedRoute><SongList /></ProtectedRoute>} />
+                <Route path="/songs/new" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
+                <Route path="/songs/:id" element={<ProtectedRoute><SongDetail /></ProtectedRoute>} />
+                <Route path="/songs/:id/edit" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
+                <Route path="/setlists" element={<ProtectedRoute><Setlists /></ProtectedRoute>} />
+                <Route path="/setlists/:id" element={<ProtectedRoute><SetlistDetail /></ProtectedRoute>} />
+                <Route path="/gigs" element={<ProtectedRoute><Gigs /></ProtectedRoute>} />
+                
+                {/* Performance Mode Routes */}
+                <Route path="/performance" element={<ProtectedRoute><PerformanceSelection /></ProtectedRoute>} />
+                <Route path="/performance/:id" element={<ProtectedRoute><PerformanceMode /></ProtectedRoute>} />
 
-            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
-            
-            <Route path="*" element={<NotFound />} />
-        </Routes>
+                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+                
+                <Route path="*" element={<NotFound />} />
+            </Routes>
+        </PullToRefresh>
     );
 }
 
@@ -120,7 +115,14 @@ const App = () => {
         <AuthProvider>
             <MetronomeProvider>
                 <Toaster />
-                <Sonner position="top-center" />
+                {/* Sonner Configured for Mobile/Desktop Bottom Position + Close Button */}
+                <Sonner 
+                    position="bottom-center" 
+                    closeButton 
+                    toastOptions={{
+                        className: "mb-[60px] md:mb-0", // Lift above mobile nav
+                    }}
+                />
                 <SyncIndicator />
                 <BrowserRouter>
                     <AppContent />

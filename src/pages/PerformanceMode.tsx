@@ -5,34 +5,27 @@ import { getSetlist, getSongs } from "@/lib/api";
 import { Song, Setlist } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle 
+  Dialog, DialogContent, DialogHeader, DialogTitle 
 } from "@/components/ui/dialog";
+import { 
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Search, 
-  X, 
-  Loader2, 
-  Music, 
-  Minimize2
+  ChevronLeft, ChevronRight, Search, X, Loader2, Music, Minimize2, Menu, Timer, Edit
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useMetronome } from "@/components/MetronomeContext";
+import { toast } from "sonner";
 
 const PerformanceMode = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { openMetronome } = useMetronome();
   
   // Navigation State
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
@@ -58,25 +51,18 @@ const PerformanceMode = () => {
 
   // Derived Data
   const currentSet = setlist?.sets[currentSetIndex];
-  // If we have a temp song (from search), show it. Otherwise show current setlist song.
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
 
   // Handlers
   const handleNext = () => {
-    // If we are viewing a temp song, clear it and resume setlist at current position
     if (tempSong) {
       setTempSong(null);
       return;
     }
-
     if (!setlist || !currentSet) return;
-
-    // Check if there are more songs in this set
     if (currentSongIndex < currentSet.songs.length - 1) {
       setCurrentSongIndex(prev => prev + 1);
-    } 
-    // Check if there are more sets
-    else if (currentSetIndex < setlist.sets.length - 1) {
+    } else if (currentSetIndex < setlist.sets.length - 1) {
       setCurrentSetIndex(prev => prev + 1);
       setCurrentSongIndex(0);
     }
@@ -87,9 +73,7 @@ const PerformanceMode = () => {
       setTempSong(null);
       return;
     }
-
     if (!setlist) return;
-
     if (currentSongIndex > 0) {
       setCurrentSongIndex(prev => prev - 1);
     } else if (currentSetIndex > 0) {
@@ -109,10 +93,20 @@ const PerformanceMode = () => {
     }
   };
 
-  const handleAdHocSelect = (song: Song) => {
-    setTempSong(song);
-    setIsSearchOpen(false);
-    setSearchQuery("");
+  const handleStartMetronome = () => {
+      if(activeSong?.tempo) {
+          openMetronome(parseInt(activeSong.tempo));
+          toast.success(`Metronome: ${activeSong.tempo} BPM`);
+      } else {
+          openMetronome(120);
+          toast.info("Metronome started (Default 120)");
+      }
+  };
+
+  const handleEditSong = () => {
+      if(activeSong) {
+          navigate(`/songs/${activeSong.id}/edit`);
+      }
   };
 
   // Filter songs for search
@@ -214,16 +208,35 @@ const PerformanceMode = () => {
           </div>
         </ScrollArea>
         
-        {/* Ad-hoc Indicator */}
         {tempSong && (
             <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">
-                Ad-Hoc Request
+                Ad-Hoc
             </div>
         )}
       </div>
 
       {/* Bottom Navigation Bar */}
-      <div className="h-16 border-t bg-card shrink-0 flex items-center justify-between px-4 gap-4">
+      <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3">
+        {/* Hamburger Context Menu */}
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-12 w-12 shrink-0">
+                    <Menu className="h-5 w-5" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48 mb-2">
+                <DropdownMenuItem onClick={handleStartMetronome} className="py-3">
+                    <Timer className="mr-2 h-4 w-4" /> Start Metronome
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleEditSong} className="py-3">
+                    <Edit className="mr-2 h-4 w-4" /> Edit Song
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3">
+                    <Search className="mr-2 h-4 w-4" /> Quick Find
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button 
           variant="outline" 
           className="flex-1 h-12 text-base"
@@ -234,16 +247,7 @@ const PerformanceMode = () => {
         </Button>
 
         <Button 
-          variant="secondary" 
-          size="icon" 
-          className="h-12 w-12 rounded-full shrink-0 shadow-sm border"
-          onClick={() => setIsSearchOpen(true)}
-        >
-          <Search className="h-5 w-5" />
-        </Button>
-
-        <Button 
-          className={cn("flex-1 h-12 text-base", tempSong ? "bg-orange-600 hover:bg-orange-700" : "")}
+          className={cn("flex-[1.5] h-12 text-base", tempSong ? "bg-orange-600 hover:bg-orange-700" : "")}
           onClick={handleNext}
           disabled={!tempSong && isLastSong}
         >
@@ -278,15 +282,16 @@ const PerformanceMode = () => {
                             <div 
                                 key={song.id} 
                                 className="flex items-center p-4 hover:bg-accent cursor-pointer transition-colors"
-                                onClick={() => handleAdHocSelect(song)}
+                                onClick={() => {
+                                    setTempSong(song);
+                                    setIsSearchOpen(false);
+                                    setSearchQuery("");
+                                }}
                             >
                                 <div className="flex-1">
                                     <div className="font-medium">{song.title}</div>
                                     <div className="text-sm text-muted-foreground">{song.artist}</div>
                                 </div>
-                                {song.key && (
-                                    <span className="text-xs bg-secondary px-2 py-1 rounded text-muted-foreground">{song.key}</span>
-                                )}
                             </div>
                         ))
                     )}

@@ -136,7 +136,7 @@ const SongList = () => {
   
   // Safe Delete States
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
-  const [usageData, setUsageData] = useState<{setlistName: string, date: string}[]>([]);
+  const [usageData, setUsageData] = useState<{setlistName: string, date?: string}[]>([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
   const queryClient = useQueryClient();

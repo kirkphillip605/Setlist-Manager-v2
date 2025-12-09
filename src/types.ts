@@ -29,9 +29,20 @@ export interface Set {
 export interface Setlist {
   id: string;
   name: string;
-  date: string;
+  // date: string; // Deprecated
+  // is_tbd: boolean; // Deprecated
   is_personal: boolean;
-  is_tbd: boolean;
   is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
   sets: Set[];
+}
+
+export interface Gig {
+  id: string;
+  name: string;
+  date: string;
+  notes: string;
+  setlist_id: string | null;
+  setlist?: Setlist;
 }

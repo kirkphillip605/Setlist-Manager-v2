@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -24,9 +24,8 @@ interface AppLayoutProps {
 const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut, isAdmin } = useAuth(); // Use the global context
+  const { signOut, isAdmin } = useAuth();
   
-  // Theme logic for dynamic logo selection
   const { theme } = useTheme();
   const [isDarkMode, setIsDarkMode] = useState(theme === 'dark');
 
@@ -54,8 +53,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
   const navItems = [
     { icon: Home, label: "Home", path: "/" },
-    { icon: Music, label: "Songs", path: "/songs" },
+    { icon: CalendarDays, label: "Gigs", path: "/gigs" },
     { icon: ListMusic, label: "Setlists", path: "/setlists" },
+    { icon: Music, label: "Songs", path: "/songs" },
     { icon: PlayCircle, label: "Perform", path: "/performance" },
   ];
 
@@ -151,20 +151,20 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/90 backdrop-blur-xl px-6 py-2 pb-safe flex justify-between items-center z-50 h-[60px]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/90 backdrop-blur-xl px-2 py-2 pb-safe flex justify-between items-center z-50 h-[60px]">
         {navItems.map((item) => (
           <Link
             key={item.path}
             to={item.path}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 w-16 h-full rounded-lg transition-colors",
+              "flex flex-col items-center justify-center gap-1 w-full h-full rounded-lg transition-colors px-1",
               location.pathname === item.path
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <item.icon className={cn("w-6 h-6", location.pathname === item.path && "fill-current")} />
-            <span className="text-[10px] font-medium">{item.label}</span>
+            <item.icon className={cn("w-5 h-5", location.pathname === item.path && "fill-current")} />
+            <span className="text-[10px] font-medium truncate w-full text-center">{item.label}</span>
           </Link>
         ))}
       </nav>
