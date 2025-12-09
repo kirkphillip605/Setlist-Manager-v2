@@ -133,6 +133,10 @@ export const getSongUsage = async (songId: string): Promise<{ setlistName: strin
 // --- Setlists ---
 
 export const getSetlists = async (): Promise<Setlist[]> => {
+  const user = (await supabase.auth.getUser()).data.user;
+  
+  // We fetch all and filter client side or server side. 
+  // Ideally, RLS handles visibility, but we can also filter here.
   const { data, error } = await supabase
     .from('setlists')
     .select(`
@@ -149,7 +153,6 @@ export const getSetlists = async (): Promise<Setlist[]> => {
 
   if (error) throw error;
 
-  // Type assertion step to ensure data matches our expected Supabase structure
   const rawSetlists = data as unknown as SupabaseSetlist[];
 
   return rawSetlists.map(list => ({
@@ -165,7 +168,7 @@ export const getSetlists = async (): Promise<Setlist[]> => {
           .map(ss => ({
             id: ss.id,
             position: ss.position,
-            songId: ss.song_id, // Map snake_case to camelCase
+            songId: ss.song_id,
             song: ss.song || undefined 
           }))
       }))
@@ -205,23 +208,39 @@ export const getSetlist = async (id: string): Promise<Setlist | null> => {
           .map(ss => ({
             id: ss.id,
             position: ss.position,
-            songId: ss.song_id, // Map snake_case to camelCase
+            songId: ss.song_id,
             song: ss.song || undefined
           }))
       }))
   };
 };
 
-export const createSetlist = async (name: string, date: string) => {
+export const createSetlist = async (name: string, date: string, isPersonal: boolean = false) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
   const { data, error } = await supabase
     .from('setlists')
-    .insert({ name, date, user_id: user.id })
+    .insert({ name, date, user_id: user.id, is_personal: isPersonal })
     .select()
     .single();
     
+  if (error) throw error;
+  return data;
+};
+
+export const cloneSetlist = async (sourceId: string, newName: string, newDate: string, isPersonal: boolean) => {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error("No user");
+
+  const { data, error } = await supabase.rpc('clone_setlist', {
+    source_setlist_id: sourceId,
+    new_name: newName,
+    new_date: newDate,
+    is_personal_copy: isPersonal,
+    owner_id: user.id
+  });
+
   if (error) throw error;
   return data;
 };
@@ -237,7 +256,6 @@ export const createSet = async (setlistId: string, name: string, position: numbe
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
-  // Get owner of setlist to ensure data consistency
   const { data: parent } = await supabase
     .from('setlists')
     .select('user_id')

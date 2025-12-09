@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMetronome } from "@/components/MetronomeContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { searchMusic, fetchAudioFeatures } from "@/lib/musicApi";
 import { motion } from "framer-motion";
 import { 
@@ -44,6 +44,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
@@ -53,7 +54,7 @@ const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { openMetronome, closeMetronome, isPlaying } = useMetronome();
+  const { openMetronome, closeMetronome, isPlaying, bpm, isOpen } = useMetronome();
   
   const [isAdmin, setIsAdmin] = useState(false);
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
@@ -64,6 +65,12 @@ const SongDetail = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [usageData, setUsageData] = useState<{setlistName: string, date: string}[]>([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
+
+  // BPM Monitoring State
+  const [showBpmDialog, setShowBpmDialog] = useState(false);
+  const [initialBpm, setInitialBpm] = useState<number | null>(null);
+  const [detectedBpm, setDetectedBpm] = useState<number | null>(null);
+  const wasMetronomeOpen = useRef(false);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -81,6 +88,29 @@ const SongDetail = () => {
     queryFn: () => getSong(id!),
     enabled: !!id
   });
+
+  // Monitor BPM changes
+  useEffect(() => {
+    if (isOpen && !wasMetronomeOpen.current) {
+        // Just opened
+        wasMetronomeOpen.current = true;
+        if (song?.tempo) setInitialBpm(parseInt(song.tempo));
+    } 
+    else if (!isOpen && wasMetronomeOpen.current) {
+        // Just closed
+        wasMetronomeOpen.current = false;
+        
+        // If we have a song tempo, and the metronome BPM is different
+        // OR if we don't have a song tempo and one was set on metronome
+        const currentMetronomeBpm = bpm;
+        const songBpm = song?.tempo ? parseInt(song.tempo) : null;
+
+        if (songBpm !== currentMetronomeBpm) {
+            setDetectedBpm(currentMetronomeBpm);
+            setShowBpmDialog(true);
+        }
+    }
+  }, [isOpen, bpm, song]);
 
   const deleteMutation = useMutation({
     mutationFn: deleteSong,
@@ -100,6 +130,7 @@ const SongDetail = () => {
         queryClient.invalidateQueries({ queryKey: ['song', id] });
         toast.success("Song updated");
         setIsSearchOpen(false);
+        setShowBpmDialog(false);
     }
   });
 
@@ -122,15 +153,20 @@ const SongDetail = () => {
     updateSongMutation.mutate({ ...song, is_retired: checked });
   };
 
+  const saveBpm = () => {
+      if (!song || !detectedBpm) return;
+      updateSongMutation.mutate({ ...song, tempo: detectedBpm.toString() });
+  };
+
   const toggleMetronome = () => {
     if (isPlaying) {
       closeMetronome();
     } else {
       if (song?.tempo) {
-        const bpm = parseInt(song.tempo);
-        if (!isNaN(bpm)) {
-          openMetronome(bpm);
-          toast.success(`Metronome started at ${bpm} BPM`);
+        const bpmVal = parseInt(song.tempo);
+        if (!isNaN(bpmVal)) {
+          openMetronome(bpmVal);
+          toast.success(`Metronome started at ${bpmVal} BPM`);
         } else {
           toast.error("Invalid tempo format");
         }
@@ -483,6 +519,22 @@ const SongDetail = () => {
                     >
                         {usageData.length > 0 ? "Delete Anyway" : "Delete Permanently"}
                     </Button>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        {/* BPM Update Dialog */}
+        <AlertDialog open={showBpmDialog} onOpenChange={setShowBpmDialog}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Update Song Tempo?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        You changed the metronome to <b>{detectedBpm} BPM</b>. Would you like to save this new tempo to the song (was {song.tempo || "unset"})?
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setShowBpmDialog(false)}>No, Keep Old</AlertDialogCancel>
+                    <AlertDialogAction onClick={saveBpm}>Yes, Update Song</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

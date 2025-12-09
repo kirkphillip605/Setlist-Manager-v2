@@ -179,8 +179,8 @@ const SongList = () => {
   const fuse = useMemo(() => {
     return new Fuse(songs, {
       keys: ['title', 'artist', 'lyrics'],
-      threshold: 0.35, // Fuzzy threshold (0.0 = perfect match, 1.0 = match anything)
-      ignoreLocation: true, // Find match anywhere in string
+      threshold: 0.35, // Fuzzy threshold
+      ignoreLocation: true, 
       useExtendedSearch: true,
     });
   }, [songs]);
@@ -193,9 +193,9 @@ const SongList = () => {
       result = fuse.search(searchTerm).map(r => r.item);
     }
 
-    // 2. Filter Retired
+    // 2. Filter Retired - STRICT CHECK
     if (!showRetired) {
-      result = result.filter(s => !s.is_retired);
+      result = result.filter(s => s.is_retired !== true);
     }
 
     // 3. Sort
@@ -265,8 +265,11 @@ const SongList = () => {
             
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-xl">
+                    <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-xl relative">
                         <Filter className="h-4 w-4" />
+                        {showRetired && (
+                            <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />
+                        )}
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">

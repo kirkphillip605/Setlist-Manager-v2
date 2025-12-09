@@ -30,5 +30,6 @@ export interface Setlist {
   id: string;
   name: string;
   date: string;
+  is_personal: boolean;
   sets: Set[];
 }
