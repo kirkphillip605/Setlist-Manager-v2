@@ -2,8 +2,8 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -13,14 +13,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { 
   getSetlists, createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage 
 } from "@/lib/api";
 import { 
   Plus, Trash2, Loader2, Copy, MoreVertical, 
-  Lock, Globe, Star, Filter, AlertTriangle, ArrowRight
+  Lock, Globe, Filter, AlertTriangle, Users
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ const Setlists = () => {
   const [sortBy, setSortBy] = useState<"name" | "created" | "updated">("name");
   
   // Create Form State
+  const [isTypeSelectionOpen, setIsTypeSelectionOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<"public" | "personal" | "clone">("public");
   const [sourceSetlistId, setSourceSetlistId] = useState("");
@@ -134,15 +135,9 @@ const Setlists = () => {
                 <p className="text-muted-foreground text-sm">Manage song collections.</p>
             </div>
             
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button className="rounded-full shadow-lg"><Plus className="mr-2 h-4 w-4" /> Create Setlist</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openCreateModal("public")}><Globe className="mr-2 h-4 w-4" /> Public Band Setlist</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openCreateModal("personal")}><Lock className="mr-2 h-4 w-4" /> Private Setlist</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            <Button onClick={() => setIsTypeSelectionOpen(true)} className="rounded-full shadow-lg">
+                <Plus className="mr-2 h-4 w-4" /> Create Setlist
+            </Button>
          </div>
 
          <div className="flex items-center justify-between gap-4">
@@ -173,7 +168,7 @@ const Setlists = () => {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredSetlists.map(list => (
                     <Link key={list.id} to={`/setlists/${list.id}`}>
-                        <Card className={`hover:bg-accent/40 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
+                        <Card className={`hover:bg-accent/40 hover:border-primary/50 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
                             <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
                                 <div className="space-y-1">
                                     <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
@@ -209,6 +204,47 @@ const Setlists = () => {
             </div>
         )}
 
+         {/* Type Selection Dialog */}
+         <Dialog open={isTypeSelectionOpen} onOpenChange={setIsTypeSelectionOpen}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Create New Setlist</DialogTitle>
+                    <DialogDescription>Choose the type of setlist you want to create.</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+                    <Card 
+                        className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all group"
+                        onClick={() => { setIsTypeSelectionOpen(false); openCreateModal("public"); }}
+                    >
+                        <CardHeader className="text-center pb-2">
+                            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Users className="w-6 h-6" />
+                            </div>
+                            <CardTitle className="text-base">Band Setlist</CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-center text-sm text-muted-foreground px-4 pb-4">
+                            Visible to all band members. Perfect for gigs and rehearsals.
+                        </CardContent>
+                    </Card>
+
+                    <Card 
+                        className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all group"
+                        onClick={() => { setIsTypeSelectionOpen(false); openCreateModal("personal"); }}
+                    >
+                        <CardHeader className="text-center pb-2">
+                            <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-2 text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Lock className="w-6 h-6" />
+                            </div>
+                            <CardTitle className="text-base">Personal Setlist</CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-center text-sm text-muted-foreground px-4 pb-4">
+                            Visible only to you. Great for practice or ideas.
+                        </CardContent>
+                    </Card>
+                </div>
+            </DialogContent>
+         </Dialog>
+
          {/* Create Modal */}
          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogContent>
@@ -216,7 +252,12 @@ const Setlists = () => {
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
                         <Label>Name</Label>
-                        <Input value={newListName} onChange={e => setNewListName(e.target.value)} placeholder="Name..." />
+                        <Input 
+                            value={newListName} 
+                            onChange={e => setNewListName(e.target.value)} 
+                            placeholder={createMode === 'public' ? "e.g. Summer Tour 2024" : "e.g. My Practice List"} 
+                            autoFocus
+                        />
                     </div>
                     {createMode === 'public' && !hasDefault && (
                         <div className="flex items-center gap-2">
@@ -225,7 +266,7 @@ const Setlists = () => {
                         </div>
                     )}
                     <DialogFooter>
-                        <Button onClick={() => createMutation.mutate()}>Create</Button>
+                        <Button onClick={() => createMutation.mutate()} disabled={!newListName.trim()}>Create</Button>
                     </DialogFooter>
                 </div>
             </DialogContent>
