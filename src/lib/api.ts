@@ -97,6 +97,17 @@ export const getGigs = async (): Promise<Gig[]> => {
   return data as Gig[];
 };
 
+export const getGig = async (id: string): Promise<Gig | null> => {
+  const { data, error } = await supabase
+    .from('gigs')
+    .select(`*, setlist:setlists(id, name)`)
+    .eq('id', id)
+    .single();
+
+  if (error) return null;
+  return data as Gig;
+};
+
 export const saveGig = async (gig: Partial<Gig>) => {
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) throw new Error("No user");
@@ -106,7 +117,13 @@ export const saveGig = async (gig: Partial<Gig>) => {
         date: gig.date,
         notes: gig.notes,
         setlist_id: gig.setlist_id,
-        user_id: user.id
+        user_id: user.id,
+        // New fields
+        venue_name: gig.venue_name,
+        address: gig.address,
+        city: gig.city,
+        state: gig.state,
+        zip: gig.zip
     };
 
     if (gig.id) {

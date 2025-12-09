@@ -1,101 +1,144 @@
 import AppLayout from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
-import { Music, ListMusic, Plus } from "lucide-react";
-import { getSongs, getSetlists } from "@/lib/api";
+import { Link, useNavigate } from "react-router-dom";
+import { Music, ListMusic, Plus, CalendarDays, Lock, Globe, ArrowRight, Eye } from "lucide-react";
+import { getSongs, getSetlists, getGigs } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 
 const Index = () => {
-  const { data: songs = [] } = useQuery({
-    queryKey: ['songs'],
-    queryFn: getSongs
-  });
+  const navigate = useNavigate();
 
-  const { data: setlists = [] } = useQuery({
-    queryKey: ['setlists'],
-    queryFn: getSetlists
-  });
+  const { data: songs = [] } = useQuery({ queryKey: ['songs'], queryFn: getSongs });
+  const { data: setlists = [] } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
+  const { data: gigs = [] } = useQuery({ queryKey: ['gigs'], queryFn: getGigs });
 
-  const recentSongs = [...songs].sort((a, b) => {
-    // Assuming createdAt might be available but optional in type, 
-    // or just relying on order returned by DB (which we set to title asc, but here we want recent)
-    // Since we don't have createdAt in the simple Song type explicitly shown before, 
-    // we'll just slice the array. In a real app, we'd sort by date.
-    return 0; 
-  }).slice(0, 5);
+  const bandSetlists = setlists.filter(s => !s.is_personal);
+  const personalSetlists = setlists.filter(s => s.is_personal);
+  
+  const today = new Date().toISOString().split('T')[0];
+  const upcomingGigs = gigs.filter(g => g.date >= today).sort((a,b) => a.date.localeCompare(b.date));
+  const todaysGig = gigs.find(g => g.date === today);
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 pb-20">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back to your band management app.</p>
+          <p className="text-muted-foreground">Welcome back.</p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Songs</CardTitle>
-              <Music className="h-4 w-4 text-muted-foreground" />
+        {/* Gigs Card (Top Priority) */}
+        <Card className="border-l-4 border-l-primary shadow-md">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <CalendarDays className="h-5 w-5 text-primary" />
+                    Gigs
+                </CardTitle>
+                <div className="text-2xl font-bold">{upcomingGigs.length} <span className="text-sm font-normal text-muted-foreground">Upcoming</span></div>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{songs.length}</div>
-              <div className="mt-4">
-                <Button asChild size="sm" className="w-full">
-                  <Link to="/songs/new">
-                    <Plus className="mr-2 h-4 w-4" /> Add Song
-                  </Link>
-                </Button>
-              </div>
+            <CardContent className="space-y-4">
+                {todaysGig && (
+                    <div 
+                        className="bg-primary/10 border border-primary/20 p-4 rounded-lg flex items-center justify-between cursor-pointer hover:bg-primary/20 transition-colors"
+                        onClick={() => navigate(`/gigs/${todaysGig.id}`)}
+                    >
+                        <div>
+                            <div className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Happening Today</div>
+                            <div className="font-bold text-lg">{todaysGig.name}</div>
+                            <div className="text-sm text-muted-foreground">{todaysGig.venue_name || "No Venue Set"}</div>
+                        </div>
+                        <ArrowRight className="h-5 w-5 text-primary" />
+                    </div>
+                )}
+                
+                <div className="flex gap-3">
+                    <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
+                        <Link to="/gigs">
+                            <Plus className="mr-2 h-4 w-4" /> Create Gig
+                        </Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
+                        <Link to="/gigs">
+                             <Eye className="mr-2 h-4 w-4" /> View Gigs
+                        </Link>
+                    </Button>
+                </div>
             </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Setlists</CardTitle>
-              <ListMusic className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{setlists.length}</div>
-              <div className="mt-4">
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <Link to="/setlists">View Setlists</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        </Card>
 
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Recently Added Songs</h2>
-          {recentSongs.length === 0 ? (
-            <div className="text-center py-10 bg-accent/20 rounded-lg border border-dashed">
-              <p className="text-muted-foreground mb-2">No songs added yet.</p>
-              <Button asChild variant="link">
-                <Link to="/songs/new">Add your first song</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {recentSongs.map((song) => (
-                <Link key={song.id} to={`/songs/${song.id}`}>
-                  <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg truncate">{song.title}</CardTitle>
-                      <p className="text-sm text-muted-foreground truncate">{song.artist}</p>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        {song.key && <span className="bg-secondary px-2 py-1 rounded">{song.key}</span>}
-                        {song.tempo && <span className="bg-secondary px-2 py-1 rounded">{song.tempo} BPM</span>}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          )}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+             {/* Songs Card */}
+             <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                         <Music className="h-4 w-4" /> Songs
+                    </CardTitle>
+                    <div className="text-2xl font-bold">{songs.length}</div>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-3 mt-4">
+                        <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                            <Link to="/songs/new">
+                                <Plus className="mr-2 h-4 w-4" /> Create Song
+                            </Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
+                            <Link to="/songs">
+                                <Eye className="mr-2 h-4 w-4" /> View Songs
+                            </Link>
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Band Setlists */}
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                         <Globe className="h-4 w-4" /> Band Setlists
+                    </CardTitle>
+                    <div className="text-2xl font-bold">{bandSetlists.length}</div>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-3 mt-4">
+                        <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                            <Link to="/setlists">
+                                <Plus className="mr-2 h-4 w-4" /> Create Setlist
+                            </Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
+                            <Link to="/setlists">
+                                <Eye className="mr-2 h-4 w-4" /> View Setlists
+                            </Link>
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Private Setlists */}
+             <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                         <Lock className="h-4 w-4" /> Private Setlists
+                    </CardTitle>
+                    <div className="text-2xl font-bold">{personalSetlists.length}</div>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-3 mt-4">
+                        <Button asChild size="sm" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                            <Link to="/setlists">
+                                <Plus className="mr-2 h-4 w-4" /> Create Setlist
+                            </Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline" className="flex-1 border-primary text-primary hover:bg-primary/5">
+                            <Link to="/setlists">
+                                <Eye className="mr-2 h-4 w-4" /> View Setlists
+                            </Link>
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
       </div>
     </AppLayout>

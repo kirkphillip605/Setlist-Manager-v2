@@ -92,56 +92,50 @@ export const SetCard = ({
                                     </span>
                                 </div>
 
-                                {/* Actions */}
-                                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                    <div className="flex flex-col mr-1">
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-8 w-8" 
+                                {/* Actions - Context Menu Only */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0">
+                                            <MoreVertical className="h-5 w-5" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-56 p-2">
+                                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                        <DropdownMenuItem onClick={() => onRemoveSong(setSong.id)} className="text-destructive focus:text-destructive py-3">
+                                            <Trash2 className="mr-2 h-4 w-4" /> Remove from Set
+                                        </DropdownMenuItem>
+                                        
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuLabel>Change Order</DropdownMenuLabel>
+                                        <DropdownMenuItem 
                                             disabled={index === 0}
                                             onClick={() => onMoveOrder(set.id, index, 'up')}
+                                            className="py-3"
                                         >
-                                            <ArrowUp className="h-4 w-4" />
-                                        </Button>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-8 w-8"
+                                            <ArrowUp className="mr-2 h-4 w-4" /> Move Up
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem 
                                             disabled={index === set.songs.length - 1}
                                             onClick={() => onMoveOrder(set.id, index, 'down')}
+                                            className="py-3"
                                         >
-                                            <ArrowDown className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                    
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-10 w-10">
-                                                <MoreVertical className="h-5 w-5" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="p-2">
-                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                            <DropdownMenuItem onClick={() => onRemoveSong(setSong.id)} className="text-destructive focus:text-destructive py-3">
-                                                <Trash2 className="mr-2 h-4 w-4" /> Remove from Set
+                                            <ArrowDown className="mr-2 h-4 w-4" /> Move Down
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuLabel>Move to Set...</DropdownMenuLabel>
+                                        {setlist.sets.map(targetSet => (
+                                            <DropdownMenuItem 
+                                                key={targetSet.id}
+                                                disabled={targetSet.id === set.id}
+                                                onClick={() => onMoveToSet(setSong.id, targetSet.id)}
+                                                className="py-3"
+                                            >
+                                                <ArrowRightLeft className="mr-2 h-4 w-4" /> {targetSet.name}
                                             </DropdownMenuItem>
-                                            
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuLabel>Move to Set...</DropdownMenuLabel>
-                                            {setlist.sets.map(targetSet => (
-                                                <DropdownMenuItem 
-                                                    key={targetSet.id}
-                                                    disabled={targetSet.id === set.id}
-                                                    onClick={() => onMoveToSet(setSong.id, targetSet.id)}
-                                                    className="py-3"
-                                                >
-                                                    <ArrowRightLeft className="mr-2 h-4 w-4" /> {targetSet.name}
-                                                </DropdownMenuItem>
-                                            ))}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </div>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         ))}
                     </div>

@@ -16,6 +16,7 @@ import SongDetail from "./pages/SongDetail";
 import Setlists from "./pages/Setlists";
 import SetlistDetail from "./pages/SetlistDetail";
 import Gigs from "./pages/Gigs";
+import GigDetail from "./pages/GigDetail";
 import Profile from "./pages/Profile";
 import AdminUsers from "./pages/AdminUsers";
 import PerformanceSelection from "./pages/PerformanceSelection";
@@ -25,7 +26,6 @@ import NotFound from "./pages/NotFound";
 import { queryClient, persister } from "@/lib/queryClient";
 import { SyncIndicator } from "@/components/SyncIndicator";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
-import { PullToRefresh } from "@/components/PullToRefresh";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -76,31 +76,30 @@ const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
 
 const AppContent = () => {
     return (
-        <PullToRefresh>
-            <Routes>
-                <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
-                <Route path="/update-password" element={<UpdatePassword />} />
-                
-                <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-                <Route path="/songs" element={<ProtectedRoute><SongList /></ProtectedRoute>} />
-                <Route path="/songs/new" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
-                <Route path="/songs/:id" element={<ProtectedRoute><SongDetail /></ProtectedRoute>} />
-                <Route path="/songs/:id/edit" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
-                <Route path="/setlists" element={<ProtectedRoute><Setlists /></ProtectedRoute>} />
-                <Route path="/setlists/:id" element={<ProtectedRoute><SetlistDetail /></ProtectedRoute>} />
-                <Route path="/gigs" element={<ProtectedRoute><Gigs /></ProtectedRoute>} />
-                
-                {/* Performance Mode Routes */}
-                <Route path="/performance" element={<ProtectedRoute><PerformanceSelection /></ProtectedRoute>} />
-                <Route path="/performance/:id" element={<ProtectedRoute><PerformanceMode /></ProtectedRoute>} />
+        <Routes>
+            <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/update-password" element={<UpdatePassword />} />
+            
+            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+            <Route path="/songs" element={<ProtectedRoute><SongList /></ProtectedRoute>} />
+            <Route path="/songs/new" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
+            <Route path="/songs/:id" element={<ProtectedRoute><SongDetail /></ProtectedRoute>} />
+            <Route path="/songs/:id/edit" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
+            <Route path="/setlists" element={<ProtectedRoute><Setlists /></ProtectedRoute>} />
+            <Route path="/setlists/:id" element={<ProtectedRoute><SetlistDetail /></ProtectedRoute>} />
+            <Route path="/gigs" element={<ProtectedRoute><Gigs /></ProtectedRoute>} />
+            <Route path="/gigs/:id" element={<ProtectedRoute><GigDetail /></ProtectedRoute>} />
+            
+            {/* Performance Mode Routes */}
+            <Route path="/performance" element={<ProtectedRoute><PerformanceSelection /></ProtectedRoute>} />
+            <Route path="/performance/:id" element={<ProtectedRoute><PerformanceMode /></ProtectedRoute>} />
 
-                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
-                
-                <Route path="*" element={<NotFound />} />
-            </Routes>
-        </PullToRefresh>
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+            
+            <Route path="*" element={<NotFound />} />
+        </Routes>
     );
 }
 

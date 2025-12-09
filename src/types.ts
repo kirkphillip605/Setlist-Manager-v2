@@ -45,4 +45,11 @@ export interface Gig {
   notes: string;
   setlist_id: string | null;
   setlist?: Setlist;
+  
+  // New Fields
+  venue_name?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
 }

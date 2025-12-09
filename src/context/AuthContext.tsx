@@ -33,18 +33,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
+    // Failsafe timeout to prevent infinite loading
+    const timer = setTimeout(() => {
+        if (mounted && loading) {
+            console.warn("Auth loading timed out, forcing completion");
+            setLoading(false);
+        }
+    }, 5000);
+
     // 1. Get initial session
     const initializeAuth = async () => {
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        setSession(initialSession);
-        if (initialSession) {
-          await fetchProfile(initialSession.user.id);
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        if (error) throw error;
+
+        if (mounted) {
+            setSession(initialSession);
+            if (initialSession) {
+                await fetchProfile(initialSession.user.id);
+            }
         }
       } catch (error) {
         console.error("Auth init error:", error);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
@@ -52,6 +67,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!mounted) return;
+      
       setSession(newSession);
       
       if (newSession) {
@@ -67,18 +84,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     return () => {
+      mounted = false;
+      clearTimeout(timer);
       subscription.unsubscribe();
     };
   }, []);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    
-    if (data) setProfile(data as Profile);
+    try {
+        const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+        
+        if (!error && data) {
+            setProfile(data as Profile);
+        }
+    } catch (e) {
+        console.error("Profile fetch error", e);
+    }
   };
 
   const signOut = async () => {
