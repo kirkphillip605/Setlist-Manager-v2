@@ -1,10 +1,9 @@
 import AppLayout from "@/components/AppLayout";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSetlists, getGigs } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, PlayCircle, Music2, CalendarDays, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronRight, Music2, Users, Lock } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -17,14 +16,16 @@ const PerformanceSelection = () => {
   const { data: setlists = [], isLoading: loadingSetlists } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
   const { data: gigs = [], isLoading: loadingGigs } = useQuery({ queryKey: ['gigs'], queryFn: getGigs });
 
-  const upcomingGigs = gigs.filter(g => new Date(g.date) >= new Date(new Date().setDate(new Date().getDate() - 1))); // Show today + future
+  // Filter Gigs: Today and Future
+  const upcomingGigs = gigs.filter(g => new Date(g.date) >= new Date(new Date().setDate(new Date().getDate() - 1)));
 
-  const handleGigSelect = (setlistId: string | null) => {
-    if (!setlistId) {
+  const handleGigSelect = (gig: any) => {
+    if (!gig.setlist_id) {
         toast.error("This gig has no setlist attached!");
         return;
     }
-    navigate(`/performance/${setlistId}`);
+    // Pass gigId via query param
+    navigate(`/performance/${gig.setlist_id}?gigId=${gig.id}`);
   };
 
   return (
@@ -35,40 +36,34 @@ const PerformanceSelection = () => {
           <p className="text-muted-foreground text-lg">Choose your mode to begin.</p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
             <Card 
-                className="hover:border-primary transition-all cursor-pointer group hover:shadow-lg hover:-translate-y-1 duration-200"
+                className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all group border-2"
                 onClick={() => setMode("gig")}
             >
-                <CardHeader>
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                        <CalendarDays className="w-6 h-6" />
+                <CardHeader className="text-center pb-2">
+                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                        <CalendarDays className="w-8 h-8" />
                     </div>
                     <CardTitle className="text-2xl">Start Gig</CardTitle>
-                    <CardDescription>Play an upcoming show. Select from your Gigs list.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded">
-                        Recommended for live shows. Requires a configured Gig.
-                    </div>
+                <CardContent className="text-center text-muted-foreground px-6 pb-6">
+                    Play an upcoming show. Optimized for live performance with setlist management.
                 </CardContent>
             </Card>
 
             <Card 
-                className="hover:border-secondary transition-all cursor-pointer group hover:shadow-lg hover:-translate-y-1 duration-200"
+                className="cursor-pointer hover:border-secondary hover:bg-secondary/20 transition-all group border-2"
                 onClick={() => setMode("practice")}
             >
-                <CardHeader>
-                    <div className="w-12 h-12 bg-secondary/30 rounded-full flex items-center justify-center mb-4 text-foreground group-hover:bg-secondary group-hover:text-secondary-foreground transition-colors">
-                        <Music2 className="w-6 h-6" />
+                <CardHeader className="text-center pb-2">
+                    <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4 text-foreground group-hover:bg-secondary-foreground group-hover:text-secondary transition-colors">
+                        <Music2 className="w-8 h-8" />
                     </div>
                     <CardTitle className="text-2xl">Start Practice</CardTitle>
-                    <CardDescription>Rehearse any setlist from your library.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded">
-                        Access all Band and Personal setlists.
-                    </div>
+                <CardContent className="text-center text-muted-foreground px-6 pb-6">
+                    Rehearse any setlist from your library. Includes metronome and editing tools.
                 </CardContent>
             </Card>
         </div>
@@ -90,7 +85,7 @@ const PerformanceSelection = () => {
                                     <div 
                                         key={gig.id} 
                                         className="p-4 hover:bg-accent cursor-pointer flex items-center justify-between group"
-                                        onClick={() => handleGigSelect(gig.setlist_id)}
+                                        onClick={() => handleGigSelect(gig)}
                                     >
                                         <div>
                                             <div className="font-bold">{gig.name}</div>
@@ -111,10 +106,11 @@ const PerformanceSelection = () => {
                                         onClick={() => navigate(`/performance/${list.id}`)}
                                     >
                                         <div>
-                                            <div className="font-bold">{list.name}</div>
-                                            <div className="text-xs text-muted-foreground flex gap-2">
-                                                {list.is_personal ? "Personal" : "Band"} 
-                                                <span>•</span> 
+                                            <div className="font-bold flex items-center gap-2">
+                                                {list.is_personal ? <Lock className="w-3 h-3 text-muted-foreground" /> : <Users className="w-3 h-3 text-muted-foreground" />}
+                                                {list.name}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground flex gap-2 mt-1">
                                                 {list.sets.reduce((acc, s) => acc + s.songs.length, 0)} Songs
                                             </div>
                                         </div>

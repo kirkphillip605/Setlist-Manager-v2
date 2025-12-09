@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { getSetlist, getSongs } from "@/lib/api";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getSetlist, getSongs, addSkippedSong, getSkippedSongs, removeSkippedSong } from "@/lib/api";
 import { Song, Setlist } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
@@ -15,26 +15,35 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, X, Loader2, Music, Minimize2, Menu, Timer, Edit
+  ChevronLeft, ChevronRight, Search, X, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMetronome } from "@/components/MetronomeContext";
 import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const PerformanceMode = () => {
-  const { id } = useParams();
+  const { id } = useParams(); // Setlist ID
+  const [searchParams] = useSearchParams();
+  const gigId = searchParams.get('gigId');
+  const isGigMode = !!gigId;
+
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { openMetronome } = useMetronome();
   
   // Navigation State
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   
-  // Ad-hoc Search State
+  // Ad-hoc / Search State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tempSong, setTempSong] = useState<Song | null>(null);
+
+  // Skipped Songs State
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   // Fetch Data
   const { data: setlist, isLoading } = useQuery({
@@ -46,11 +55,62 @@ const PerformanceMode = () => {
   const { data: allSongs = [] } = useQuery({
     queryKey: ['songs'],
     queryFn: getSongs,
-    enabled: isSearchOpen // Only fetch when search is opened
+    enabled: !isGigMode && isSearchOpen // Only fetch in practice mode search
+  });
+
+  const { data: skippedSongs = [] } = useQuery({
+    queryKey: ['skipped', gigId],
+    queryFn: () => getSkippedSongs(gigId!),
+    enabled: isGigMode
+  });
+
+  // Mutations
+  const skipSongMutation = useMutation({
+      mutationFn: async () => {
+          if (gigId && activeSong) {
+              await addSkippedSong(gigId, activeSong.id);
+          }
+      },
+      onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['skipped', gigId] });
+          toast.success("Song skipped & saved for later");
+          handleNext();
+          setShowSkipConfirm(false);
+      }
+  });
+
+  const removeSkippedMutation = useMutation({
+      mutationFn: async (songId: string) => {
+          if (gigId) await removeSkippedSong(gigId, songId);
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['skipped', gigId] });
+        toast.success("Removed from skipped list");
+      }
   });
 
   // Derived Data
-  const currentSet = setlist?.sets[currentSetIndex];
+  const sets = useMemo(() => {
+      if (!setlist) return [];
+      const baseSets = [...setlist.sets];
+      if (isGigMode && skippedSongs.length > 0) {
+          // Add virtual set
+          baseSets.push({
+              id: 'skipped-set',
+              name: 'Skipped Songs',
+              position: 999,
+              songs: skippedSongs.map((s, idx) => ({
+                  id: `skip-${s.id}-${idx}`,
+                  position: idx,
+                  songId: s.id,
+                  song: s
+              }))
+          });
+      }
+      return baseSets;
+  }, [setlist, skippedSongs, isGigMode]);
+
+  const currentSet = sets[currentSetIndex];
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
 
   // Handlers
@@ -62,7 +122,7 @@ const PerformanceMode = () => {
     if (!setlist || !currentSet) return;
     if (currentSongIndex < currentSet.songs.length - 1) {
       setCurrentSongIndex(prev => prev + 1);
-    } else if (currentSetIndex < setlist.sets.length - 1) {
+    } else if (currentSetIndex < sets.length - 1) {
       setCurrentSetIndex(prev => prev + 1);
       setCurrentSongIndex(0);
     }
@@ -78,7 +138,7 @@ const PerformanceMode = () => {
       setCurrentSongIndex(prev => prev - 1);
     } else if (currentSetIndex > 0) {
       const prevSetIndex = currentSetIndex - 1;
-      const prevSet = setlist.sets[prevSetIndex];
+      const prevSet = sets[prevSetIndex];
       setCurrentSetIndex(prevSetIndex);
       setCurrentSongIndex(prevSet.songs.length - 1);
     }
@@ -125,7 +185,7 @@ const PerformanceMode = () => {
 
   const isFirstSong = !tempSong && currentSetIndex === 0 && currentSongIndex === 0;
   const isLastSong = !tempSong && 
-    currentSetIndex === setlist.sets.length - 1 && 
+    currentSetIndex === sets.length - 1 && 
     currentSongIndex === (currentSet?.songs.length || 0) - 1;
 
   return (
@@ -142,7 +202,7 @@ const PerformanceMode = () => {
               <SelectValue placeholder="Select Set" />
             </SelectTrigger>
             <SelectContent>
-              {setlist.sets.map((set, idx) => (
+              {sets.map((set, idx) => (
                 <SelectItem key={set.id} value={idx.toString()}>
                   {set.name}
                 </SelectItem>
@@ -151,10 +211,22 @@ const PerformanceMode = () => {
           </Select>
         </div>
         
-        <div className="flex-1 text-center hidden md:block">
-            <span className="font-bold text-lg">{activeSong?.title}</span>
-            <span className="text-muted-foreground ml-2 text-sm">{activeSong?.artist}</span>
-        </div>
+        {/* Top Center Actions (Gig Mode Skip) */}
+        {isGigMode && activeSong && !tempSong && currentSet?.id !== 'skipped-set' ? (
+             <Button 
+                variant="outline" 
+                size="sm" 
+                className="mx-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+                onClick={() => setShowSkipConfirm(true)}
+             >
+                 <Forward className="w-4 h-4 mr-2" /> Skip
+             </Button>
+        ) : (
+            <div className="flex-1 text-center hidden md:block">
+                <span className="font-bold text-lg">{activeSong?.title}</span>
+                <span className="text-muted-foreground ml-2 text-sm">{activeSong?.artist}</span>
+            </div>
+        )}
 
         <div className="flex-1 flex justify-end">
           <Button variant="ghost" size="sm" onClick={() => navigate('/performance')}>
@@ -191,6 +263,18 @@ const PerformanceMode = () => {
                             {activeSong.note}
                          </div>
                     )}
+                    
+                    {/* Mark Done for Skipped Songs */}
+                    {isGigMode && currentSet?.id === 'skipped-set' && (
+                        <Button 
+                            size="sm" 
+                            variant="secondary" 
+                            className="bg-green-100 text-green-800 hover:bg-green-200"
+                            onClick={() => removeSkippedMutation.mutate(activeSong.id)}
+                        >
+                            <Check className="w-4 h-4 mr-2" /> Mark Played
+                        </Button>
+                    )}
                 </div>
 
                 <div className="whitespace-pre-wrap font-mono text-lg md:text-xl leading-relaxed pb-20">
@@ -217,25 +301,30 @@ const PerformanceMode = () => {
 
       {/* Bottom Navigation Bar */}
       <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3">
-        {/* Hamburger Context Menu */}
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-12 w-12 shrink-0">
-                    <Menu className="h-5 w-5" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48 mb-2">
-                <DropdownMenuItem onClick={handleStartMetronome} className="py-3">
-                    <Timer className="mr-2 h-4 w-4" /> Start Metronome
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleEditSong} className="py-3">
-                    <Edit className="mr-2 h-4 w-4" /> Edit Song
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3">
-                    <Search className="mr-2 h-4 w-4" /> Quick Find
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Hamburger Context Menu (PRACTICE ONLY) */}
+        {!isGigMode ? (
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-12 w-12 shrink-0">
+                        <Menu className="h-5 w-5" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48 mb-2">
+                    <DropdownMenuItem onClick={handleStartMetronome} className="py-3">
+                        <Timer className="mr-2 h-4 w-4" /> Start Metronome
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleEditSong} className="py-3">
+                        <Edit className="mr-2 h-4 w-4" /> Edit Song
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3">
+                        <Search className="mr-2 h-4 w-4" /> Quick Find
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        ) : (
+             // Placeholder for alignment in Gig Mode if needed, or remove
+             <div className="w-0" />
+        )}
 
         <Button 
           variant="outline" 
@@ -255,50 +344,68 @@ const PerformanceMode = () => {
         </Button>
       </div>
 
-      {/* Search Dialog */}
-      <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-        <DialogContent className="max-w-md h-[80vh] flex flex-col p-0 gap-0">
-            <DialogHeader className="px-4 py-4 border-b">
-                <DialogTitle>Quick Find</DialogTitle>
-            </DialogHeader>
-            <div className="p-4 border-b bg-muted/20">
-                <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        placeholder="Search song to play next..." 
-                        className="pl-9"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        autoFocus
-                    />
+      {/* Search Dialog (Practice Only) */}
+      {!isGigMode && (
+          <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+            <DialogContent className="max-w-md h-[80vh] flex flex-col p-0 gap-0">
+                <DialogHeader className="px-4 py-4 border-b">
+                    <DialogTitle>Quick Find</DialogTitle>
+                </DialogHeader>
+                <div className="p-4 border-b bg-muted/20">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Search song to play next..." 
+                            className="pl-9"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
                 </div>
-            </div>
-            <ScrollArea className="flex-1">
-                <div className="divide-y">
-                    {filteredSongs.length === 0 ? (
-                        <div className="p-8 text-center text-muted-foreground">No songs found</div>
-                    ) : (
-                        filteredSongs.map(song => (
-                            <div 
-                                key={song.id} 
-                                className="flex items-center p-4 hover:bg-accent cursor-pointer transition-colors"
-                                onClick={() => {
-                                    setTempSong(song);
-                                    setIsSearchOpen(false);
-                                    setSearchQuery("");
-                                }}
-                            >
-                                <div className="flex-1">
-                                    <div className="font-medium">{song.title}</div>
-                                    <div className="text-sm text-muted-foreground">{song.artist}</div>
+                <ScrollArea className="flex-1">
+                    <div className="divide-y">
+                        {filteredSongs.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">No songs found</div>
+                        ) : (
+                            filteredSongs.map(song => (
+                                <div 
+                                    key={song.id} 
+                                    className="flex items-center p-4 hover:bg-accent cursor-pointer transition-colors"
+                                    onClick={() => {
+                                        setTempSong(song);
+                                        setIsSearchOpen(false);
+                                        setSearchQuery("");
+                                    }}
+                                >
+                                    <div className="flex-1">
+                                        <div className="font-medium">{song.title}</div>
+                                        <div className="text-sm text-muted-foreground">{song.artist}</div>
+                                    </div>
                                 </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </ScrollArea>
-        </DialogContent>
-      </Dialog>
+                            ))
+                        )}
+                    </div>
+                </ScrollArea>
+            </DialogContent>
+          </Dialog>
+      )}
+
+      {/* Skip Confirmation Dialog */}
+      <AlertDialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>Skip this song?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      This will move "{activeSong?.title}" to the "Skipped Songs" list so you can easily return to it later in the show.
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => skipSongMutation.mutate()}>Skip Song</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

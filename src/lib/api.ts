@@ -142,6 +142,28 @@ export const deleteGig = async (id: string) => {
     if (error) throw error;
 };
 
+export const addSkippedSong = async (gigId: string, songId: string) => {
+    const { error } = await supabase.from('gig_skipped_songs').insert({ gig_id: gigId, song_id: songId });
+    if (error) throw error;
+};
+
+export const getSkippedSongs = async (gigId: string): Promise<Song[]> => {
+    const { data, error } = await supabase
+        .from('gig_skipped_songs')
+        .select('song:songs(*)')
+        .eq('gig_id', gigId)
+        .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return data.map((d: any) => d.song) as Song[];
+};
+
+export const removeSkippedSong = async (gigId: string, songId: string) => {
+    const { error } = await supabase.from('gig_skipped_songs').delete().match({ gig_id: gigId, song_id: songId });
+    if (error) throw error;
+};
+
+
 // --- Setlists ---
 
 export const getSetlists = async (): Promise<Setlist[]> => {

@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { 
   getSetlist, getSongs, createSet, deleteSet, 
   addSongsToSet, removeSongFromSet, updateSetSongOrder, 
-  moveSetSongToSet 
+  moveSetSongToSet, updateSetlist 
 } from "@/lib/api";
 import { parseDurationToSeconds } from "@/lib/utils";
 import { useState } from "react";
@@ -42,6 +42,16 @@ const SetlistDetail = () => {
 
   // --- Mutations ---
 
+  const updateNameMutation = useMutation({
+      mutationFn: (newName: string) => updateSetlist(id!, { name: newName }),
+      onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+          queryClient.invalidateQueries({ queryKey: ['setlists'] });
+          toast.success("Setlist renamed");
+      },
+      onError: () => toast.error("Failed to rename setlist")
+  });
+
   const addSetMutation = useMutation({
     mutationFn: async () => {
       if (!setlist) return;
@@ -56,7 +66,7 @@ const SetlistDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
-      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); 
       toast.success("Set added");
     },
     onError: (err: any) => toast.error(err.message)
@@ -66,7 +76,7 @@ const SetlistDetail = () => {
     mutationFn: (setId: string) => deleteSet(setId, setlist!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
-      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); 
       setSetToDelete(null);
       toast.success("Set deleted and renumbered");
     }
@@ -77,7 +87,7 @@ const SetlistDetail = () => {
       const startPosition = targetSet ? targetSet.songs.length + 1 : 1;
       await addSongsToSet(targetSetId, songIds, startPosition);
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
-      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); 
   };
 
   const createSetAndAddSongsMutation = async (initialSongs: string[], remainingSongs: string[]) => {
@@ -87,7 +97,7 @@ const SetlistDetail = () => {
       if (newSet?.id) {
           await addSongsToSet(newSet.id, remainingSongs, 1);
           queryClient.invalidateQueries({ queryKey: ['setlist', id] });
-          queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
+          queryClient.invalidateQueries({ queryKey: ['setlists'] }); 
       }
   };
 
@@ -95,7 +105,7 @@ const SetlistDetail = () => {
     mutationFn: removeSongFromSet,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
-      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); 
       setSongToRemove(null);
       toast.success("Song removed");
     }
@@ -114,7 +124,6 @@ const SetlistDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
-      // No need to invalidate 'setlists' here as total song count remains same
       toast.success("Song moved");
     }
   });
@@ -147,6 +156,7 @@ const SetlistDetail = () => {
             name={setlist.name}
             onAddSet={() => addSetMutation.mutate()}
             isAddingSet={addSetMutation.isPending}
+            onUpdateName={(name) => updateNameMutation.mutate(name)}
         />
 
         <div className="space-y-6">
