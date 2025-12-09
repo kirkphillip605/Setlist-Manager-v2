@@ -17,16 +17,17 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const Gigs = () => {
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [showPast, setShowPast] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
 
     // Form State
-    const [editGig, setEditGig] = useState<Partial<Gig> | null>(null);
+    const [newGig, setNewGig] = useState<Partial<Gig>>({ name: "", date: "", notes: "", setlist_id: null });
 
     const { data: gigs = [], isLoading } = useQuery({ queryKey: ['gigs'], queryFn: getGigs });
     const { data: setlists = [] } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
@@ -39,7 +40,7 @@ const Gigs = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gigs'] });
             setIsCreateOpen(false);
-            setEditGig(null);
+            setNewGig({ name: "", date: "", notes: "", setlist_id: null });
             toast.success("Gig saved successfully");
         },
         onError: () => toast.error("Failed to save gig")
@@ -62,19 +63,18 @@ const Gigs = () => {
     }, [gigs]);
 
     const openCreate = () => {
-        setEditGig({ name: "", date: "", notes: "", setlist_id: null });
-        setIsCreateOpen(true);
-    };
-
-    const openEdit = (gig: Gig) => {
-        setEditGig(gig);
+        setNewGig({ name: "", date: "", notes: "", setlist_id: null });
         setIsCreateOpen(true);
     };
 
     const GigList = ({ list }: { list: Gig[] }) => (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {list.map(gig => (
-                <Card key={gig.id} className="hover:bg-accent/40 transition-colors border shadow-sm relative group">
+                <Card 
+                    key={gig.id} 
+                    className="hover:bg-accent/40 transition-colors border shadow-sm relative group cursor-pointer"
+                    onClick={() => navigate(`/gigs/${gig.id}`)}
+                >
                     <CardHeader className="flex flex-row items-start justify-between pb-2">
                         <div className="space-y-1">
                             <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
@@ -92,25 +92,21 @@ const Gigs = () => {
                             <Trash2 className="h-4 w-4" />
                         </Button>
                     </CardHeader>
-                    <CardContent className="space-y-3 cursor-pointer" onClick={() => openEdit(gig)}>
+                    <CardContent className="space-y-3">
+                        {gig.venue_name && (
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {gig.venue_name}
+                            </div>
+                        )}
+
                         {gig.setlist ? (
-                            <Link 
-                                to={`/setlists/${gig.setlist.id}`} 
-                                className="flex items-center gap-2 text-sm font-medium text-primary hover:underline bg-primary/5 p-2 rounded"
-                                onClick={(e) => e.stopPropagation()}
-                            >
+                            <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded">
                                 <ListMusic className="h-4 w-4" />
                                 Setlist: {gig.setlist.name}
-                            </Link>
+                            </div>
                         ) : (
                             <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded">
                                 No setlist attached
-                            </div>
-                        )}
-                        
-                        {gig.notes && (
-                            <div className="text-sm text-muted-foreground line-clamp-2">
-                                <span className="font-semibold">Notes:</span> {gig.notes}
                             </div>
                         )}
                     </CardContent>
@@ -156,18 +152,18 @@ const Gigs = () => {
                     </>
                 )}
 
-                {/* Create/Edit Dialog */}
+                {/* Create Dialog Only */}
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>{editGig?.id ? "Edit Gig" : "New Gig"}</DialogTitle>
+                            <DialogTitle>New Gig</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
                                 <Label>Gig Name (Venue/Event)</Label>
                                 <Input 
-                                    value={editGig?.name || ""} 
-                                    onChange={e => setEditGig(prev => ({ ...prev!, name: e.target.value }))} 
+                                    value={newGig.name || ""} 
+                                    onChange={e => setNewGig(prev => ({ ...prev, name: e.target.value }))} 
                                     placeholder="e.g. The Blue Note" 
                                 />
                             </div>
@@ -175,15 +171,15 @@ const Gigs = () => {
                                 <Label>Date</Label>
                                 <Input 
                                     type="date" 
-                                    value={editGig?.date || ""} 
-                                    onChange={e => setEditGig(prev => ({ ...prev!, date: e.target.value }))} 
+                                    value={newGig.date || ""} 
+                                    onChange={e => setNewGig(prev => ({ ...prev, date: e.target.value }))} 
                                 />
                             </div>
                              <div className="space-y-2">
                                 <Label>Setlist</Label>
                                 <Select 
-                                    value={editGig?.setlist_id || "none"} 
-                                    onValueChange={val => setEditGig(prev => ({ ...prev!, setlist_id: val === "none" ? null : val }))}
+                                    value={newGig.setlist_id || "none"} 
+                                    onValueChange={val => setNewGig(prev => ({ ...prev, setlist_id: val === "none" ? null : val }))}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select a setlist..." />
@@ -199,13 +195,13 @@ const Gigs = () => {
                             <div className="space-y-2">
                                 <Label>Notes</Label>
                                 <Textarea 
-                                    value={editGig?.notes || ""} 
-                                    onChange={e => setEditGig(prev => ({ ...prev!, notes: e.target.value }))} 
+                                    value={newGig.notes || ""} 
+                                    onChange={e => setNewGig(prev => ({ ...prev, notes: e.target.value }))} 
                                     placeholder="Load in time, parking info, etc." 
                                 />
                             </div>
                             <DialogFooter>
-                                <Button onClick={() => saveMutation.mutate(editGig as Gig)} disabled={!editGig?.name || !editGig?.date}>
+                                <Button onClick={() => saveMutation.mutate(newGig as Gig)} disabled={!newGig.name || !newGig.date}>
                                     Save Gig
                                 </Button>
                             </DialogFooter>
