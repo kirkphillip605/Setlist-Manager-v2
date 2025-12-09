@@ -110,7 +110,25 @@ const App = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // 3. Periodic session refresh (e.g., every 30 minutes)
+    // This is a safeguard to ensure the JWT is fresh even if the user is inactive
+    const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    
+    const refreshTimer = setInterval(async () => {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession) {
+            // Calling refreshSession attempts to get a new JWT using the refresh token
+            // if the current JWT is expired or near expiration.
+            await supabase.auth.refreshSession();
+            console.log("Session refresh attempted.");
+        }
+    }, REFRESH_INTERVAL_MS);
+
+
+    return () => {
+        subscription.unsubscribe();
+        clearInterval(refreshTimer);
+    };
   }, []);
 
   if (loading) {
