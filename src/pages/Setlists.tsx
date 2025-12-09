@@ -1,123 +1,116 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { 
-  getSetlists, 
-  createSetlist, 
-  deleteSetlist, 
-  cloneSetlist 
+  getSetlists, createSetlist, deleteSetlist, cloneSetlist 
 } from "@/lib/api";
 import { 
-  Plus, 
-  Calendar, 
-  Trash2, 
-  Loader2, 
-  ListMusic, 
-  ChevronRight, 
-  Printer, 
-  User, 
-  Globe, 
-  Copy,
-  MoreVertical,
-  Lock,
-  Share2
+  Plus, Calendar, Trash2, Loader2, Copy, MoreVertical, 
+  Lock, Globe, Printer, Star, Clock 
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Setlist } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Setlists = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("public");
   
-  // Create Dialog States
+  // Auth Check
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data }) => {
+        if (!data.session) navigate('/login');
+        // Simple manual refresh check on mount
+        await supabase.auth.refreshSession();
+    });
+  }, [navigate]);
+
+  // Create Form State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<"public" | "personal" | "clone">("public");
+  const [sourceSetlistId, setSourceSetlistId] = useState("");
+  const [cloneType, setCloneType] = useState<"public" | "personal">("personal");
   
-  // Clone Source Picker State
-  const [isSourcePickerOpen, setIsSourcePickerOpen] = useState(false);
-  
-  // Form States
   const [newListName, setNewListName] = useState("");
   const [newListDate, setNewListDate] = useState("");
-  const [sourceSetlistId, setSourceSetlistId] = useState<string>("");
-  const [cloneType, setCloneType] = useState<"public" | "personal">("personal");
+  const [isTbd, setIsTbd] = useState(false);
+  const [isDefault, setIsDefault] = useState(false);
 
+  // Filters
+  const [showPast, setShowPast] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  
+
   const queryClient = useQueryClient();
+  const { data: setlists = [], isLoading } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
 
-  const { data: setlists = [], isLoading } = useQuery({
-    queryKey: ['setlists'],
-    queryFn: getSetlists
-  });
+  // Grouping Logic
+  const groupedSetlists = useMemo(() => {
+    let base = activeTab === "public" ? setlists.filter(l => !l.is_personal) : setlists.filter(l => l.is_personal);
+    
+    // Default
+    const defaultList = base.find(l => l.is_default);
+    
+    // Remove default from others
+    if (defaultList) base = base.filter(l => l.id !== defaultList.id);
 
-  const filteredSetlists = useMemo(() => {
-    if (activeTab === "public") {
-      return setlists.filter(l => !l.is_personal);
-    } else {
-      return setlists.filter(l => l.is_personal);
-    }
+    // Date Logic
+    const today = new Date().toISOString().split('T')[0];
+    
+    const upcoming: any[] = [];
+    const tbd: any[] = [];
+    const past: any[] = [];
+
+    base.forEach(l => {
+        if (l.is_tbd) {
+            tbd.push(l);
+        } else if (l.date && l.date < today) {
+            past.push(l);
+        } else {
+            upcoming.push(l);
+        }
+    });
+
+    // Sort upcoming by date asc
+    upcoming.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    // Sort past by date desc
+    past.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+    return { defaultList, upcoming, tbd, past };
   }, [setlists, activeTab]);
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "";
-    const [y, m, d] = dateString.split('-');
-    return `${m}/${d}/${y}`;
-  };
+  const hasDefault = useMemo(() => setlists.some(l => l.is_default), [setlists]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!newListName.trim()) return;
+      const isPersonal = createMode === "personal" || (createMode === "clone" && cloneType === "personal");
+      const date = isTbd || isPersonal ? "" : newListDate;
       
       if (createMode === "clone") {
-         if (!sourceSetlistId) return;
-         const isPersonal = cloneType === "personal";
-         const date = isPersonal ? "" : (newListDate || new Date().toISOString().split('T')[0]);
          return cloneSetlist(sourceSetlistId, newListName, date, isPersonal);
       } else {
-         const isPersonal = createMode === "personal";
-         const date = isPersonal ? "" : (newListDate || new Date().toISOString().split('T')[0]);
-         return createSetlist(newListName, date, isPersonal);
+         return createSetlist(newListName, date, isPersonal, isTbd, isDefault);
       }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['setlists'] });
       resetForm();
-      toast.success("Setlist created");
-      if (data?.id) {
-          navigate(`/setlists/${data.id}`);
-      }
-    },
-    onError: (err) => {
-      console.error(err);
-      toast.error("Failed to create setlist");
+      if (data?.id) navigate(`/setlists/${data.id}`);
     }
   });
 
@@ -127,353 +120,182 @@ const Setlists = () => {
       queryClient.invalidateQueries({ queryKey: ['setlists'] });
       setDeleteId(null);
       toast.success("Setlist deleted");
-    },
-    onError: () => {
-      toast.error("Failed to delete setlist");
     }
   });
 
   const resetForm = () => {
       setNewListName("");
       setNewListDate("");
-      setSourceSetlistId("");
+      setIsTbd(false);
+      setIsDefault(false);
       setIsCreateOpen(false);
-      setIsSourcePickerOpen(false);
   };
 
   const openCreateModal = (mode: "public" | "personal" | "clone", sourceId?: string) => {
-      if (mode === "clone" && !sourceId) {
-          // Trigger source picker first
-          setIsSourcePickerOpen(true);
-          return;
-      }
-
       setCreateMode(mode);
       if (mode === "clone" && sourceId) {
           setSourceSetlistId(sourceId);
-          // Auto-fill name if cloning
-          const source = setlists.find(l => l.id === sourceId);
-          if (source) {
-              setNewListName(`${source.name} (Copy)`);
-          }
           setCloneType("personal");
+          const src = setlists.find(l => l.id === sourceId);
+          if (src) setNewListName(`${src.name} (Copy)`);
       }
       setIsCreateOpen(true);
   };
 
-  const selectCloneSource = (id: string) => {
-      setIsSourcePickerOpen(false);
-      openCreateModal("clone", id);
-  };
-
-  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
-    e.preventDefault(); 
-    e.stopPropagation();
-    setDeleteId(id);
-  };
-
-  const handlePrintClick = (e: React.MouseEvent, list: Setlist) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        toast.error("Please allow popups to print setlists");
-        return;
-    }
-     const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${list.name} - Setlist</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-            body { font-family: 'Inter', sans-serif; margin: 0; padding: 2rem; color: #1a1a1a; }
-            @media print { @page { margin: 1cm; size: portrait; } .page-break { page-break-after: always; } }
-            h1 { font-size: 3rem; margin: 0; line-height: 1.2; text-transform: uppercase; }
-            h2 { font-size: 1.5rem; margin: 0.5rem 0 0; color: #555; font-weight: 600; }
-            .songs-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-            .songs-table th { text-align: left; border-bottom: 1px solid #999; padding: 0.5rem; }
-            .songs-table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid #eee; font-size: 1.25rem; }
-            .col-pos { width: 5%; color: #888; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          ${list.sets.map(set => `
-            <div>
-              <header><h1>${list.name}</h1><h2>${set.name}</h2></header>
-              <table class="songs-table">
-                <thead><tr><th class="col-pos">#</th><th>Title</th><th>Artist</th><th>Key</th><th>BPM</th><th>Note</th></tr></thead>
-                <tbody>
-                  ${set.songs.map((s, idx) => `
-                    <tr>
-                      <td class="col-pos">${idx + 1}</td>
-                      <td>${s.song?.title || 'Unknown'}</td>
-                      <td>${s.song?.artist || ''}</td>
-                      <td>${s.song?.key || '-'}</td>
-                      <td>${s.song?.tempo || '-'}</td>
-                      <td>${s.song?.note || ''}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-              <div class="page-break"></div>
-            </div>
-          `).join('')}
-          <script>window.onload = () => { window.print(); window.close(); }</script>
-        </body>
-      </html>`;
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-  };
+  const SetlistGrid = ({ lists }: { lists: any[] }) => (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {lists.map(list => (
+              <Link key={list.id} to={`/setlists/${list.id}`}>
+                  <Card className={`hover:bg-accent/40 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
+                      <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
+                          <div className="space-y-1">
+                              <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
+                              {list.is_default && <Badge variant="default" className="text-[10px] h-5">Default</Badge>}
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                  {list.is_tbd ? (
+                                      <><Clock className="mr-1 h-3 w-3" /> Gig Date: TBD</>
+                                  ) : list.date ? (
+                                      <><Calendar className="mr-1 h-3 w-3" /> {new Date(list.date).toLocaleDateString()}</>
+                                  ) : null}
+                              </div>
+                          </div>
+                      </CardHeader>
+                      <CardContent>
+                         <div className="text-sm text-muted-foreground">
+                            {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
+                         </div>
+                      </CardContent>
+                      <div className="absolute top-2 right-2">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
+                                    <Copy className="mr-2 h-4 w-4" /> Clone...
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteId(list.id); }}>
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                  </Card>
+              </Link>
+          ))}
+      </div>
+  );
 
   return (
     <AppLayout>
       <div className="space-y-6 pb-20">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Setlists</h1>
-            <p className="text-muted-foreground text-sm">Organize your gigs and rehearsals.</p>
-          </div>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="rounded-full shadow-lg h-12 px-6 text-base">
-                <Plus className="mr-2 h-5 w-5" /> Create Setlist
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 p-2">
-                <DropdownMenuLabel className="px-2 py-2 text-base">Create New</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => openCreateModal("public")} className="py-3 text-base">
-                    <Globe className="mr-2 h-4 w-4" /> Public Band Setlist
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openCreateModal("personal")} className="py-3 text-base">
-                    <Lock className="mr-2 h-4 w-4" /> Private Personal Setlist
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="my-2" />
-                <DropdownMenuItem onClick={() => openCreateModal("clone")} className="py-3 text-base">
-                    <Copy className="mr-2 h-4 w-4" /> Create from Existing...
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Setlists</h1>
+                <p className="text-muted-foreground text-sm">Organize your gigs.</p>
+            </div>
+            
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button className="rounded-full shadow-lg"><Plus className="mr-2 h-4 w-4" /> Create Setlist</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openCreateModal("public")}><Globe className="mr-2 h-4 w-4" /> Public Band Setlist</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openCreateModal("personal")}><Lock className="mr-2 h-4 w-4" /> Private Setlist</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4 h-12">
-                <TabsTrigger value="public" className="gap-2 h-full text-base">
-                    <Globe className="h-4 w-4" /> Band Setlists
-                </TabsTrigger>
-                <TabsTrigger value="personal" className="gap-2 h-full text-base">
-                    <Lock className="h-4 w-4" /> My Personal Lists
-                </TabsTrigger>
+         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="public" className="gap-2"><Globe className="h-4 w-4" /> Band</TabsTrigger>
+                <TabsTrigger value="personal" className="gap-2"><Lock className="h-4 w-4" /> Personal</TabsTrigger>
             </TabsList>
 
-            <TabsContent value={activeTab} className="mt-0">
-                {isLoading ? (
-                <div className="flex justify-center p-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-                ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {filteredSetlists.length === 0 ? (
-                    <div className="col-span-full text-center py-20 bg-accent/10 rounded-xl border border-dashed">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
-                            {activeTab === 'public' ? <Globe className="w-8 h-8 text-muted-foreground" /> : <Lock className="w-8 h-8 text-muted-foreground" />}
-                        </div>
-                        <h3 className="text-lg font-medium">No {activeTab} setlists found</h3>
-                        <p className="text-muted-foreground mt-1 mb-4">
-                        {activeTab === 'public' ? "Create a setlist for the whole band." : "Create a private setlist for your own practice."}
-                        </p>
-                        <Button variant="outline" onClick={() => openCreateModal(activeTab as any)}>
-                            Create {activeTab === 'public' ? "Public" : "Private"} Setlist
-                        </Button>
-                    </div>
-                    ) : (
-                    filteredSetlists.map((list) => (
-                        <Link key={list.id} to={`/setlists/${list.id}`}>
-                        <Card className="hover:bg-accent/40 transition-all duration-300 cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md group relative">
-                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
-                            <div className="space-y-1">
-                                <CardTitle className="text-lg font-bold truncate leading-none">{list.name}</CardTitle>
-                                {list.date && (
-                                    <div className="flex items-center text-sm text-muted-foreground">
-                                        <Calendar className="mr-1 h-3 w-3" />
-                                        <span className="font-medium mr-1">Gig Date:</span>
-                                        {formatDate(list.date)}
-                                    </div>
-                                )}
-                            </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between">
-                                    <div className="flex gap-4">
-                                    <div className="text-center">
-                                        <span className="block text-2xl font-bold">{list.sets.length}</span>
-                                        <span className="text-[10px] uppercase text-muted-foreground font-medium">Sets</span>
-                                    </div>
-                                    <div className="w-px bg-border h-full"></div>
-                                    <div className="text-center">
-                                        <span className="block text-2xl font-bold">{list.sets.reduce((acc, set) => acc + set.songs.length, 0)}</span>
-                                        <span className="text-[10px] uppercase text-muted-foreground font-medium">Songs</span>
-                                    </div>
-                                    </div>
-                                </div>
-                            </CardContent>
+            <TabsContent value={activeTab} className="space-y-8">
+                {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
+                    <>
+                        {groupedSetlists.defaultList && (
+                            <section>
+                                <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                                    <Star className="w-4 h-4 text-primary" /> Default Setlist
+                                </h3>
+                                <SetlistGrid lists={[groupedSetlists.defaultList]} />
+                            </section>
+                        )}
 
-                            {/* Absolute Context Menu Button */}
-                            <div className="absolute top-2 right-2">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                            <MoreVertical className="h-5 w-5 text-muted-foreground" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-56 p-2">
-                                        <DropdownMenuItem onClick={(e) => handlePrintClick(e, list)} className="py-3 text-base">
-                                            <Printer className="mr-2 h-4 w-4" /> Print PDF
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            openCreateModal("clone", list.id);
-                                        }} className="py-3 text-base">
-                                            <Copy className="mr-2 h-4 w-4" /> Create Copy...
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator className="my-2" />
-                                        <DropdownMenuItem 
-                                            className="text-destructive focus:text-destructive py-3 text-base"
-                                            onClick={(e) => handleDeleteClick(e, list.id)}
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </Card>
-                        </Link>
-                    ))
-                    )}
-                </div>
+                        {groupedSetlists.upcoming.length > 0 && (
+                            <section>
+                                <h3 className="text-sm font-medium text-muted-foreground mb-3">Upcoming Gigs</h3>
+                                <SetlistGrid lists={groupedSetlists.upcoming} />
+                            </section>
+                        )}
+
+                        {groupedSetlists.tbd.length > 0 && (
+                            <section>
+                                <h3 className="text-sm font-medium text-muted-foreground mb-3">TBD / Drafting</h3>
+                                <SetlistGrid lists={groupedSetlists.tbd} />
+                            </section>
+                        )}
+
+                        <div className="pt-4 border-t">
+                             <div className="flex items-center gap-2 mb-4">
+                                <Checkbox id="showPast" checked={showPast} onCheckedChange={(c) => setShowPast(c === true)} />
+                                <Label htmlFor="showPast">Show Past Setlists</Label>
+                             </div>
+                             {showPast && <SetlistGrid lists={groupedSetlists.past} />}
+                        </div>
+                    </>
                 )}
             </TabsContent>
-        </Tabs>
+         </Tabs>
 
-        {/* Source Picker Dialog */}
-        <Dialog open={isSourcePickerOpen} onOpenChange={setIsSourcePickerOpen}>
-            <DialogContent className="max-w-md h-[80vh] flex flex-col p-0">
-                <DialogHeader className="p-4 border-b">
-                    <DialogTitle>Select Setlist to Clone</DialogTitle>
-                </DialogHeader>
-                <ScrollArea className="flex-1">
-                    <div className="divide-y">
-                        {setlists.map(list => (
-                            <div 
-                                key={list.id} 
-                                className="p-4 hover:bg-accent cursor-pointer transition-colors"
-                                onClick={() => selectCloneSource(list.id)}
-                            >
-                                <div className="font-medium">{list.name}</div>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    {list.is_personal ? <Lock className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-                                    {list.date ? formatDate(list.date) : "No Date"}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </ScrollArea>
-                <DialogFooter className="p-4 border-t">
-                    <Button variant="outline" onClick={() => setIsSourcePickerOpen(false)} className="w-full">Cancel</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-
-        {/* Create / Clone Modal */}
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>
-                    {createMode === 'clone' ? "Create from Existing" : 
-                     createMode === 'personal' ? "New Private Setlist" : "New Public Setlist"}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                
-                {/* Clone Type Selection */}
-                {createMode === 'clone' && (
-                    <div className="p-3 bg-muted rounded-lg space-y-3">
-                        <Label>Clone as:</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                            <Button 
-                                type="button" 
-                                variant={cloneType === 'personal' ? 'default' : 'outline'}
-                                onClick={() => setCloneType('personal')}
-                                className="text-sm h-10"
-                            >
-                                <Lock className="mr-2 h-3 w-3" /> Private Copy
-                            </Button>
-                            <Button 
-                                type="button" 
-                                variant={cloneType === 'public' ? 'default' : 'outline'}
-                                onClick={() => setCloneType('public')}
-                                className="text-sm h-10"
-                            >
-                                <Globe className="mr-2 h-3 w-3" /> Public Copy
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="listName">Setlist Name</Label>
-                  <Input 
-                    id="listName"
-                    placeholder="e.g. Summer Tour 2024" 
-                    value={newListName}
-                    onChange={(e) => setNewListName(e.target.value)}
-                    className="h-11"
-                  />
-                </div>
-
-                {(createMode === 'public' || (createMode === 'clone' && cloneType === 'public')) && (
+         {/* Create Modal */}
+         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogContent>
+                <DialogHeader><DialogTitle>New Setlist</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                        <Label htmlFor="listDate">Gig Date</Label>
-                        <Input 
-                            id="listDate"
-                            type="date"
-                            value={newListDate}
-                            onChange={(e) => setNewListDate(e.target.value)}
-                            className="h-11"
-                        />
+                        <Label>Name</Label>
+                        <Input value={newListName} onChange={e => setNewListName(e.target.value)} placeholder="Name..." />
                     </div>
-                )}
-
-                <DialogFooter className="pt-4">
-                    <Button variant="outline" onClick={() => setIsCreateOpen(false)} className="h-11">Cancel</Button>
-                    <Button 
-                        onClick={() => createMutation.mutate()} 
-                        disabled={createMutation.isPending || !newListName}
-                        className="h-11"
-                    >
-                        {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {createMode === 'clone' ? "Clone Setlist" : "Create Setlist"}
-                    </Button>
-                </DialogFooter>
-              </div>
+                    {createMode === 'public' && !hasDefault && (
+                        <div className="flex items-center gap-2">
+                            <Checkbox id="isDef" checked={isDefault} onCheckedChange={(c) => setIsDefault(c === true)} />
+                            <Label htmlFor="isDef">Make Default Band Setlist</Label>
+                        </div>
+                    )}
+                    {createMode === 'public' && !isDefault && (
+                         <div className="space-y-2">
+                             <Label>Gig Date</Label>
+                             <div className="flex items-center gap-2">
+                                 <Input type="date" value={newListDate} onChange={e => setNewListDate(e.target.value)} disabled={isTbd} />
+                                 <div className="flex items-center gap-2 whitespace-nowrap">
+                                     <Checkbox id="isTbd" checked={isTbd} onCheckedChange={(c) => setIsTbd(c === true)} />
+                                     <Label htmlFor="isTbd">TBD</Label>
+                                 </div>
+                             </div>
+                         </div>
+                    )}
+                    <DialogFooter>
+                        <Button onClick={() => createMutation.mutate()}>Create</Button>
+                    </DialogFooter>
+                </div>
             </DialogContent>
-        </Dialog>
+         </Dialog>
 
-        <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+         {/* Delete Alert */}
+         <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Delete Setlist?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the setlist.
-                    </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive hover:bg-destructive/90">
-                        Delete
-                    </AlertDialogAction>
+                    <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive">Delete</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
