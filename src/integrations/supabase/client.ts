@@ -5,12 +5,13 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {
-        // Ensure session persistence is enabled (default is true, but explicit is safer)
+        // Persist the session in local storage (default)
         persistSession: true,
-        // Ensure automatic token refresh is enabled (default is true, but explicit is safer)
+        // Automatically refresh the token before it expires
         autoRefreshToken: true,
-        // If the user is inactive for a long time, we want the session to be refreshed 
-        // when they return, rather than relying solely on the onAuthStateChange listener.
+        // Detect session in URL for OAuth redirects
         detectSessionInUrl: true,
+        // Using 'local' storage is the default and correct for web
+        storage: window.localStorage
     }
 });
