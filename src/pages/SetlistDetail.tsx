@@ -59,6 +59,7 @@ import {
   Clock,
   ArrowRightLeft
 } from "lucide-react";
+import Fuse from "fuse.js";
 
 const SetlistDetail = () => {
   const { id } = useParams();
@@ -103,6 +104,17 @@ const SetlistDetail = () => {
     });
     return ids;
   }, [setlist]);
+
+  // Fuse instance for adding songs
+  const fuse = useMemo(() => {
+    // Only search ACTIVE (non-retired) songs
+    const activeSongs = availableSongs.filter(s => !s.is_retired);
+    return new Fuse(activeSongs, {
+        keys: ['title', 'artist'],
+        threshold: 0.35,
+        ignoreLocation: true
+    });
+  }, [availableSongs]);
 
   // --- Mutations ---
 
@@ -185,15 +197,6 @@ const SetlistDetail = () => {
     const itemA = songs[songIndex];
     const itemB = songs[swapIndex];
 
-    const updates = [
-      { id: itemA.id, position: songIndex + 1 }, // Note: assuming DB position was array index + 1 before swap, but we just swap positions basically
-      { id: itemB.id, position: swapIndex + 1 }
-    ];
-    
-    // Actually we need to set itemA to swapIndex+1 and itemB to songIndex+1
-    // The previous code had a logic bug potentially if position wasn't strictly index+1
-    // Let's be explicit:
-    
     const updatePayload = [
         { id: itemA.id, position: swapIndex + 1 },
         { id: itemB.id, position: songIndex + 1 }
@@ -219,11 +222,14 @@ const SetlistDetail = () => {
     });
   };
 
-  // Filter available songs
-  const filteredAvailableSongs = availableSongs.filter(song => 
-    song.title.toLowerCase().includes(songSearch.toLowerCase()) || 
-    song.artist.toLowerCase().includes(songSearch.toLowerCase())
-  );
+  // Filter available songs using Fuse for fuzzy, AND ensure retired songs are excluded (via Fuse init)
+  const filteredAvailableSongs = useMemo(() => {
+    if (!songSearch.trim()) {
+        // Return all active songs
+        return availableSongs.filter(s => !s.is_retired);
+    }
+    return fuse.search(songSearch).map(r => r.item);
+  }, [availableSongs, songSearch, fuse]);
 
   // Calculate stats for the Add Song Modal
   const activeSet = setlist?.sets.find(s => s.id === activeSetId);
@@ -313,7 +319,12 @@ const SetlistDetail = () => {
                               
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <div className="font-medium truncate">{setSong.song?.title}</div>
+                                    <div className={`font-medium truncate ${setSong.song?.is_retired ? 'line-through text-muted-foreground' : ''}`}>
+                                        {setSong.song?.title}
+                                    </div>
+                                    {setSong.song?.is_retired && (
+                                        <Badge variant="outline" className="text-[10px] h-4 px-1 py-0">Retired</Badge>
+                                    )}
                                 </div>
                                 <div className="text-xs text-muted-foreground truncate">{setSong.song?.artist}</div>
                               </div>
@@ -404,6 +415,7 @@ const SetlistDetail = () => {
                   className="pl-9"
                   value={songSearch}
                   onChange={(e) => setSongSearch(e.target.value)}
+                  autoFocus
                 />
               </div>
             </div>

@@ -137,6 +137,9 @@ importers:
       framer-motion:
         specifier: ^11.11.10
         version: 11.18.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      fuse.js:
+        specifier: ^7.1.0
+        version: 7.1.0
       idb-keyval:
         specifier: ^6.2.1
         version: 6.2.2
@@ -2044,6 +2047,10 @@ packages:
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
+
+  fuse.js@7.1.0:
+    resolution: {integrity: sha512-trLf4SzuuUxfusZADLINj+dE8clK1frKdmqiJNb1Es75fmI5oY6X2mxLVUciLLjxqw/xr72Dhy+lER6dGd02FQ==}
+    engines: {node: '>=10'}
 
   get-nonce@1.0.1:
     resolution: {integrity: sha512-FJhYRoDaiatfEkUK8HKlicmu/3SGFD51q3itKDGoSTysQJBnfOcxU5GxnhE1E6soB76MbT0MBtnKJuXyAx+96Q==}
@@ -4835,6 +4842,8 @@ snapshots:
     optional: true
 
   function-bind@1.1.2: {}
+
+  fuse.js@7.1.0: {}
 
   get-nonce@1.0.1: {}
 

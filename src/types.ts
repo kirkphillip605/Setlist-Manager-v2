@@ -9,6 +9,7 @@ export interface Song {
   note: string;
   cover_url?: string;
   spotify_url?: string;
+  is_retired?: boolean;
 }
 
 export interface SetSong {

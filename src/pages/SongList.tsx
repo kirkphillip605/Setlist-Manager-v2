@@ -1,14 +1,26 @@
 import AppLayout from "@/components/AppLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getSongs, deleteSong } from "@/lib/api";
-import { Plus, Search, Loader2, Trash2, Edit, Music } from "lucide-react";
-import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuTrigger, 
+  DropdownMenuCheckboxItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem
+} from "@/components/ui/dropdown-menu";
+import { getSongs, deleteSong, getSongUsage, saveSong } from "@/lib/api";
+import { Plus, Search, Loader2, Trash2, Edit, Music, Filter, SortAsc, AlertTriangle, Archive } from "lucide-react";
+import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, PanInfo, useAnimation } from "framer-motion";
 import { toast } from "sonner";
 import { Song } from "@/types";
+import Fuse from "fuse.js";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,9 +31,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Swipeable Item Component
-const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: (id: string) => void }) => {
+const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: (song: Song) => void }) => {
   const navigate = useNavigate();
   const controls = useAnimation();
   
@@ -31,8 +44,8 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
 
     // Swipe Left to Delete (threshold -100)
     if (offset < -100 || velocity < -500) {
-      onDeleteRequest(song.id);
-      controls.start({ x: 0 }); // Reset position even if we are deleting, the list update will remove it
+      onDeleteRequest(song);
+      controls.start({ x: 0 }); // Reset position
     } 
     // Swipe Right to Edit (threshold 100)
     else if (offset > 100 || velocity > 500) {
@@ -63,17 +76,17 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
         onDragEnd={handleDragEnd}
         animate={controls}
         whileTap={{ scale: 0.98 }}
-        className="relative bg-card rounded-xl border shadow-sm touch-pan-y"
+        className={`relative bg-card rounded-xl border shadow-sm touch-pan-y ${song.is_retired ? 'opacity-60 bg-muted/40' : ''}`}
         style={{ x: 0 }}
       >
         <Link to={`/songs/${song.id}`} className="flex items-center p-3 gap-4">
           {/* Album Art Thumbnail */}
-          <div className="shrink-0 rounded-md overflow-hidden bg-secondary w-14 h-14 shadow-inner relative">
+          <div className="shrink-0 rounded-md overflow-hidden bg-secondary w-14 h-14 shadow-inner relative grayscale-[0.2]">
             {song.cover_url ? (
               <img 
                 src={song.cover_url} 
                 alt={song.title} 
-                className="w-full h-full object-cover"
+                className={`w-full h-full object-cover ${song.is_retired ? 'grayscale' : ''}`}
                 loading="lazy"
               />
             ) : (
@@ -85,9 +98,14 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
 
           {/* Text Content */}
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base leading-none mb-1.5 truncate pr-2">
-              {song.title}
-            </h3>
+            <div className="flex items-center gap-2 mb-1.5">
+              <h3 className={`font-semibold text-base leading-none truncate ${song.is_retired ? 'line-through text-muted-foreground' : ''}`}>
+                {song.title}
+              </h3>
+              {song.is_retired && (
+                <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 border-muted-foreground/40 text-muted-foreground">Retired</Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground truncate">
               {song.artist}
             </p>
@@ -114,7 +132,14 @@ const SongListItem = ({ song, onDeleteRequest }: { song: Song; onDeleteRequest: 
 
 const SongList = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState("title"); // title, artist, bpm_asc, bpm_desc
+  const [showRetired, setShowRetired] = useState(false);
+  
+  // Safe Delete States
+  const [songToDelete, setSongToDelete] = useState<Song | null>(null);
+  const [usageData, setUsageData] = useState<{setlistName: string, date: string}[]>([]);
+  const [isCheckingUsage, setIsCheckingUsage] = useState(false);
+
   const queryClient = useQueryClient();
 
   const { data: songs = [], isLoading } = useQuery({
@@ -126,19 +151,88 @@ const SongList = () => {
     mutationFn: deleteSong,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['songs'] });
-      setDeleteId(null);
-      toast.success("Song deleted");
+      setSongToDelete(null);
+      setUsageData([]);
+      toast.success("Song deleted permanently");
     },
     onError: () => {
       toast.error("Failed to delete song");
     }
   });
 
-  const filteredSongs = songs.filter(
-    (song) =>
-      song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.artist.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const retireMutation = useMutation({
+    mutationFn: async (songId: string) => {
+        const songToRetire = songs.find(s => s.id === songId);
+        if(!songToRetire) return;
+        return saveSong({ ...songToRetire, is_retired: true });
+    },
+    onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['songs'] });
+        setSongToDelete(null);
+        setUsageData([]);
+        toast.success("Song retired successfully");
+    }
+  });
+
+  // --- Search & Filter Logic ---
+
+  const fuse = useMemo(() => {
+    return new Fuse(songs, {
+      keys: ['title', 'artist', 'lyrics'],
+      threshold: 0.35, // Fuzzy threshold (0.0 = perfect match, 1.0 = match anything)
+      ignoreLocation: true, // Find match anywhere in string
+      useExtendedSearch: true,
+    });
+  }, [songs]);
+
+  const filteredAndSortedSongs = useMemo(() => {
+    let result = songs;
+
+    // 1. Search (Fuzzy)
+    if (searchTerm.trim()) {
+      result = fuse.search(searchTerm).map(r => r.item);
+    }
+
+    // 2. Filter Retired
+    if (!showRetired) {
+      result = result.filter(s => !s.is_retired);
+    }
+
+    // 3. Sort
+    return [...result].sort((a, b) => {
+      switch (sortBy) {
+        case "artist":
+          return a.artist.localeCompare(b.artist);
+        case "bpm_asc":
+          return (Number(a.tempo) || 0) - (Number(b.tempo) || 0);
+        case "bpm_desc":
+          return (Number(b.tempo) || 0) - (Number(a.tempo) || 0);
+        case "key":
+            return (a.key || "").localeCompare(b.key || "");
+        case "title":
+        default:
+          return a.title.localeCompare(b.title);
+      }
+    });
+  }, [songs, searchTerm, sortBy, showRetired, fuse]);
+
+
+  // --- Handlers ---
+
+  const handleDeleteRequest = async (song: Song) => {
+    setSongToDelete(song);
+    setIsCheckingUsage(true);
+    setUsageData([]);
+    
+    try {
+        const usage = await getSongUsage(song.id);
+        setUsageData(usage);
+    } catch (error) {
+        console.error("Failed to check song usage", error);
+    } finally {
+        setIsCheckingUsage(false);
+    }
+  };
 
   return (
     <AppLayout>
@@ -147,7 +241,7 @@ const SongList = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Songs</h1>
             <p className="text-muted-foreground text-sm">
-              Swipe left to delete, right to edit.
+              Manage your repertoire.
             </p>
           </div>
           <Button asChild className="rounded-full shadow-lg hover:shadow-xl transition-all">
@@ -157,14 +251,44 @@ const SongList = () => {
           </Button>
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search repertoire..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-11 rounded-xl bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/50 focus-visible:bg-background transition-all"
-          />
+        {/* Search & Filter Bar */}
+        <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                    placeholder="Search (e.g. dont stop...)"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 h-11 rounded-xl bg-muted/40 border-0 focus-visible:ring-1 focus-visible:ring-primary/50 focus-visible:bg-background transition-all"
+                />
+            </div>
+            
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-xl">
+                        <Filter className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuLabel>Filters</DropdownMenuLabel>
+                    <DropdownMenuCheckboxItem 
+                        checked={showRetired} 
+                        onCheckedChange={setShowRetired}
+                    >
+                        Show Retired Songs
+                    </DropdownMenuCheckboxItem>
+                    
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup value={sortBy} onValueChange={setSortBy}>
+                        <DropdownMenuRadioItem value="title">Title (A-Z)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="artist">Artist (A-Z)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="key">Key</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="bpm_asc">BPM (Low-High)</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="bpm_desc">BPM (High-Low)</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
         </div>
 
         {isLoading ? (
@@ -173,7 +297,7 @@ const SongList = () => {
           </div>
         ) : (
           <div className="space-y-1">
-            {filteredSongs.length === 0 ? (
+            {filteredAndSortedSongs.length === 0 ? (
               <div className="text-center py-20">
                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
                     <Music className="w-8 h-8 text-muted-foreground" />
@@ -184,30 +308,78 @@ const SongList = () => {
                  </p>
               </div>
             ) : (
-              filteredSongs.map((song) => (
+              filteredAndSortedSongs.map((song) => (
                 <SongListItem 
                   key={song.id} 
                   song={song} 
-                  onDeleteRequest={(id) => setDeleteId(id)} 
+                  onDeleteRequest={handleDeleteRequest} 
                 />
               ))
             )}
           </div>
         )}
 
-        <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-            <AlertDialogContent>
+        {/* Safe Delete Dialog */}
+        <AlertDialog open={!!songToDelete} onOpenChange={(open) => !open && setSongToDelete(null)}>
+            <AlertDialogContent className="max-w-md">
                 <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Song?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This will permanently delete this song from your repertoire. It will also be removed from any setlists it belongs to.
-                    </AlertDialogDescription>
+                    <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-5 w-5" />
+                        Delete "{songToDelete?.title}"?
+                    </AlertDialogTitle>
+                    <div className="text-sm text-muted-foreground space-y-4 pt-2">
+                        {isCheckingUsage ? (
+                            <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" /> Checking usage...
+                            </div>
+                        ) : usageData.length > 0 ? (
+                            <>
+                                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-600 dark:text-amber-400">
+                                    <p className="font-semibold mb-1">Warning: Active in {usageData.length} Setlist{usageData.length !== 1 ? 's' : ''}</p>
+                                    <p>Deleting this song will remove it from these setlists:</p>
+                                </div>
+                                <ScrollArea className="h-24 rounded border p-2">
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {usageData.map((usage, idx) => (
+                                            <li key={idx}>
+                                                <span className="font-medium">{usage.setlistName}</span> 
+                                                <span className="text-xs text-muted-foreground ml-2">({usage.date})</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </ScrollArea>
+                                <p>
+                                    Consider <b>Retiring</b> the song instead. Retired songs remain in existing setlists but cannot be added to new ones.
+                                </p>
+                            </>
+                        ) : (
+                            <p>
+                                This will permanently delete this song from your repertoire. This action cannot be undone.
+                            </p>
+                        )}
+                    </div>
                 </AlertDialogHeader>
-                <AlertDialogFooter>
+                <AlertDialogFooter className="flex-col sm:flex-row gap-2">
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive hover:bg-destructive/90">
-                        Delete
-                    </AlertDialogAction>
+                    
+                    {!isCheckingUsage && usageData.length > 0 && (
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => songToDelete && retireMutation.mutate(songToDelete.id)}
+                            className="w-full sm:w-auto"
+                        >
+                            <Archive className="mr-2 h-4 w-4" /> Retire Instead
+                        </Button>
+                    )}
+                    
+                    <Button 
+                        variant="destructive"
+                        onClick={() => songToDelete && deleteMutation.mutate(songToDelete.id)}
+                        className="w-full sm:w-auto"
+                        disabled={isCheckingUsage}
+                    >
+                        {usageData.length > 0 ? "Delete Anyway" : "Delete Permanently"}
+                    </Button>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

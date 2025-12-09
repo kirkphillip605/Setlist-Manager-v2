@@ -59,6 +59,7 @@ export const saveSong = async (song: Partial<Song>) => {
     note: song.note || "",
     cover_url: song.cover_url || null,
     spotify_url: song.spotify_url || null,
+    is_retired: song.is_retired || false,
     updated_at: new Date().toISOString()
   };
 
@@ -90,6 +91,43 @@ export const saveSong = async (song: Partial<Song>) => {
 export const deleteSong = async (id: string) => {
   const { error } = await supabase.from('songs').delete().eq('id', id);
   if (error) throw error;
+};
+
+export const getSongUsage = async (songId: string): Promise<{ setlistName: string; date: string }[]> => {
+  // Find all set_songs entries for this song, joining up to setlists
+  const { data, error } = await supabase
+    .from('set_songs')
+    .select(`
+      sets (
+        setlists (
+          name,
+          date
+        )
+      )
+    `)
+    .eq('song_id', songId);
+
+  if (error) throw error;
+
+  // Flatten the structure to return unique setlists
+  const usage: { setlistName: string; date: string }[] = [];
+  const seen = new Set<string>();
+
+  data.forEach((item: any) => {
+    const setlist = item.sets?.setlists;
+    if (setlist) {
+      const key = `${setlist.name}-${setlist.date}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        usage.push({
+          setlistName: setlist.name,
+          date: setlist.date
+        });
+      }
+    }
+  });
+
+  return usage;
 };
 
 // --- Setlists ---

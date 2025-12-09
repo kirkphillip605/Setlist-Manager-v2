@@ -1,7 +1,7 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { getSong, deleteSong, saveSong } from "@/lib/api";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { getSong, deleteSong, saveSong, getSongUsage } from "@/lib/api";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,7 +22,11 @@ import {
   Music,
   Square,
   Play,
-  Wand2
+  Wand2,
+  AlertTriangle,
+  Archive,
+  EyeOff,
+  Eye
 } from "lucide-react";
 import {
   AlertDialog,
@@ -33,7 +37,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -42,16 +45,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openMetronome, closeMetronome, isPlaying } = useMetronome();
+  
   const [isAdmin, setIsAdmin] = useState(false);
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Safe Delete State
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [usageData, setUsageData] = useState<{setlistName: string, date: string}[]>([]);
+  const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -86,15 +98,28 @@ const SongDetail = () => {
     mutationFn: saveSong,
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['song', id] });
-        toast.success("Song updated with new details");
+        toast.success("Song updated");
         setIsSearchOpen(false);
     }
   });
 
-  const handleDelete = () => {
-    if (id) {
-      deleteMutation.mutate(id);
+  const initiateDelete = async () => {
+    if (!id) return;
+    setIsCheckingUsage(true);
+    setShowDeleteDialog(true);
+    try {
+        const usage = await getSongUsage(id);
+        setUsageData(usage);
+    } catch (error) {
+        console.error("Failed to check usage", error);
+    } finally {
+        setIsCheckingUsage(false);
     }
+  };
+
+  const toggleRetired = (checked: boolean) => {
+    if (!song) return;
+    updateSongMutation.mutate({ ...song, is_retired: checked });
   };
 
   const toggleMetronome = () => {
@@ -191,6 +216,9 @@ const SongDetail = () => {
             <h1 className="text-2xl font-bold tracking-tight truncate max-w-[200px] sm:max-w-md">
               {song.title}
             </h1>
+            {song.is_retired && (
+                <span className="bg-muted text-muted-foreground text-xs px-2 py-1 rounded font-medium border">RETIRED</span>
+            )}
           </div>
           <div className="flex gap-2">
             {isAdmin && (
@@ -210,31 +238,11 @@ const SongDetail = () => {
                 <Edit className="h-4 w-4" />
               </Link>
             </Button>
-            
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="icon">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete song?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete "{song.title}".
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </div>
         </div>
 
         {/* Hero Section with Art */}
-        <div className="flex flex-col sm:flex-row gap-6 items-start">
+        <div className={`flex flex-col sm:flex-row gap-6 items-start ${song.is_retired ? 'opacity-75 grayscale' : ''}`}>
           <motion.div 
             className="shrink-0 mx-auto sm:mx-0"
             initial={{ opacity: 0, scale: 0.95 }}
@@ -335,6 +343,54 @@ const SongDetail = () => {
           </Card>
         </motion.div>
 
+        {/* Danger Zone */}
+        <Card className="border-destructive/30 bg-destructive/5 mt-8 overflow-hidden">
+            <CardHeader className="border-b border-destructive/10 bg-destructive/10 py-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-4 w-4" /> Danger Zone
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h4 className="font-medium flex items-center gap-2">
+                             {song.is_retired ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                             {song.is_retired ? "Re-activate Song" : "Retire Song"}
+                        </h4>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            {song.is_retired 
+                                ? "Make this song active again. It will appear in new setlist searches." 
+                                : "Retired songs remain in existing setlists but cannot be added to new ones."}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Label htmlFor="retire-mode" className="text-sm">
+                            {song.is_retired ? "Retired" : "Active"}
+                        </Label>
+                        <Switch 
+                            id="retire-mode"
+                            checked={song.is_retired || false}
+                            onCheckedChange={toggleRetired}
+                        />
+                    </div>
+                </div>
+                
+                <div className="h-px bg-destructive/10 w-full" />
+
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                     <div>
+                        <h4 className="font-medium text-destructive">Delete Song</h4>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Permanently remove this song from the database. This action cannot be undone.
+                        </p>
+                    </div>
+                    <Button variant="destructive" onClick={initiateDelete}>
+                        Delete Permanently
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+
         {/* Admin Search Dialog */}
         <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
             <DialogContent className="max-w-md">
@@ -361,6 +417,75 @@ const SongDetail = () => {
                 </div>
             </DialogContent>
         </Dialog>
+
+         {/* Safe Delete Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <AlertDialogContent className="max-w-md">
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-5 w-5" />
+                        Delete "{song.title}"?
+                    </AlertDialogTitle>
+                    <div className="text-sm text-muted-foreground space-y-4 pt-2">
+                        {isCheckingUsage ? (
+                            <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" /> Checking usage...
+                            </div>
+                        ) : usageData.length > 0 ? (
+                            <>
+                                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-600 dark:text-amber-400">
+                                    <p className="font-semibold mb-1">Warning: Active in {usageData.length} Setlist{usageData.length !== 1 ? 's' : ''}</p>
+                                    <p>Deleting this song will remove it from these setlists:</p>
+                                </div>
+                                <ScrollArea className="h-24 rounded border p-2">
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {usageData.map((usage, idx) => (
+                                            <li key={idx}>
+                                                <span className="font-medium">{usage.setlistName}</span> 
+                                                <span className="text-xs text-muted-foreground ml-2">({usage.date})</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </ScrollArea>
+                                <p>
+                                    Consider <b>Retiring</b> the song instead. Retired songs remain in existing setlists but cannot be added to new ones.
+                                </p>
+                            </>
+                        ) : (
+                            <p>
+                                This will permanently delete this song from your repertoire. This action cannot be undone.
+                            </p>
+                        )}
+                    </div>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    
+                    {!isCheckingUsage && usageData.length > 0 && (
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => {
+                                toggleRetired(true);
+                                setShowDeleteDialog(false);
+                                toast.success("Song retired instead of deleted");
+                            }}
+                            className="w-full sm:w-auto"
+                        >
+                            <Archive className="mr-2 h-4 w-4" /> Retire Instead
+                        </Button>
+                    )}
+                    
+                    <Button 
+                        variant="destructive"
+                        onClick={() => deleteMutation.mutate(id!)}
+                        className="w-full sm:w-auto"
+                        disabled={isCheckingUsage}
+                    >
+                        {usageData.length > 0 ? "Delete Anyway" : "Delete Permanently"}
+                    </Button>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
 
       </motion.div>
     </AppLayout>
