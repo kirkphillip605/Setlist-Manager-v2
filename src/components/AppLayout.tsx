@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useTheme } from "@/components/theme-provider";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,6 +26,30 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Theme logic for dynamic logo selection
+  const { theme } = useTheme();
+  const [isDarkMode, setIsDarkMode] = useState(theme === 'dark');
+
+  useEffect(() => {
+    if (theme === 'system') {
+        // Check system preference if theme is set to system
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+        const updateMode = () => {
+            setIsDarkMode(mediaQuery.matches);
+        };
+        updateMode();
+        mediaQuery.addEventListener('change', updateMode);
+        return () => mediaQuery.removeEventListener('change', updateMode);
+    } else {
+        // Use explicit theme setting
+        setIsDarkMode(theme === 'dark');
+    }
+  }, [theme]);
+
+  const logoPath = isDarkMode ? "/setlist-logo-dark.png" : "/setlist-logo-transparent.png";
+  const iconPath = "/setlist-icon.png";
+  // End Theme logic
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -68,13 +93,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r bg-card/50 backdrop-blur-xl px-4 py-6 z-20">
         <div className="flex items-center justify-between mb-8 px-2">
           <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground p-2 rounded-xl shadow-lg shadow-primary/20">
-              <Music className="w-5 h-5" />
-            </div>
-            <div>
-                <h1 className="text-sm font-bold tracking-tight leading-none">Bad Habits</h1>
-                <p className="text-[10px] text-muted-foreground font-medium">Setlist Management</p>
-            </div>
+            {/* Updated Logo Display */}
+            <img src={iconPath} alt="Icon" className="w-6 h-6" />
+            <img src={logoPath} alt="Bad Habits Logo" className="h-6" />
           </div>
           <ModeToggle />
         </div>
@@ -126,9 +147,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       {/* Mobile Header (Top Bar) */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 border-b bg-background/80 backdrop-blur-md z-40 px-4 flex items-center justify-between">
          <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
-              <Music className="w-4 h-4" />
-            </div>
+            {/* Updated Mobile Icon Display */}
+            <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Bad Habits</span>
          </div>
          <div className="flex items-center gap-2">
