@@ -37,6 +37,7 @@ const GigDetail = () => {
         mutationFn: saveGig,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gig', id] });
+            queryClient.invalidateQueries({ queryKey: ['gigs'] }); // Refresh list view
             setIsEditOpen(false);
             toast.success("Gig updated");
         },

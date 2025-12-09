@@ -128,6 +128,7 @@ const SongDetail = () => {
     mutationFn: saveSong,
     onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['song', id] });
+        queryClient.invalidateQueries({ queryKey: ['songs'] }); // Refresh list view
         toast.success("Song updated");
         setIsSearchOpen(false);
         setShowBpmDialog(false);

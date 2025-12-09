@@ -56,6 +56,7 @@ const SetlistDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
       toast.success("Set added");
     },
     onError: (err: any) => toast.error(err.message)
@@ -65,6 +66,7 @@ const SetlistDetail = () => {
     mutationFn: (setId: string) => deleteSet(setId, setlist!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
       setSetToDelete(null);
       toast.success("Set deleted and renumbered");
     }
@@ -75,6 +77,7 @@ const SetlistDetail = () => {
       const startPosition = targetSet ? targetSet.songs.length + 1 : 1;
       await addSongsToSet(targetSetId, songIds, startPosition);
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
   };
 
   const createSetAndAddSongsMutation = async (initialSongs: string[], remainingSongs: string[]) => {
@@ -84,6 +87,7 @@ const SetlistDetail = () => {
       if (newSet?.id) {
           await addSongsToSet(newSet.id, remainingSongs, 1);
           queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+          queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
       }
   };
 
@@ -91,6 +95,7 @@ const SetlistDetail = () => {
     mutationFn: removeSongFromSet,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+      queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh list view counts
       setSongToRemove(null);
       toast.success("Song removed");
     }
@@ -109,6 +114,7 @@ const SetlistDetail = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+      // No need to invalidate 'setlists' here as total song count remains same
       toast.success("Song moved");
     }
   });
