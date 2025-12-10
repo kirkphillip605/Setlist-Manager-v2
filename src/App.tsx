@@ -4,7 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { MetronomeProvider } from "@/components/MetronomeContext";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -30,7 +31,7 @@ import { CacheWarmer } from "@/components/CacheWarmer";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { session, loading, profile } = useAuth();
+  const { session, loading, profile, signOut } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -45,10 +46,15 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // If session exists but profile failed to load (offline + no cache)
   if (!profile) {
      return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 p-4 text-center">
+            <AlertCircle className="h-10 w-10 text-destructive" />
+            <h2 className="text-xl font-semibold">Unable to load profile</h2>
+            <p className="text-muted-foreground">Please check your internet connection and try again.</p>
+            <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
+            <Button variant="ghost" onClick={() => signOut()}>Sign Out</Button>
         </div>
      );
   }

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface Profile {
   id: string;
@@ -29,97 +30,71 @@ const AuthContext = createContext<AuthContextType>({
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  // Check if we are currently handling a redirect (OAuth)
-  // This prevents setting loading=false prematurely
-  const isRedirecting = window.location.hash && (
-    window.location.hash.includes('access_token') || 
-    window.location.hash.includes('error_description')
-  );
-
+  // 1. Auth State Management
   useEffect(() => {
     let mounted = true;
 
-    // 1. Initial Session Check
-    const initSession = async () => {
-      try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        
-        if (mounted) {
-          if (initialSession) {
-            setSession(initialSession);
-            await fetchProfile(initialSession.user.id);
-          }
-        }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-      } finally {
-        // Only stop loading if we are NOT waiting for a redirect hash to be parsed
-        if (mounted && !isRedirecting) {
-          setLoading(false);
-        }
-      }
-    };
-
-    initSession();
-
-    // 2. Auth State Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log(`Auth event: ${event}`);
-      
-      if (!mounted) return;
-
-      if (newSession) {
+    // Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (mounted) {
         setSession(newSession);
-        
-        // Fetch profile if user changed or profile missing
-        if (!profile || profile.id !== newSession.user.id) {
-           await fetchProfile(newSession.user.id);
+        setAuthLoading(false);
+        // Clear profile cache on sign out
+        if (event === 'SIGNED_OUT') {
+            queryClient.setQueryData(['profile', session?.user?.id], null);
         }
-      } else if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setProfile(null);
       }
-      
-      // Stop loading on explicit events
-      setLoading(false);
+    });
+
+    // Initial Load
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (mounted) {
+        setSession(initialSession);
+        setAuthLoading(false);
+      }
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []); // Run once on mount
+  }, [queryClient]);
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (data) {
-        setProfile(data as Profile);
-      }
-    } catch (e) {
-      console.warn("Profile fetch failed (likely offline):", e);
-    }
-  };
+  // 2. Cached Profile Fetch
+  // We use useQuery so the profile survives offline restarts thanks to the persister
+  const { data: profile, isLoading: profileLoading } = useQuery({
+    queryKey: ['profile', session?.user?.id],
+    queryFn: async () => {
+        if (!session?.user?.id) return null;
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+        if (error) throw error;
+        return data as Profile;
+    },
+    enabled: !!session?.user?.id,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    queryClient.clear(); // Clear all cache on logout for security
     setSession(null);
-    setProfile(null);
   };
+
+  const isLoading = authLoading || (!!session && profileLoading && !profile);
 
   const value = {
     session,
     user: session?.user || null,
-    profile,
-    loading,
+    profile: profile || null,
+    loading: isLoading,
     isAdmin: profile?.role === 'admin',
     signOut,
   };

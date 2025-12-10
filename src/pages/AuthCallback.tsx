@@ -1,50 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/context/AuthContext";
 import { Loader2 } from "lucide-react";
 
 const AuthCallback = () => {
   const navigate = useNavigate();
-  const [message, setMessage] = useState("Hang tight while we finish logging you in...");
+  const { session, loading, profile } = useAuth();
 
   useEffect(() => {
-    const handleAuth = async () => {
-      // Small delay to ensure session is established by the global listener
-      setTimeout(async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          // If no session, maybe send to login
-          navigate("/login");
-          return;
+    if (!loading) {
+      if (session) {
+        // If profile is missing needed info, go to profile, else home
+        if (profile && (!profile.first_name || !profile.last_name)) {
+            navigate("/profile");
+        } else {
+            navigate("/");
         }
-
-        // Check if profile is complete (e.g. has name)
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("first_name, last_name")
-          .eq("id", session.user.id)
-          .single();
-
-        // Simulate the requested 5 second delay for effect
-        setTimeout(() => {
-          if (!profile?.first_name || !profile?.last_name) {
-             navigate("/profile"); // Send to profile to complete info
-          } else {
-             navigate("/"); // Send to dashboard
-          }
-        }, 4000); 
-
-      }, 1000);
-    };
-
-    handleAuth();
-  }, [navigate]);
+      } else {
+        // No session found after loading finished -> Login
+        navigate("/login");
+      }
+    }
+  }, [session, loading, navigate, profile]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
       <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      <h2 className="text-xl font-semibold animate-pulse">{message}</h2>
+      <h2 className="text-xl font-semibold animate-pulse">Logging you in...</h2>
     </div>
   );
 };
