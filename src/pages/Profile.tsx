@@ -9,8 +9,11 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, User, Save, LogOut, ShieldAlert } from "lucide-react";
+import { Loader2, User, Save, LogOut, ShieldAlert, Cloud, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useSyncStatus } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { cn } from "@/lib/utils";
 
 const POSITIONS = [
   "Lead Vocals", "Backing Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
@@ -24,6 +27,9 @@ const Profile = () => {
   const [saving, setSaving] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   
+  const { lastSyncedAt, isSyncing, refreshAll } = useSyncStatus();
+  const isOnline = useNetworkStatus();
+
   // Profile State
   const [profile, setProfile] = useState({
     first_name: "",
@@ -177,6 +183,12 @@ const Profile = () => {
     if (error) toast.error(error.message);
   };
 
+  const handleManualSync = async () => {
+      toast.info("Syncing data...");
+      await refreshAll();
+      toast.success("Sync complete");
+  };
+
   if (loading) return (
     <AppLayout>
       <div className="flex justify-center p-8">
@@ -245,6 +257,42 @@ const Profile = () => {
               </div>
             </form>
           </CardContent>
+        </Card>
+
+        {/* Sync Status Card */}
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Cloud className="w-5 h-5 text-blue-500" />
+                    Data Sync
+                </CardTitle>
+                <CardDescription>Manage your offline data cache.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                        <div className="text-sm font-medium">Network Status</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-2">
+                            <span className={cn("w-2 h-2 rounded-full", isOnline ? "bg-green-500" : "bg-red-500")} />
+                            {isOnline ? "Online" : "Offline"}
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-1 text-right">
+                        <div className="text-sm font-medium">Last Synced</div>
+                        <div className="text-sm text-muted-foreground">
+                            {lastSyncedAt > 0 ? new Date(lastSyncedAt).toLocaleString() : "Never"}
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="mt-4 pt-4 border-t flex justify-end">
+                    <Button variant="outline" onClick={handleManualSync} disabled={isSyncing || !isOnline}>
+                        <RefreshCw className={cn("mr-2 h-4 w-4", isSyncing && "animate-spin")} />
+                        {isSyncing ? "Syncing..." : "Force Sync Now"}
+                    </Button>
+                </div>
+            </CardContent>
         </Card>
 
         {/* Password Change Form */}

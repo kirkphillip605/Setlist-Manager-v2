@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/context/AuthContext";
+import { SyncStatusButton } from "./SyncStatusButton";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -82,7 +83,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           </div>
           
           <div className="flex flex-col gap-2">
-            {!isSidebarCollapsed && <ModeToggle />}
+            {!isSidebarCollapsed && <div className="flex items-center gap-1"><SyncStatusButton /><ModeToggle /></div>}
+            {isSidebarCollapsed && <ModeToggle />}
+            
             <Button 
                 variant="ghost" 
                 size="icon" 
@@ -146,7 +149,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Bad Habits</span>
          </div>
-         <div className="flex items-center gap-2">
+         <div className="flex items-center gap-1">
+             <SyncStatusButton />
              <ModeToggle />
              <Button variant="ghost" size="icon" onClick={() => navigate("/profile")}>
                 <User className="w-5 h-5" />

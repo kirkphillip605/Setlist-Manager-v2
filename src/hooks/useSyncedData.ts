@@ -2,50 +2,58 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { getSongs, getSetlists, getGigs, getAllSkippedSongs } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
-// --- MASTER SONGS HOOK ---
-export const useSyncedSongs = () => {
+const REFETCH_INTERVAL = 1000 * 60 * 5; // 5 minutes
+
+// Helper to subscribe to realtime changes
+const useRealtimeSubscription = (table: string, queryKey: string[]) => {
   const queryClient = useQueryClient();
-
-  const query = useQuery({
-    queryKey: ['songs'],
-    queryFn: getSongs,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-
+  
   useEffect(() => {
     const channel = supabase
-      .channel('public:songs')
+      .channel(`public:${table}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'songs' },
-        () => queryClient.invalidateQueries({ queryKey: ['songs'] })
+        { event: '*', schema: 'public', table: table },
+        () => {
+            console.log(`Realtime update for ${table}, invalidating ${queryKey}`);
+            queryClient.invalidateQueries({ queryKey });
+        }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, table, JSON.stringify(queryKey)]);
+};
 
-  return query;
+// --- MASTER SONGS HOOK ---
+export const useSyncedSongs = () => {
+  const { user } = useAuth();
+  
+  useRealtimeSubscription('songs', ['songs']);
+
+  return useQuery({
+    queryKey: ['songs'],
+    queryFn: getSongs,
+    enabled: !!user, // Only fetch if we have a user
+    staleTime: Infinity, // Rely on realtime/invalidation
+    gcTime: Infinity, // Keep in cache forever
+    refetchInterval: REFETCH_INTERVAL,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+  });
 };
 
 // --- MASTER SETLISTS HOOK ---
 export const useSyncedSetlists = () => {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const query = useQuery({
-    queryKey: ['setlists'],
-    queryFn: getSetlists,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-
+  // Setlists are complex, listen to related tables
   useEffect(() => {
-    // Listen to all tables related to setlists structure
     const channel = supabase
       .channel('public:setlists_agg')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'setlists' }, () => {
@@ -64,65 +72,52 @@ export const useSyncedSetlists = () => {
     };
   }, [queryClient]);
 
-  return query;
+  return useQuery({
+    queryKey: ['setlists'],
+    queryFn: getSetlists,
+    enabled: !!user,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchInterval: REFETCH_INTERVAL,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+  });
 };
 
 // --- MASTER GIGS HOOK ---
 export const useSyncedGigs = () => {
-  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  
+  useRealtimeSubscription('gigs', ['gigs']);
 
-  const query = useQuery({
+  return useQuery({
     queryKey: ['gigs'],
     queryFn: getGigs,
+    enabled: !!user,
     staleTime: Infinity,
     gcTime: Infinity,
+    refetchInterval: REFETCH_INTERVAL,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
   });
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('public:gigs')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'gigs' },
-        () => queryClient.invalidateQueries({ queryKey: ['gigs'] })
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
-  return query;
 };
 
 // --- MASTER SKIPPED SONGS HOOK ---
 export const useSyncedSkippedSongs = () => {
-  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  
+  useRealtimeSubscription('gig_skipped_songs', ['skipped_songs_all']);
 
-  const query = useQuery({
+  return useQuery({
     queryKey: ['skipped_songs_all'],
     queryFn: getAllSkippedSongs,
+    enabled: !!user,
     staleTime: Infinity,
     gcTime: Infinity,
+    refetchInterval: REFETCH_INTERVAL,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
   });
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('public:gig_skipped_songs')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'gig_skipped_songs' },
-        () => queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] })
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
-  return query;
 };
 
 // --- HYDRATION HELPERS ---
@@ -161,4 +156,40 @@ export const useSongFromCache = (songId?: string) => {
   return useMemo(() => {
     return allSongs.find(s => s.id === songId) || null;
   }, [songId, allSongs]);
+};
+
+// --- SYNC STATUS HELPER ---
+export const useSyncStatus = () => {
+    const songs = useSyncedSongs();
+    const setlists = useSyncedSetlists();
+    const gigs = useSyncedGigs();
+    
+    const isSyncing = songs.isFetching || setlists.isFetching || gigs.isFetching;
+    const lastSyncedAt = Math.max(
+        songs.dataUpdatedAt, 
+        setlists.dataUpdatedAt, 
+        gigs.dataUpdatedAt
+    );
+    
+    const queryClient = useQueryClient();
+
+    const refreshAll = async () => {
+        console.log("Manual Sync Triggered");
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['songs'] }),
+            queryClient.invalidateQueries({ queryKey: ['setlists'] }),
+            queryClient.invalidateQueries({ queryKey: ['gigs'] }),
+            queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] }),
+            queryClient.invalidateQueries({ queryKey: ['profile'] })
+        ]);
+        await Promise.all([
+            queryClient.refetchQueries({ queryKey: ['songs'] }),
+            queryClient.refetchQueries({ queryKey: ['setlists'] }),
+            queryClient.refetchQueries({ queryKey: ['gigs'] }),
+            queryClient.refetchQueries({ queryKey: ['skipped_songs_all'] }),
+             queryClient.refetchQueries({ queryKey: ['profile'] })
+        ]);
+    };
+
+    return { isSyncing, lastSyncedAt, refreshAll };
 };
