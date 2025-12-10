@@ -1,20 +1,19 @@
 import AppLayout from "@/components/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getSetlists, getGigs } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ChevronRight, Music2, Users, Lock } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useSyncedSetlists, useSyncedGigs } from "@/hooks/useSyncedData";
 
 const PerformanceSelection = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"gig" | "practice" | null>(null);
 
-  const { data: setlists = [], isLoading: loadingSetlists } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
-  const { data: gigs = [], isLoading: loadingGigs } = useQuery({ queryKey: ['gigs'], queryFn: getGigs });
+  const { data: setlists = [] } = useSyncedSetlists();
+  const { data: gigs = [] } = useSyncedGigs();
 
   // Filter Gigs: Today and Future
   const upcomingGigs = gigs.filter(g => new Date(g.date) >= new Date(new Date().setDate(new Date().getDate() - 1)));

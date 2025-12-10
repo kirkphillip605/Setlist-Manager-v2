@@ -7,21 +7,25 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getGigs, saveGig, deleteGig, getSetlists } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic } from "lucide-react";
+import { saveGig, deleteGig } from "@/lib/api";
+import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Gig } from "@/types";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const Gigs = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const isOnline = useNetworkStatus();
+    
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [showPast, setShowPast] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -29,8 +33,9 @@ const Gigs = () => {
     // Form State
     const [newGig, setNewGig] = useState<Partial<Gig>>({ name: "", date: "", notes: "", setlist_id: null });
 
-    const { data: gigs = [], isLoading } = useQuery({ queryKey: ['gigs'], queryFn: getGigs });
-    const { data: setlists = [] } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
+    // Use Master Cache
+    const { data: gigs = [], isLoading } = useSyncedGigs();
+    const { data: setlists = [] } = useSyncedSetlists();
 
     // Filter band setlists for dropdown
     const bandSetlists = useMemo(() => setlists.filter(s => !s.is_personal), [setlists]);
@@ -63,8 +68,20 @@ const Gigs = () => {
     }, [gigs]);
 
     const openCreate = () => {
+        if (!isOnline) {
+            toast.error("Offline: Cannot create gigs");
+            return;
+        }
         setNewGig({ name: "", date: "", notes: "", setlist_id: null });
         setIsCreateOpen(true);
+    };
+
+    const handleDeleteRequest = (id: string) => {
+        if (!isOnline) {
+            toast.error("Offline: Cannot delete gigs");
+            return;
+        }
+        setDeleteId(id);
     };
 
     const GigList = ({ list }: { list: Gig[] }) => (
@@ -83,14 +100,16 @@ const Gigs = () => {
                                 {new Date(gig.date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                             </div>
                         </div>
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => { e.stopPropagation(); setDeleteId(gig.id); }}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isOnline && (
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteRequest(gig.id); }}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {gig.venue_name && (
@@ -120,10 +139,15 @@ const Gigs = () => {
              <div className="space-y-6 pb-20">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Gigs</h1>
-                        <p className="text-muted-foreground text-sm">Upcoming shows and events.</p>
+                        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+                            Gigs
+                            {!isOnline && <CloudOff className="h-5 w-5 text-muted-foreground" />}
+                        </h1>
+                        <p className="text-muted-foreground text-sm">
+                            {isOnline ? "Upcoming shows and events." : "Offline Mode: Read Only"}
+                        </p>
                     </div>
-                    <Button onClick={openCreate} className="rounded-full shadow-lg">
+                    <Button onClick={openCreate} className="rounded-full shadow-lg" disabled={!isOnline}>
                         <Plus className="mr-2 h-4 w-4" /> Add Gig
                     </Button>
                 </div>

@@ -1,8 +1,7 @@
 import AppLayout from "@/components/AppLayout";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, CloudOff } from "lucide-react";
 import { 
-  getSetlist, getSongs, createSet, deleteSet, 
+  createSet, deleteSet, 
   addSongsToSet, removeSongFromSet, updateSetSongOrder, 
   moveSetSongToSet, updateSetlist 
 } from "@/lib/api";
@@ -10,16 +9,20 @@ import { parseDurationToSeconds } from "@/lib/utils";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 import { SetlistHeader } from "@/components/SetlistHeader";
 import { SetCard } from "@/components/SetCard";
 import { AddSongDialog } from "@/components/AddSongDialog";
+import { useSetlistWithSongs, useSyncedSongs } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const SetlistDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const isOnline = useNetworkStatus();
   
   // States
   const [isAddSongOpen, setIsAddSongOpen] = useState(false);
@@ -29,16 +32,9 @@ const SetlistDetail = () => {
   const [setToDelete, setSetToDelete] = useState<string | null>(null);
   const [songToRemove, setSongToRemove] = useState<string | null>(null);
 
-  const { data: setlist, isLoading } = useQuery({
-    queryKey: ['setlist', id],
-    queryFn: () => getSetlist(id!),
-    enabled: !!id
-  });
-
-  const { data: availableSongs = [] } = useQuery({
-    queryKey: ['songs'],
-    queryFn: getSongs
-  });
+  // Use Hydrated Data from Master Cache
+  const setlist = useSetlistWithSongs(id);
+  const { data: availableSongs = [] } = useSyncedSongs();
 
   // --- Mutations ---
 
@@ -130,7 +126,49 @@ const SetlistDetail = () => {
 
   // --- Handlers ---
 
+  const handleUpdateName = (name: string) => {
+    if (!isOnline) {
+        toast.error("Offline: Cannot rename setlist");
+        return;
+    }
+    updateNameMutation.mutate(name);
+  };
+
+  const handleAddSet = () => {
+      if (!isOnline) {
+          toast.error("Offline: Cannot add sets");
+          return;
+      }
+      addSetMutation.mutate();
+  };
+
+  const handleDeleteSetRequest = (setId: string) => {
+      if (!isOnline) {
+          toast.error("Offline: Cannot delete sets");
+          return;
+      }
+      setSetToDelete(setId);
+  };
+
+  const handleRemoveSongRequest = (songId: string) => {
+      if (!isOnline) {
+          toast.error("Offline: Cannot remove songs");
+          return;
+      }
+      setSongToRemove(songId);
+  };
+
+  const handleAddSongRequest = (setId: string) => {
+      if (!isOnline) {
+          toast.error("Offline: Cannot add songs");
+          return;
+      }
+      setActiveSetId(setId);
+      setIsAddSongOpen(true);
+  };
+
   const handleMoveOrder = (setId: string, songIndex: number, direction: 'up' | 'down') => {
+    if (!isOnline) return; // Silent fail for drag/drop
     if (!setlist) return;
     const set = setlist.sets.find(s => s.id === setId);
     if (!set) return;
@@ -141,7 +179,7 @@ const SetlistDetail = () => {
     reorderMutation.mutate([{ id: itemA.id, position: swapIndex + 1 }, { id: itemB.id, position: songIndex + 1 }]);
   };
 
-  if (isLoading || !setlist) return (
+  if (!setlist) return (
     <AppLayout>
       <div className="flex justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -152,18 +190,24 @@ const SetlistDetail = () => {
   return (
     <AppLayout>
       <div className="space-y-6 pb-20">
+        {!isOnline && (
+             <div className="bg-muted px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                 <CloudOff className="h-4 w-4" /> Offline Mode: Read Only
+             </div>
+        )}
+
         <SetlistHeader 
             name={setlist.name}
-            onAddSet={() => addSetMutation.mutate()}
+            onAddSet={handleAddSet}
             isAddingSet={addSetMutation.isPending}
-            onUpdateName={(name) => updateNameMutation.mutate(name)}
+            onUpdateName={handleUpdateName}
         />
 
         <div className="space-y-6">
           {setlist.sets.length === 0 ? (
              <div className="text-center py-20 border-2 border-dashed rounded-lg">
                 <p className="text-muted-foreground mb-4">No sets added yet.</p>
-                <Button onClick={() => addSetMutation.mutate()}>Create First Set</Button>
+                <Button onClick={handleAddSet} disabled={!isOnline}>Create First Set</Button>
              </div>
           ) : (
             setlist.sets.map((set) => (
@@ -172,11 +216,11 @@ const SetlistDetail = () => {
                    set={set}
                    setlist={setlist}
                    setDuration={set.songs.reduce((acc, s) => acc + parseDurationToSeconds(s.song?.duration), 0)}
-                   onAddSong={(setId) => { setActiveSetId(setId); setIsAddSongOpen(true); }}
-                   onDeleteSet={setSetToDelete}
-                   onRemoveSong={setSongToRemove}
+                   onAddSong={handleAddSongRequest}
+                   onDeleteSet={handleDeleteSetRequest}
+                   onRemoveSong={handleRemoveSongRequest}
                    onMoveOrder={handleMoveOrder}
-                   onMoveToSet={(ssId, tsId) => moveSetSongMutation.mutate({ setSongId: ssId, targetSetId: tsId })}
+                   onMoveToSet={(ssId, tsId) => isOnline && moveSetSongMutation.mutate({ setSongId: ssId, targetSetId: tsId })}
                />
             ))
           )}

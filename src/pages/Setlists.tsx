@@ -2,7 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,22 +15,23 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { 
-  getSetlists, createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage 
-} from "@/lib/api";
+import { createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage } from "@/lib/api";
 import { 
   Plus, Trash2, Loader2, Copy, MoreVertical, 
-  Lock, Globe, Filter, AlertTriangle, Users
+  Lock, Globe, Filter, AlertTriangle, Users, CloudOff
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Gig } from "@/types";
+import { useSyncedSetlists } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const Setlists = () => {
   const navigate = useNavigate();
+  const isOnline = useNetworkStatus();
   const [activeTab, setActiveTab] = useState("public");
   const [sortBy, setSortBy] = useState<"name" | "created" | "updated">("name");
   
@@ -50,7 +51,9 @@ const Setlists = () => {
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
   const queryClient = useQueryClient();
-  const { data: setlists = [], isLoading } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
+  
+  // Use Synced Hook
+  const { data: setlists = [], isLoading } = useSyncedSetlists();
 
   const filteredSetlists = useMemo(() => {
     let list = activeTab === "public" ? setlists.filter(l => !l.is_personal) : setlists.filter(l => l.is_personal);
@@ -103,6 +106,10 @@ const Setlists = () => {
   };
 
   const openCreateModal = (mode: "public" | "personal" | "clone", sourceId?: string) => {
+      if (!isOnline) {
+          toast.error("Offline: Cannot create setlists");
+          return;
+      }
       setCreateMode(mode);
       if (mode === "clone" && sourceId) {
           setSourceSetlistId(sourceId);
@@ -114,6 +121,10 @@ const Setlists = () => {
   };
 
   const handleDeleteRequest = async (id: string) => {
+      if (!isOnline) {
+          toast.error("Offline: Cannot delete setlists");
+          return;
+      }
       setDeleteId(id);
       setIsCheckingUsage(true);
       try {
@@ -131,11 +142,20 @@ const Setlists = () => {
       <div className="space-y-6 pb-20">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Setlists</h1>
-                <p className="text-muted-foreground text-sm">Manage song collections.</p>
+                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+                    Setlists
+                    {!isOnline && <CloudOff className="h-5 w-5 text-muted-foreground" />}
+                </h1>
+                <p className="text-muted-foreground text-sm">
+                    {isOnline ? "Manage song collections." : "Offline Mode: Read Only"}
+                </p>
             </div>
             
-            <Button onClick={() => setIsTypeSelectionOpen(true)} className="rounded-full shadow-lg">
+            <Button 
+                onClick={() => setIsTypeSelectionOpen(true)} 
+                className="rounded-full shadow-lg"
+                disabled={!isOnline}
+            >
                 <Plus className="mr-2 h-4 w-4" /> Create Setlist
             </Button>
          </div>
@@ -180,24 +200,28 @@ const Setlists = () => {
                                 {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
                                 </div>
                             </CardContent>
-                            <div className="absolute top-2 right-2">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
-                                        <Copy className="mr-2 h-4 w-4" /> Clone...
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem className="text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
-                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            </div>
+                            
+                            {/* Actions only visible if online */}
+                            {isOnline && (
+                                <div className="absolute top-2 right-2">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
+                                                <Copy className="mr-2 h-4 w-4" /> Clone...
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem className="text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
+                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            )}
                         </Card>
                     </Link>
                 ))}

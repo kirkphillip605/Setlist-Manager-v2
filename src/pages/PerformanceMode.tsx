@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getSetlist, getSongs, addSkippedSong, getSkippedSongs, removeSkippedSong, saveSong } from "@/lib/api";
-import { Song, Setlist } from "@/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { addSkippedSong, getSkippedSongs, removeSkippedSong, saveSong } from "@/lib/api";
+import { Song } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle 
@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, X, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,12 +23,15 @@ import { useMetronome } from "@/components/MetronomeContext";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MetronomeControls } from "@/components/MetronomeControls";
+import { useSetlistWithSongs, useSyncedSongs } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
   const [searchParams] = useSearchParams();
   const gigId = searchParams.get('gigId');
   const isGigMode = !!gigId;
+  const isOnline = useNetworkStatus();
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -50,23 +53,16 @@ const PerformanceMode = () => {
   const [showTempoSave, setShowTempoSave] = useState(false);
   const initialTempoRef = useRef<number | null>(null);
 
-  // Fetch Data
-  const { data: setlist, isLoading } = useQuery({
-    queryKey: ['setlist', id],
-    queryFn: () => getSetlist(id!),
-    enabled: !!id
-  });
+  // Use Hydrated Data (Offline Compatible)
+  const setlist = useSetlistWithSongs(id);
+  const { data: allSongs = [] } = useSyncedSongs();
 
-  const { data: allSongs = [] } = useQuery({
-    queryKey: ['songs'],
-    queryFn: getSongs,
-    enabled: isSearchOpen // Fetch when search opens
-  });
-
+  // Skipped Songs fetch (Offline safe if cached, but skip functionality requires online usually)
+  // We can allow reading skipped songs offline if they were cached previously.
   const { data: skippedSongs = [] } = useQuery({
     queryKey: ['skipped', gigId],
     queryFn: () => getSkippedSongs(gigId!),
-    enabled: isGigMode
+    enabled: isGigMode && isOnline // Only fetch fresh if online
   });
 
   // Derived Data
@@ -191,8 +187,8 @@ const PerformanceMode = () => {
   };
 
   const handleMetronomeClose = () => {
-      // Check if tempo changed and ask to save (Practice mode only)
-      if (!isGigMode && activeSong && initialTempoRef.current && bpm !== initialTempoRef.current) {
+      // Check if tempo changed and ask to save (Practice mode only, and online)
+      if (!isGigMode && activeSong && initialTempoRef.current && bpm !== initialTempoRef.current && isOnline) {
           setShowTempoSave(true);
       }
       closeMetronome();
@@ -204,13 +200,21 @@ const PerformanceMode = () => {
       }
   };
 
+  const handleSkipRequest = () => {
+      if(!isOnline) {
+          toast.error("Offline: Cannot skip songs to queue.");
+          return;
+      }
+      setShowSkipConfirm(true);
+  };
+
   // Filter songs for search
   const filteredSongs = allSongs.filter(s => 
     s.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     s.artist.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (isLoading || !setlist) {
+  if (!setlist) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -227,7 +231,8 @@ const PerformanceMode = () => {
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
       {/* Top Bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-card shadow-sm shrink-0 h-14 gap-2">
-        <div className="flex-1 max-w-[200px] md:max-w-xs shrink-0">
+        <div className="flex-1 max-w-[200px] md:max-w-xs shrink-0 flex items-center gap-2">
+          {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
           <Select 
             value={currentSetIndex.toString()} 
             onValueChange={handleSetChange}
@@ -253,13 +258,13 @@ const PerformanceMode = () => {
         </div>
 
         <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
-             {/* Skip Action (Gig Mode) */}
-            {isGigMode && activeSong && !tempSong && currentSet?.id !== 'skipped-set' && (
+             {/* Skip Action (Gig Mode) - Online Only */}
+            {isGigMode && activeSong && !tempSong && currentSet?.id !== 'skipped-set' && isOnline && (
                  <Button 
                     variant="outline" 
                     size="sm" 
                     className="text-orange-600 border-orange-200 hover:bg-orange-50 h-9"
-                    onClick={() => setShowSkipConfirm(true)}
+                    onClick={handleSkipRequest}
                  >
                      <Forward className="w-4 h-4 mr-2" /> Skip
                  </Button>
@@ -300,8 +305,8 @@ const PerformanceMode = () => {
                          </div>
                     )}
                     
-                    {/* Mark Done for Skipped Songs */}
-                    {isGigMode && currentSet?.id === 'skipped-set' && (
+                    {/* Mark Done for Skipped Songs - Online Only */}
+                    {isGigMode && currentSet?.id === 'skipped-set' && isOnline && (
                         <Button 
                             size="sm" 
                             variant="secondary" 
@@ -356,9 +361,11 @@ const PerformanceMode = () => {
                     <DropdownMenuItem onClick={handleStartMetronome} className="py-3">
                         <Timer className="mr-2 h-4 w-4" /> Metronome
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleEditSong} className="py-3">
-                        <Edit className="mr-2 h-4 w-4" /> Edit Song
-                    </DropdownMenuItem>
+                    {isOnline && (
+                        <DropdownMenuItem onClick={handleEditSong} className="py-3">
+                            <Edit className="mr-2 h-4 w-4" /> Edit Song
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3">
                         <Search className="mr-2 h-4 w-4" /> Quick Find
                     </DropdownMenuItem>

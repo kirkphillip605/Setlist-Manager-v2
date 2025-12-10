@@ -6,38 +6,38 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getGig, saveGig, getSetlists } from "@/lib/api";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { saveGig } from "@/lib/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation } from "lucide-react";
+import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { Gig } from "@/types";
+import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const GigDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { isAdmin } = useAuth();
     const queryClient = useQueryClient();
+    const isOnline = useNetworkStatus();
     
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Gig>>({});
 
-    const { data: gig, isLoading } = useQuery({ 
-        queryKey: ['gig', id], 
-        queryFn: () => getGig(id!),
-        enabled: !!id
-    });
+    // Use Master Cache
+    const { data: gigs = [], isLoading } = useSyncedGigs();
+    const gig = useMemo(() => gigs.find(g => g.id === id), [gigs, id]);
 
-    const { data: setlists = [] } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
+    const { data: setlists = [] } = useSyncedSetlists();
     const bandSetlists = useMemo(() => setlists.filter(s => !s.is_personal), [setlists]);
 
     const saveMutation = useMutation({
         mutationFn: saveGig,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['gig', id] });
-            queryClient.invalidateQueries({ queryKey: ['gigs'] }); // Refresh list view
+            queryClient.invalidateQueries({ queryKey: ['gigs'] });
             setIsEditOpen(false);
             toast.success("Gig updated");
         },
@@ -45,6 +45,10 @@ const GigDetail = () => {
     });
 
     const handleEditOpen = () => {
+        if (!isOnline) {
+            toast.error("Offline: Cannot edit gig");
+            return;
+        }
         if (!gig) return;
         setEditForm({
             id: gig.id,
@@ -75,7 +79,7 @@ const GigDetail = () => {
         window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, '_blank');
     };
 
-    if (isLoading) return (
+    if (isLoading && !gig) return (
         <AppLayout>
             <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
         </AppLayout>
@@ -88,7 +92,7 @@ const GigDetail = () => {
     );
 
     const isPast = new Date(gig.date) < new Date(new Date().setHours(0,0,0,0));
-    const canEdit = !isPast || isAdmin;
+    const canEdit = (!isPast || isAdmin) && isOnline;
 
     return (
         <AppLayout>
@@ -101,9 +105,12 @@ const GigDetail = () => {
                         </Button>
                         <div>
                             <h1 className="text-2xl font-bold tracking-tight">{gig.name}</h1>
-                            <div className="flex items-center text-muted-foreground text-sm">
-                                <Calendar className="mr-1 h-3 w-3" />
-                                {new Date(gig.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                            <div className="flex items-center text-muted-foreground text-sm gap-2">
+                                <span className="flex items-center">
+                                    <Calendar className="mr-1 h-3 w-3" />
+                                    {new Date(gig.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </span>
+                                {!isOnline && <span className="flex items-center text-xs bg-muted px-1.5 rounded"><CloudOff className="w-3 h-3 mr-1" /> Offline</span>}
                             </div>
                         </div>
                     </div>
