@@ -32,34 +32,75 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Helper to fetch profile with offline fallback potential
+  // (In a real offline scenario, we might want to cache this profile too, 
+  // but usually session metadata is enough for basic access control)
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (!error && data) {
+        setProfile(data as Profile);
+      }
+    } catch (e) {
+      console.warn("Profile fetch failed (likely offline):", e);
+      // Don't clear profile if we have one in memory? 
+      // Ideally we'd persist this too, but for now we catch the error.
+    }
+  };
+
   useEffect(() => {
-    // 1. Initial Session Check
+    let mounted = true;
+
     const initAuth = async () => {
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        setSession(initialSession);
-        if (initialSession?.user) {
-          await fetchProfile(initialSession.user.id);
+        // 1. Get session from storage (CapacitorPreferences)
+        // This resolves fast and works offline if previously logged in
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        if (mounted) {
+          if (error) {
+            // Check if it's a network error? 
+            // Usually getSession reads local storage first, so network error shouldn't block it.
+            console.warn("Error restoring session:", error);
+          }
+          
+          setSession(initialSession);
+          
+          if (initialSession?.user) {
+            await fetchProfile(initialSession.user.id);
+          }
         }
       } catch (error) {
-        console.error("Auth initialization error:", error);
+        console.error("Auth initialization exception:", error);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     initAuth();
 
-    // 2. Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession);
+    // 2. Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mounted) return;
+
+      // Important: If we lose network, 'TOKEN_REFRESH_PWNED' might fire, 
+      // but we shouldn't logout the user immediately if it's just connectivity.
+      // Supabase client handles auto-refresh retry.
       
-      if (newSession?.user) {
-        // If the user changed (or we don't have a profile yet), fetch it
-        if (!profile || profile.id !== newSession.user.id) {
+      console.log(`Auth event: ${event}`);
+      
+      if (newSession) {
+        setSession(newSession);
+        if (newSession.user.id !== session?.user.id) {
            await fetchProfile(newSession.user.id);
         }
-      } else {
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null);
         setProfile(null);
       }
       
@@ -67,25 +108,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
-
-  const fetchProfile = async (userId: string) => {
-    try {
-        const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-        if (data) {
-            setProfile(data as Profile);
-        }
-    } catch (e) {
-        console.error("Profile fetch error", e);
-    }
-  };
 
   const signOut = async () => {
     await supabase.auth.signOut();

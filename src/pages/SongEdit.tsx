@@ -3,20 +3,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { SongFormFields } from "@/components/SongFormFields";
-import { getSong, saveSong } from "@/lib/api";
+import { saveSong } from "@/lib/api";
 import { searchMusic, fetchLyrics, fetchAudioFeatures, MusicResult } from "@/lib/musicApi";
 import { Song } from "@/types";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Save, Search, Music, Loader2, ArrowRight } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, Save, Search, Music, Loader2, ArrowRight, CloudOff } from "lucide-react";
+import { useSongFromCache } from "@/hooks/useData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const SongEdit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isOnline = useNetworkStatus();
+  
+  // Logic: If no ID, we are adding. If ID, we are editing.
+  // If Adding and Offline -> Block (Can't search spotify, can't sync).
+  // If Editing and Offline -> Allow viewing form, disable Save.
+  
   const [mode, setMode] = useState<'search' | 'edit'>(id ? 'edit' : 'search');
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -35,12 +43,8 @@ const SongEdit = () => {
   // Watch cover_url to show preview
   const coverUrl = watch("cover_url");
 
-  // Fetch song if editing
-  const { data: song, isLoading: isSongLoading } = useQuery({
-    queryKey: ['song', id],
-    queryFn: () => getSong(id!),
-    enabled: !!id,
-  });
+  // Use the cached song data (Master Catalog) instead of a fresh fetch
+  const song = useSongFromCache(id);
 
   useEffect(() => {
     if (song) {
@@ -63,11 +67,19 @@ const SongEdit = () => {
   });
 
   const onSubmit = (data: Song) => {
+    if (!isOnline) {
+      toast.error("You are offline. Cannot save changes.");
+      return;
+    }
     saveMutation.mutate(data);
   };
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (!isOnline) {
+        toast.error("Offline: Cannot search Spotify.");
+        return;
+    }
     if (!searchQuery.trim()) return;
 
     setIsSearching(true);
@@ -86,20 +98,15 @@ const SongEdit = () => {
 
   const selectSong = async (result: MusicResult) => {
     setIsProcessing(true);
-    const toastId = toast.loading("Fetching details (Key, Tempo, Duration, Lyrics)...");
+    const toastId = toast.loading("Fetching details...");
     
     try {
-      console.log("Selected song:", result);
-      
       // Parallel Fetch: Lyrics and Audio Features
       const [lyrics, features] = await Promise.all([
         fetchLyrics(result.artist, result.title),
         fetchAudioFeatures(result.id)
       ]);
 
-      console.log("Fetched features:", features);
-
-      // Construct the full song object with all data available
       const newSongData: Song = {
         id: "", // Empty ID for new song
         title: result.title,
@@ -109,26 +116,12 @@ const SongEdit = () => {
         lyrics: lyrics || "",
         key: features.key || "",
         tempo: features.tempo || "",
-        duration: features.duration || result.duration || "", // Prefer feature duration, fallback to search result
+        duration: features.duration || result.duration || "", 
         note: ""
       };
 
-      // Reset the form with the populated data
       reset(newSongData);
-
-      // Feedback to user
-      let messages = [];
-      if (lyrics) messages.push("Lyrics");
-      if (features.key) messages.push("Key/Tempo");
-      if (newSongData.duration) messages.push("Duration");
-      
-      if (messages.length > 0) {
-        toast.success(`Found: ${messages.join(", ")}`, { id: toastId });
-      } else {
-        toast.info("Basic metadata set", { id: toastId });
-      }
-
-      // Finally switch to the form view
+      toast.success("Song details loaded", { id: toastId });
       setMode('edit');
     } catch (error) {
       console.error("Error in selectSong:", error);
@@ -146,7 +139,14 @@ const SongEdit = () => {
         <p className="text-muted-foreground">Search Spotify to auto-fill details or skip to manual entry.</p>
       </div>
 
-      <Card>
+      {!isOnline && (
+          <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg flex items-center justify-center gap-2">
+              <CloudOff className="h-5 w-5" />
+              <span>You are offline. Cannot search for new songs.</span>
+          </div>
+      )}
+
+      <Card className={!isOnline ? "opacity-50 pointer-events-none" : ""}>
         <CardContent className="pt-6">
           <form onSubmit={handleSearch} className="flex gap-2">
             <Input
@@ -181,9 +181,6 @@ const SongEdit = () => {
                 <div>
                   <p className="font-medium">{result.title}</p>
                   <p className="text-sm text-muted-foreground">{result.artist}</p>
-                  {result.duration && (
-                    <p className="text-xs text-muted-foreground">{result.duration}</p>
-                  )}
                 </div>
               </div>
               <Button variant="ghost" size="sm" disabled={isProcessing}>
@@ -200,14 +197,6 @@ const SongEdit = () => {
         </Button>
       </div>
     </div>
-  );
-
-  if (isSongLoading) return (
-    <AppLayout>
-      <div className="flex justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    </AppLayout>
   );
 
   return (
@@ -251,10 +240,11 @@ const SongEdit = () => {
             <SongFormFields register={register} errors={errors} control={control} />
             
             <div className="flex gap-4">
-              <Button type="submit" className="w-full sm:w-auto" disabled={saveMutation.isPending}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={saveMutation.isPending || !isOnline}>
                 {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {!isOnline && <CloudOff className="mr-2 h-4 w-4" />}
                 <Save className="mr-2 h-4 w-4" />
-                Save Song
+                {isOnline ? "Save Song" : "Offline"}
               </Button>
               <Button type="button" variant="outline" onClick={() => navigate(-1)}>
                 Cancel
