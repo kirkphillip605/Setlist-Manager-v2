@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -68,36 +68,44 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   return (
     <div className={cn(
         "min-h-screen bg-background text-foreground transition-all duration-300",
-        "pb-[140px] md:pb-0", // Mobile bottom spacing
+        "pb-[calc(60px+env(safe-area-inset-bottom))] md:pb-0", // Mobile bottom spacing with safe area
         isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64" // Sidebar width adjustment
     )}>
       {/* Desktop Sidebar */}
       <aside className={cn(
         "hidden md:flex fixed left-0 top-0 h-full flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
-        isSidebarCollapsed ? "w-[80px] px-2" : "w-64 px-4"
+        isSidebarCollapsed ? "w-[80px]" : "w-64"
       )}>
-        <div className={cn("flex items-center mb-8 pt-6", isSidebarCollapsed ? "justify-center flex-col gap-4" : "justify-between px-2")}>
-          <div className="flex items-center gap-2">
-            <img src={iconPath} alt="Icon" className="w-6 h-6" />
-            {!isSidebarCollapsed && <img src={logoPath} alt="Bad Habits Logo" className="h-6" />}
-          </div>
-          
-          <div className="flex flex-col gap-2">
-            {!isSidebarCollapsed && <div className="flex items-center gap-1"><SyncStatusButton /><ModeToggle /></div>}
-            {isSidebarCollapsed && <ModeToggle />}
-            
-            <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 text-muted-foreground"
+        {/* Collapse Button - Floating on Border */}
+        <div className="absolute -right-3 top-9 z-30">
+            <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 rounded-full border shadow-sm bg-background text-foreground hover:bg-accent"
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             >
-                {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+                {isSidebarCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
             </Button>
+        </div>
+
+        <div className={cn("flex flex-col mb-6 pt-6 transition-all", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
+          <div className={cn("flex items-center mb-4 transition-all", isSidebarCollapsed ? "justify-center" : "justify-between")}>
+             {/* Logo Logic: Collapsed = Icon, Expanded = Logo Only */}
+             {isSidebarCollapsed ? (
+                 <img src={iconPath} alt="Icon" className="w-8 h-8" />
+             ) : (
+                 <img src={logoPath} alt="Bad Habits Logo" className="h-8 object-contain" />
+             )}
+          </div>
+          
+          {/* Action Bar (Sync/Theme) */}
+          <div className={cn("flex items-center gap-1", isSidebarCollapsed ? "flex-col" : "flex-row")}>
+             <SyncStatusButton />
+             <ModeToggle />
           </div>
         </div>
         
-        <nav className="space-y-2 flex-1">
+        <nav className="space-y-2 flex-1 px-3">
           {navItems.map((item) => (
             <Link
               key={item.path}
@@ -118,10 +126,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         </nav>
 
         {/* User Menu */}
-        <div className="mb-4">
+        <div className="mb-4 px-3">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className={cn("w-full hover:bg-accent", isSidebarCollapsed ? "justify-center px-0" : "justify-start gap-2 px-2")}>
+                    <Button variant="ghost" className={cn("w-full hover:bg-accent border border-transparent", isSidebarCollapsed ? "justify-center px-0" : "justify-start gap-2 px-2 border-border/40")}>
                         <User className="w-4 h-4" />
                         {!isSidebarCollapsed && <span>Profile</span>}
                     </Button>
@@ -172,24 +180,25 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
       {/* Mobile Metronome - Renders above bottom nav */}
       <div className="md:hidden">
-        <MetronomeControls variant="mobile" />
+        {/* Adjusted bottom position to account for safe area and nav bar height */}
+        <MetronomeControls variant="mobile" className="bottom-[calc(65px+env(safe-area-inset-bottom))]" />
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/90 backdrop-blur-xl px-2 py-2 pb-safe flex justify-between items-center z-50 h-[60px]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur-xl px-2 pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] flex justify-between items-center z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         {navItems.map((item) => (
           <Link
             key={item.path}
             to={item.path}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 w-full h-full rounded-lg transition-colors px-1",
+              "flex flex-col items-center justify-center gap-1 w-full p-2 rounded-xl transition-all active:scale-95",
               location.pathname === item.path
-                ? "text-primary"
+                ? "text-primary bg-primary/10"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
             <item.icon className={cn("w-5 h-5", location.pathname === item.path && "fill-current")} />
-            <span className="text-[10px] font-medium truncate w-full text-center">{item.label}</span>
+            <span className="text-[10px] font-medium truncate w-full text-center leading-none">{item.label}</span>
           </Link>
         ))}
       </nav>
