@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addSkippedSong, getSkippedSongs, removeSkippedSong, saveSong } from "@/lib/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { addSkippedSong, removeSkippedSong, saveSong } from "@/lib/api";
 import { Song } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
@@ -23,7 +23,7 @@ import { useMetronome } from "@/components/MetronomeContext";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MetronomeControls } from "@/components/MetronomeControls";
-import { useSetlistWithSongs, useSyncedSongs } from "@/hooks/useSyncedData";
+import { useSetlistWithSongs, useSyncedSongs, useSyncedSkippedSongs } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const PerformanceMode = () => {
@@ -56,14 +56,18 @@ const PerformanceMode = () => {
   // Use Hydrated Data (Offline Compatible)
   const setlist = useSetlistWithSongs(id);
   const { data: allSongs = [] } = useSyncedSongs();
+  
+  // Fetch from Master Cache
+  const { data: allSkipped = [] } = useSyncedSkippedSongs();
 
-  // Skipped Songs fetch (Offline safe if cached, but skip functionality requires online usually)
-  // We can allow reading skipped songs offline if they were cached previously.
-  const { data: skippedSongs = [] } = useQuery({
-    queryKey: ['skipped', gigId],
-    queryFn: () => getSkippedSongs(gigId!),
-    enabled: isGigMode && isOnline // Only fetch fresh if online
-  });
+  // Filter cached data for current gig
+  const skippedSongs = useMemo(() => {
+      if (!gigId) return [];
+      return allSkipped
+        .filter((entry: any) => entry.gig_id === gigId)
+        .map((entry: any) => entry.song)
+        .filter(Boolean) as Song[];
+  }, [allSkipped, gigId]);
 
   // Derived Data
   const sets = useMemo(() => {
@@ -108,7 +112,7 @@ const PerformanceMode = () => {
           }
       },
       onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['skipped', gigId] });
+          queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
           toast.success("Song skipped & saved for later");
           handleNext();
           setShowSkipConfirm(false);
@@ -120,7 +124,7 @@ const PerformanceMode = () => {
           if (gigId) await removeSkippedSong(gigId, songId);
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['skipped', gigId] });
+        queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
         toast.success("Removed from skipped list");
       }
   });
@@ -132,7 +136,7 @@ const PerformanceMode = () => {
       },
       onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ['songs'] });
-          queryClient.invalidateQueries({ queryKey: ['setlist', id] });
+          queryClient.invalidateQueries({ queryKey: ['setlists'] }); // Refresh hydrated setlist
           toast.success("Tempo updated");
           setShowTempoSave(false);
       }

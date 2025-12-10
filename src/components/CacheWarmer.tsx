@@ -1,4 +1,4 @@
-import { useSyncedSongs, useSyncedSetlists } from "@/hooks/useSyncedData";
+import { useSyncedSongs, useSyncedSetlists, useSyncedGigs, useSyncedSkippedSongs } from "@/hooks/useSyncedData";
 import { useAuth } from "@/context/AuthContext";
 
 /**
@@ -12,6 +12,8 @@ export const CacheWarmer = () => {
   // and set up Realtime subscriptions.
   useSyncedSongs();
   useSyncedSetlists();
+  useSyncedGigs();
+  useSyncedSkippedSongs();
 
   if (!session) return null;
 

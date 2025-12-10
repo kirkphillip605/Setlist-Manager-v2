@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
-import { getSongs, getSetlists, getGigs } from "@/lib/api";
+import { getSongs, getSetlists, getGigs, getAllSkippedSongs } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -21,9 +21,7 @@ export const useSyncedSongs = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'songs' },
-        (payload) => {
-          queryClient.invalidateQueries({ queryKey: ['songs'] });
-        }
+        () => queryClient.invalidateQueries({ queryKey: ['songs'] })
       )
       .subscribe();
 
@@ -47,6 +45,7 @@ export const useSyncedSetlists = () => {
   });
 
   useEffect(() => {
+    // Listen to all tables related to setlists structure
     const channel = supabase
       .channel('public:setlists_agg')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'setlists' }, () => {
@@ -85,9 +84,36 @@ export const useSyncedGigs = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'gigs' },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['gigs'] });
-        }
+        () => queryClient.invalidateQueries({ queryKey: ['gigs'] })
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  return query;
+};
+
+// --- MASTER SKIPPED SONGS HOOK ---
+export const useSyncedSkippedSongs = () => {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['skipped_songs_all'],
+    queryFn: getAllSkippedSongs,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('public:gig_skipped_songs')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'gig_skipped_songs' },
+        () => queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] })
       )
       .subscribe();
 

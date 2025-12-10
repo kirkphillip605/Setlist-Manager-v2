@@ -1,10 +1,10 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { getSong, deleteSong, saveSong, getSongUsage } from "@/lib/api";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { deleteSong, saveSong, getSongUsage } from "@/lib/api";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMetronome } from "@/components/MetronomeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState, useRef } from "react";
@@ -13,7 +13,6 @@ import { motion } from "framer-motion";
 import { 
   ChevronLeft, 
   Edit, 
-  Trash2, 
   Music2, 
   Timer, 
   StickyNote,
@@ -24,9 +23,9 @@ import {
   Play,
   Wand2,
   AlertTriangle,
-  Archive,
+  Eye,
   EyeOff,
-  Eye
+  Archive
 } from "lucide-react";
 import {
   AlertDialog,
@@ -44,16 +43,18 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { useSongFromCache } from "@/hooks/useSyncedData";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const SongDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isOnline = useNetworkStatus();
   const { openMetronome, closeMetronome, isPlaying, bpm, isOpen } = useMetronome();
   
   const [isAdmin, setIsAdmin] = useState(false);
@@ -83,11 +84,8 @@ const SongDetail = () => {
     checkAdmin();
   }, []);
 
-  const { data: song, isLoading } = useQuery({
-    queryKey: ['song', id],
-    queryFn: () => getSong(id!),
-    enabled: !!id
-  });
+  // Use cached song data instead of network request
+  const song = useSongFromCache(id);
 
   // Monitor BPM changes
   useEffect(() => {
@@ -127,7 +125,6 @@ const SongDetail = () => {
   const updateSongMutation = useMutation({
     mutationFn: saveSong,
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['song', id] });
         queryClient.invalidateQueries({ queryKey: ['songs'] }); // Refresh list view
         toast.success("Song updated");
         setIsSearchOpen(false);
@@ -136,7 +133,7 @@ const SongDetail = () => {
   });
 
   const initiateDelete = async () => {
-    if (!id) return;
+    if (!id || !isOnline) return;
     setIsCheckingUsage(true);
     setShowDeleteDialog(true);
     try {
@@ -150,12 +147,12 @@ const SongDetail = () => {
   };
 
   const toggleRetired = (checked: boolean) => {
-    if (!song) return;
+    if (!song || !isOnline) return;
     updateSongMutation.mutate({ ...song, is_retired: checked });
   };
 
   const saveBpm = () => {
-      if (!song || !detectedBpm) return;
+      if (!song || !detectedBpm || !isOnline) return;
       updateSongMutation.mutate({ ...song, tempo: detectedBpm.toString() });
   };
 
@@ -179,7 +176,7 @@ const SongDetail = () => {
   };
 
   const handleFetchDetails = async () => {
-    if (!song) return;
+    if (!song || !isOnline) return;
     setIsFetchingDetails(true);
     try {
         const results = await searchMusic(`${song.artist} ${song.title}`);
@@ -197,7 +194,7 @@ const SongDetail = () => {
   };
 
   const confirmMatch = async (result: any) => {
-      if (!song) return;
+      if (!song || !isOnline) return;
       setIsFetchingDetails(true);
       const toastId = toast.loading("Fetching audio features...");
       
@@ -222,14 +219,6 @@ const SongDetail = () => {
           setIsFetchingDetails(false);
       }
   };
-
-  if (isLoading) return (
-    <AppLayout>
-      <div className="flex justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    </AppLayout>
-  );
 
   if (!song) return (
     <AppLayout>
@@ -258,7 +247,7 @@ const SongDetail = () => {
             )}
           </div>
           <div className="flex gap-2">
-            {isAdmin && (
+            {isAdmin && isOnline && (
                 <Button 
                     variant="outline" 
                     size="icon" 
@@ -270,11 +259,13 @@ const SongDetail = () => {
                 </Button>
             )}
             
-            <Button asChild variant="outline" size="icon">
-              <Link to={`/songs/${id}/edit`}>
-                <Edit className="h-4 w-4" />
-              </Link>
-            </Button>
+            {isOnline && (
+                <Button asChild variant="outline" size="icon">
+                <Link to={`/songs/${id}/edit`}>
+                    <Edit className="h-4 w-4" />
+                </Link>
+                </Button>
+            )}
           </div>
         </div>
 
@@ -286,7 +277,8 @@ const SongDetail = () => {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1, duration: 0.3 }}
           >
-             {song.cover_url ? (
+             {/* Hide Image if Offline */}
+             {isOnline && song.cover_url ? (
                <img 
                  src={song.cover_url} 
                  alt={song.title} 
@@ -307,7 +299,7 @@ const SongDetail = () => {
              
              {/* Action Buttons - Grid on mobile, Flex on desktop */}
              <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
-               {song.spotify_url && (
+               {isOnline && song.spotify_url && (
                  <Button asChild variant="outline" className="w-full sm:w-auto gap-2 text-[#1DB954] hover:text-[#1DB954] border-[#1DB954]/20 hover:bg-[#1DB954]/10">
                    <a href={song.spotify_url} target="_blank" rel="noopener noreferrer">
                      <Music className="w-4 h-4" />
@@ -380,53 +372,55 @@ const SongDetail = () => {
           </Card>
         </motion.div>
 
-        {/* Danger Zone */}
-        <Card className="border-destructive/30 bg-destructive/5 mt-8 overflow-hidden">
-            <CardHeader className="border-b border-destructive/10 bg-destructive/10 py-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2 text-destructive">
-                    <AlertTriangle className="h-4 w-4" /> Danger Zone
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h4 className="font-medium flex items-center gap-2">
-                             {song.is_retired ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                             {song.is_retired ? "Re-activate Song" : "Retire Song"}
-                        </h4>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            {song.is_retired 
-                                ? "Make this song active again. It will appear in new setlist searches." 
-                                : "Retired songs remain in existing setlists but cannot be added to new ones."}
-                        </p>
+        {/* Danger Zone - Only Online */}
+        {isOnline && (
+            <Card className="border-destructive/30 bg-destructive/5 mt-8 overflow-hidden">
+                <CardHeader className="border-b border-destructive/10 bg-destructive/10 py-3">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-4 w-4" /> Danger Zone
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h4 className="font-medium flex items-center gap-2">
+                                {song.is_retired ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                                {song.is_retired ? "Re-activate Song" : "Retire Song"}
+                            </h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                {song.is_retired 
+                                    ? "Make this song active again. It will appear in new setlist searches." 
+                                    : "Retired songs remain in existing setlists but cannot be added to new ones."}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Label htmlFor="retire-mode" className="text-sm">
+                                {song.is_retired ? "Retired" : "Active"}
+                            </Label>
+                            <Switch 
+                                id="retire-mode"
+                                checked={song.is_retired || false}
+                                onCheckedChange={toggleRetired}
+                            />
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Label htmlFor="retire-mode" className="text-sm">
-                            {song.is_retired ? "Retired" : "Active"}
-                        </Label>
-                        <Switch 
-                            id="retire-mode"
-                            checked={song.is_retired || false}
-                            onCheckedChange={toggleRetired}
-                        />
-                    </div>
-                </div>
-                
-                <div className="h-px bg-destructive/10 w-full" />
+                    
+                    <div className="h-px bg-destructive/10 w-full" />
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                     <div>
-                        <h4 className="font-medium text-destructive">Delete Song</h4>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            Permanently remove this song from the database. This action cannot be undone.
-                        </p>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h4 className="font-medium text-destructive">Delete Song</h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Permanently remove this song from the database. This action cannot be undone.
+                            </p>
+                        </div>
+                        <Button variant="destructive" onClick={initiateDelete}>
+                            Delete Permanently
+                        </Button>
                     </div>
-                    <Button variant="destructive" onClick={initiateDelete}>
-                        Delete Permanently
-                    </Button>
-                </div>
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Card>
+        )}
 
         {/* Admin Search Dialog */}
         <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>

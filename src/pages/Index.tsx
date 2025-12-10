@@ -3,15 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
 import { Music, ListMusic, Plus, CalendarDays, Lock, Globe, ArrowRight, Eye } from "lucide-react";
-import { getSongs, getSetlists, getGigs } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
+import { useSyncedSongs, useSyncedSetlists, useSyncedGigs } from "@/hooks/useSyncedData";
 
 const Index = () => {
   const navigate = useNavigate();
 
-  const { data: songs = [] } = useQuery({ queryKey: ['songs'], queryFn: getSongs });
-  const { data: setlists = [] } = useQuery({ queryKey: ['setlists'], queryFn: getSetlists });
-  const { data: gigs = [] } = useQuery({ queryKey: ['gigs'], queryFn: getGigs });
+  const { data: songs = [] } = useSyncedSongs();
+  const { data: setlists = [] } = useSyncedSetlists();
+  const { data: gigs = [] } = useSyncedGigs();
 
   const bandSetlists = setlists.filter(s => !s.is_personal);
   const personalSetlists = setlists.filter(s => s.is_personal);

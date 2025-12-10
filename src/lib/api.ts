@@ -158,6 +158,16 @@ export const getSkippedSongs = async (gigId: string): Promise<Song[]> => {
     return data.map((d: any) => d.song) as Song[];
 };
 
+export const getAllSkippedSongs = async () => {
+    const { data, error } = await supabase
+        .from('gig_skipped_songs')
+        .select('*, song:songs(*)')
+        .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return data;
+};
+
 export const removeSkippedSong = async (gigId: string, songId: string) => {
     const { error } = await supabase.from('gig_skipped_songs').delete().match({ gig_id: gigId, song_id: songId });
     if (error) throw error;
