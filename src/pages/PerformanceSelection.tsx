@@ -7,10 +7,14 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSyncedSetlists, useSyncedGigs } from "@/hooks/useSyncedData";
+import { PerformanceSessionDialog } from "@/components/PerformanceSessionDialog";
 
 const PerformanceSelection = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"gig" | "practice" | null>(null);
+  
+  // Session Init State
+  const [selectedGig, setSelectedGig] = useState<any>(null);
 
   const { data: setlists = [] } = useSyncedSetlists();
   const { data: gigs = [] } = useSyncedGigs();
@@ -23,8 +27,13 @@ const PerformanceSelection = () => {
         toast.error("This gig has no setlist attached!");
         return;
     }
-    // Pass gigId via query param
-    navigate(`/performance/${gig.setlist_id}?gigId=${gig.id}`);
+    // Open session dialog instead of navigating immediately
+    setSelectedGig(gig);
+  };
+
+  const handleSessionJoin = (role: string, sessionId: string) => {
+      // We don't strictly need sessionId in URL if we query by gigId, but good for debugging
+      navigate(`/performance/${selectedGig.setlist_id}?gigId=${selectedGig.id}`);
   };
 
   return (
@@ -122,6 +131,15 @@ const PerformanceSelection = () => {
                 </ScrollArea>
             </DialogContent>
         </Dialog>
+
+        {/* Gig Session Dialog */}
+        <PerformanceSessionDialog 
+            open={!!selectedGig}
+            gigId={selectedGig?.id || null}
+            gigName={selectedGig?.name || ""}
+            onClose={() => setSelectedGig(null)}
+            onJoin={handleSessionJoin}
+        />
       </div>
     </AppLayout>
   );
