@@ -2,17 +2,23 @@ import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 import { Loader2, Cloud, CloudOff, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useSyncStatus } from "@/hooks/useSyncedData";
 
 export const SyncIndicator = () => {
   const isFetching = useIsFetching();
   const isMutating = useIsMutating();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showSaved, setShowSaved] = useState(false);
+  const { refreshAll } = useSyncStatus();
 
   const isSyncing = isFetching > 0 || isMutating > 0;
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+        setIsOnline(true);
+        // Auto-sync when coming back online
+        refreshAll(); 
+    };
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
@@ -22,7 +28,7 @@ export const SyncIndicator = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [refreshAll]);
 
   // Show "Saved" momentarily after syncing finishes
   useEffect(() => {

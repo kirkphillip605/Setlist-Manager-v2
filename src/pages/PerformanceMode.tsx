@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   addSkippedSong, removeSkippedSong, saveSong, updateSessionState, 
   endGigSession, requestLeadership, forceLeadership, resolveLeadershipRequest,
-  leaveGigSession 
+  leaveGigSession, getGigSession, joinGigSession
 } from "@/lib/api";
 import { Song, GigSession } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,15 +37,27 @@ const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
   const [searchParams] = useSearchParams();
   const gigId = searchParams.get('gigId');
-  const isStandalone = searchParams.get('standalone') === 'true';
-  const isGigMode = !!gigId && !isStandalone;
+  const initialStandalone = searchParams.get('standalone') === 'true';
   const isOnline = useNetworkStatus();
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome } = useMetronome();
   
+  // -- Failover State --
+  const [isForcedStandalone, setIsForcedStandalone] = useState(initialStandalone);
+  const [offlineCountdown, setOfflineCountdown] = useState<number | null>(null);
+  const [previousSessionId, setPreviousSessionId] = useState<string | null>(null);
+  
+  // Recovery Dialogs
+  const [recoveryData, setRecoveryData] = useState<{ type: 'leader' | 'follower', session: any } | null>(null);
+
+  // Determine effective mode for Logic
+  // If isForcedStandalone is true, we treat it as NOT gig mode for data syncing, even if gigId exists
+  const isGigMode = !!gigId && !isForcedStandalone;
+
   // -- Session Hook --
+  // We only pass gigId if we are in true Gig Mode. If forced standalone, we pass null to disconnect the hook.
   const { sessionData, participants, isLeader, loading: sessionLoading, userId } = useGigSession(isGigMode ? gigId : null);
 
   // Local State
@@ -53,7 +65,7 @@ const PerformanceMode = () => {
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [tempSong, setTempSong] = useState<Song | null>(null);
 
-  // -- Orphaned Session State --
+  // -- Orphaned Session State (Heartbeat Monitor) --
   const [isOrphaned, setIsOrphaned] = useState(false);
   
   useEffect(() => {
@@ -77,6 +89,111 @@ const PerformanceMode = () => {
       const interval = setInterval(checkHeartbeat, 30000); // Check every 30s
       return () => clearInterval(interval);
   }, [sessionData, isGigMode, isLeader]);
+
+  // -- Offline Failover Logic --
+  useEffect(() => {
+      let timer: number;
+      
+      // If we are Online, or already standalone, or not a leader, clear countdown
+      if (isOnline || isForcedStandalone || !isLeader) {
+          setOfflineCountdown(null);
+          return;
+      }
+
+      // If we are Offline, Leader, and NOT yet standalone -> Start Countdown
+      if (!isOnline && isGigMode && isLeader && offlineCountdown === null) {
+          setOfflineCountdown(30);
+      }
+
+      if (offlineCountdown !== null && offlineCountdown > 0) {
+          timer = window.setTimeout(() => setOfflineCountdown(c => (c && c > 0 ? c - 1 : 0)), 1000);
+      } else if (offlineCountdown === 0) {
+          handleSwitchToStandalone();
+      }
+
+      return () => clearTimeout(timer);
+  }, [isOnline, isForcedStandalone, isLeader, isGigMode, offlineCountdown]);
+
+  const handleSwitchToStandalone = () => {
+      setOfflineCountdown(null);
+      if (sessionData) {
+          setPreviousSessionId(sessionData.id);
+      }
+      setIsForcedStandalone(true);
+      toast.info("Switched to Standalone Mode");
+  };
+
+  // -- Online Recovery Logic --
+  useEffect(() => {
+      const checkRecovery = async () => {
+          if (isOnline && isForcedStandalone && previousSessionId && gigId) {
+              try {
+                  const session = await getGigSession(gigId);
+                  
+                  // Scenario 1: Session gone or ended
+                  if (!session || !session.is_active) {
+                      setPreviousSessionId(null); // Stop asking
+                      return;
+                  }
+
+                  // Scenario 2: User is still leader
+                  if (session.leader_id === userId) {
+                      setRecoveryData({ type: 'leader', session });
+                  } 
+                  // Scenario 3: Different leader
+                  else {
+                      setRecoveryData({ type: 'follower', session });
+                  }
+              } catch (e) {
+                  console.error("Error checking session recovery", e);
+              }
+          }
+      };
+
+      // Poll once when condition met
+      checkRecovery();
+  }, [isOnline, isForcedStandalone, previousSessionId, gigId, userId]);
+
+  const handleRecoveryConfirm = async () => {
+      if (!recoveryData) return;
+
+      if (recoveryData.type === 'leader') {
+          // Push local state to server
+          await updateSessionState(recoveryData.session.id, {
+              current_set_index: currentSetIndex,
+              current_song_index: currentSongIndex,
+              adhoc_song_id: tempSong?.id || null
+          });
+          // Update Last Heartbeat
+          await forceLeadership(recoveryData.session.id, userId!);
+          
+          setIsForcedStandalone(false);
+          toast.success("Resumed Gig Session");
+      } else {
+          // Follower: Just join and sync
+          await joinGigSession(recoveryData.session.id, userId!);
+          setIsForcedStandalone(false);
+          toast.success("Rejoined Session as Follower");
+      }
+      setRecoveryData(null);
+  };
+
+  const handleRecoveryDecline = async () => {
+      if (!recoveryData) return;
+
+      if (recoveryData.type === 'leader') {
+          // Kill the session
+          await endGigSession(recoveryData.session.id);
+          toast.info("Gig Session Ended. Remaining in Standalone.");
+      } else {
+          // Leave the session
+          await leaveGigSession(recoveryData.session.id, userId!);
+          toast.info("Left Session. Remaining in Standalone.");
+      }
+      
+      setPreviousSessionId(null); // Don't ask again for this ID
+      setRecoveryData(null);
+  };
 
   // -- Derived Data --
   const setlist = useSetlistWithSongs(id);
@@ -232,14 +349,14 @@ const PerformanceMode = () => {
   const [sessionEndedInfo, setSessionEndedInfo] = useState<{ endedBy: string, at: string } | null>(null);
   
   useEffect(() => {
-      if(isGigMode && sessionData === null && sessionEndedInfo === null) {
-          // If sessionData becomes null, it was deleted/ended.
+      // Only show session ended if we aren't in forced standalone mode
+      if(isGigMode && sessionData === null && sessionEndedInfo === null && !isForcedStandalone) {
           setSessionEndedInfo({
               endedBy: "Leader",
               at: new Date().toLocaleTimeString()
           });
       }
-  }, [sessionData, isGigMode]);
+  }, [sessionData, isGigMode, isForcedStandalone]);
 
   // -- Leadership Actions --
   const handleRequestLeadership = async () => {
@@ -274,7 +391,6 @@ const PerformanceMode = () => {
   const handleTransferAndLeave = async (newLeaderId: string) => {
       if (!sessionData) return;
       await forceLeadership(sessionData.id, newLeaderId);
-      // Remove self from participants after transferring
       if (userId) await leaveGigSession(sessionData.id, userId);
       navigate('/gigs');
   };
@@ -293,7 +409,7 @@ const PerformanceMode = () => {
               console.error("Failed to leave session cleanly", e);
           }
       }
-      navigate(isStandalone ? '/performance' : '/gigs');
+      navigate(initialStandalone ? '/performance' : '/gigs');
   };
 
   // -- Render Helpers --
@@ -306,7 +422,7 @@ const PerformanceMode = () => {
   }
 
   // Session Ended Screen
-  if (isGigMode && sessionEndedInfo) {
+  if (isGigMode && sessionEndedInfo && !isForcedStandalone) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
               <Radio className="h-16 w-16 text-muted-foreground mb-4" />
@@ -324,8 +440,51 @@ const PerformanceMode = () => {
 
   return (
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
+      
+      {/* Offline Failover Alert */}
+      <AlertDialog open={offlineCountdown !== null}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                      <WifiOff className="h-5 w-5" /> Connection Lost
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                      Unable to reach the server. Switching to Standalone Mode in <b>{offlineCountdown}</b> seconds.
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogAction onClick={handleSwitchToStandalone}>Switch Immediately</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Online Recovery Alert */}
+      <AlertDialog open={!!recoveryData}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-green-600">
+                      <Wifi className="h-5 w-5" /> Connection Restored
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                      {recoveryData?.type === 'leader' 
+                        ? "Your session is still active. Do you want to re-enter and sync your current position?"
+                        : "The session is still active, but there is a new leader. Join as a follower?"
+                      }
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel onClick={handleRecoveryDecline}>
+                      {recoveryData?.type === 'leader' ? "No, End Session" : "No, Stay Standalone"}
+                  </AlertDialogCancel>
+                  <AlertDialogAction onClick={handleRecoveryConfirm}>
+                      {recoveryData?.type === 'leader' ? "Yes, Resume Session" : "Yes, Join Session"}
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
       {/* Orphaned Session Dialog */}
-      <AlertDialog open={isOrphaned}>
+      <AlertDialog open={isOrphaned && !isForcedStandalone}>
           <AlertDialogContent>
               <AlertDialogHeader>
                   <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
@@ -418,13 +577,13 @@ const PerformanceMode = () => {
             ) : (
               <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
                 <Music className="h-16 w-16 mb-4 opacity-20" />
-                <p>{isLeader || isStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
+                <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
               </div>
             )}
           </div>
         </ScrollArea>
         {tempSong && <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">Ad-Hoc</div>}
-        {(!isGigMode || isStandalone) && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
+        {(!isGigMode || initialStandalone || isForcedStandalone) && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
       </div>
 
       {/* --- Footer Controls --- */}
