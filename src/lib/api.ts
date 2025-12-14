@@ -496,6 +496,14 @@ export const joinGigSession = async (sessionId: string, userId: string) => {
     if (error) throw error;
 };
 
+export const leaveGigSession = async (sessionId: string, userId: string) => {
+    const { error } = await supabase.from('gig_session_participants')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', userId);
+    if (error) throw error;
+};
+
 export const sendHeartbeat = async (sessionId: string, userId: string, isLeader: boolean) => {
     // Update participant
     await supabase.from('gig_session_participants')

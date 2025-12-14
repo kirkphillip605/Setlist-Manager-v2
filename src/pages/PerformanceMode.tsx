@@ -1,7 +1,11 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { addSkippedSong, removeSkippedSong, saveSong, updateSessionState, endGigSession, requestLeadership, forceLeadership, resolveLeadershipRequest } from "@/lib/api";
+import { 
+  addSkippedSong, removeSkippedSong, saveSong, updateSessionState, 
+  endGigSession, requestLeadership, forceLeadership, resolveLeadershipRequest,
+  leaveGigSession 
+} from "@/lib/api";
 import { Song, GigSession } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
@@ -270,6 +274,8 @@ const PerformanceMode = () => {
   const handleTransferAndLeave = async (newLeaderId: string) => {
       if (!sessionData) return;
       await forceLeadership(sessionData.id, newLeaderId);
+      // Remove self from participants after transferring
+      if (userId) await leaveGigSession(sessionData.id, userId);
       navigate('/gigs');
   };
 
@@ -277,6 +283,17 @@ const PerformanceMode = () => {
       if (!sessionData) return;
       await endGigSession(sessionData.id);
       navigate('/gigs');
+  };
+
+  const handleFollowerExit = async () => {
+      if (sessionData && userId) {
+          try {
+              await leaveGigSession(sessionData.id, userId);
+          } catch (e) {
+              console.error("Failed to leave session cleanly", e);
+          }
+      }
+      navigate(isStandalone ? '/performance' : '/gigs');
   };
 
   // -- Render Helpers --
@@ -370,7 +387,7 @@ const PerformanceMode = () => {
                     <LogOut className="h-4 w-4" />
                 </Button>
             ) : (
-                <Button variant="ghost" size="sm" onClick={() => navigate(isStandalone ? '/performance' : '/gigs')} className="h-9">
+                <Button variant="ghost" size="sm" onClick={handleFollowerExit} className="h-9">
                     Exit <Minimize2 className="h-4 w-4 ml-2" />
                 </Button>
             )}
