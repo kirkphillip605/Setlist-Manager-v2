@@ -34,9 +34,9 @@ const Login = () => {
 
   const getRedirectUrl = () => {
     if (Capacitor.isNativePlatform()) {
-        // Native redirect
-        console.log("Native Platform detected. Using: com.kirknetworks.setlistmanager://google-auth");
-        return 'com.kirknetworks.setlistmanager://google-auth';
+        // Native redirect using new package name
+        console.log("Native Platform detected. Using: com.kirknetllc.setlistpro://google-auth");
+        return 'com.kirknetllc.setlistpro://google-auth';
     }
     // Web fallback
     console.log("Web Platform detected. Using origin.");
@@ -113,8 +113,8 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-border shadow-lg">
         <CardHeader>
-          <CardTitle className="text-center text-2xl font-bold">Bad Habits</CardTitle>
-          <CardDescription className="text-center">Setlist Management System</CardDescription>
+          <CardTitle className="text-center text-2xl font-bold">Setlist Manager Pro</CardTitle>
+          <CardDescription className="text-center">By Kirknetworks, LLC</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login" className="w-full">

@@ -94,7 +94,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
              {isSidebarCollapsed ? (
                  <img src={iconPath} alt="Icon" className="w-8 h-8" />
              ) : (
-                 <img src={logoPath} alt="Bad Habits Logo" className="h-8 object-contain" />
+                 <img src={logoPath} alt="Setlist Manager Pro" className="h-8 object-contain" />
              )}
           </div>
           
@@ -155,7 +155,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 border-b bg-background/80 backdrop-blur-md z-40 px-4 flex items-center justify-between">
          <div className="flex items-center gap-2">
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
-            <span className="font-bold text-sm">Bad Habits</span>
+            <span className="font-bold text-sm">Setlist Manager Pro</span>
          </div>
          <div className="flex items-center gap-1">
              <SyncStatusButton />
