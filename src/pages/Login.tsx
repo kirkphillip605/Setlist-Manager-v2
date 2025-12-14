@@ -34,10 +34,12 @@ const Login = () => {
 
   const getRedirectUrl = () => {
     if (Capacitor.isNativePlatform()) {
-        // Return to the app via Deep Link
-        return 'com.example.setlistmanagerv2://auth/callback';
+        // Native redirect
+        console.log("Native Platform detected. Using: com.kirknetworks.setlistmanager://google-auth");
+        return 'com.kirknetworks.setlistmanager://google-auth';
     }
     // Web fallback
+    console.log("Web Platform detected. Using origin.");
     return `${window.location.origin}/auth/callback`;
   };
 
@@ -75,10 +77,13 @@ const Login = () => {
   };
 
   const handleGoogleLogin = async () => {
+    const redirectUrl = getRedirectUrl();
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: getRedirectUrl()
+        redirectTo: redirectUrl,
+        skipBrowserRedirect: false,
       }
     });
 
@@ -90,8 +95,6 @@ const Login = () => {
     if (!resetEmail) return;
     setResetLoading(true);
 
-    // Note: Update Password flow also needs deep link if handled in app, 
-    // but usually user clicks email link on device which triggers deep link naturally.
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
       redirectTo: `${window.location.origin}/update-password` 
     });

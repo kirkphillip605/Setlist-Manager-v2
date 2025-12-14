@@ -90,17 +90,35 @@ const AppContent = () => {
         CapacitorApp.addListener('appUrlOpen', async (event) => {
             console.log("App opened with URL:", event.url);
             
-            // Handle Auth Callback (PKCE Flow)
-            if (event.url.includes('auth/callback') || event.url.includes('code=')) {
+            // Check for the Google Auth deep link specific path
+            // Example: com.kirknetworks.setlistmanager://google-auth?code=...
+            const isGoogleAuth = event.url.includes('google-auth') || event.url.includes('auth/callback');
+
+            if (isGoogleAuth) {
                 try {
-                    const url = new URL(event.url);
-                    const code = url.searchParams.get('code');
+                    // Extract code from query params
+                    const urlObj = new URL(event.url);
+                    let code = urlObj.searchParams.get('code');
                     
+                    // Also check for hash params if using implicit flow (though we use PKCE)
+                    if (!code && urlObj.hash) {
+                         const params = new URLSearchParams(urlObj.hash.substring(1));
+                         code = params.get('code') || params.get('access_token');
+                    }
+
                     if (code) {
                         console.log("Exchanging code for session...");
-                        const { error } = await supabase.auth.exchangeCodeForSession(code);
+                        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
                         if (error) {
                             console.error("Auth Error:", error.message);
+                        } else {
+                            console.log("Session exchanged successfully", data.session);
+                        }
+                    } else {
+                        // Check for errors
+                        const errorDescription = urlObj.searchParams.get('error_description');
+                        if (errorDescription) {
+                            console.error("Auth Callback Error:", errorDescription);
                         }
                     }
                 } catch (e) {
