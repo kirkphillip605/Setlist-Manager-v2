@@ -4,7 +4,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { 
   Menu, Settings, Shield, User, LogOut, Moon, Sun, 
-  Cloud, RefreshCw, CheckCircle2, CloudOff 
+  Cloud, RefreshCw, CheckCircle2, CloudOff, Radio 
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -122,6 +122,10 @@ export const MainMenu = () => {
                           <Button variant="ghost" className="w-full justify-start gap-3" onClick={() => handleNav("/admin/users")}>
                               <Shield className="h-4 w-4" />
                               Manage Users
+                          </Button>
+                          <Button variant="ghost" className="w-full justify-start gap-3" onClick={() => handleNav("/admin/sessions")}>
+                              <Radio className="h-4 w-4" />
+                              Active Sessions
                           </Button>
                       </div>
                   </div>

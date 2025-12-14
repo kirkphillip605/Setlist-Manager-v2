@@ -432,6 +432,24 @@ export const getGigSession = async (gigId: string): Promise<GigSession | null> =
     return data;
 };
 
+export const getAllGigSessions = async () => {
+    const { data, error } = await supabase
+        .from('gig_sessions')
+        .select(`
+            *, 
+            gig:gigs(name), 
+            leader:profiles(first_name, last_name),
+            participants:gig_session_participants(
+                profile:profiles(first_name, last_name)
+            )
+        `)
+        .eq('is_active', true)
+        .order('started_at', { ascending: false });
+    
+    if (error) throw error;
+    return data;
+};
+
 export const createGigSession = async (gigId: string, leaderId: string): Promise<GigSession> => {
     const { data, error } = await supabase
         .from('gig_sessions')
@@ -443,13 +461,15 @@ export const createGigSession = async (gigId: string, leaderId: string): Promise
 };
 
 export const endGigSession = async (sessionId: string) => {
-    // Soft delete / Mark inactive
-    await supabase.from('gig_sessions')
-        .update({ 
-            is_active: false, 
-            ended_at: new Date().toISOString() 
-        })
-        .eq('id', sessionId);
+    await supabase.from('gig_sessions').delete().eq('id', sessionId);
+};
+
+export const endAllSessions = async () => {
+    await supabase.from('gig_sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+};
+
+export const cleanupStaleSessions = async () => {
+    await supabase.rpc('cleanup_stale_gig_sessions');
 };
 
 export const joinGigSession = async (sessionId: string, userId: string) => {

@@ -24,6 +24,7 @@ import Gigs from "./pages/Gigs";
 import GigDetail from "./pages/GigDetail";
 import Profile from "./pages/Profile";
 import AdminUsers from "./pages/AdminUsers";
+import AdminSessions from "./pages/AdminSessions";
 import PerformanceSelection from "./pages/PerformanceSelection";
 import PerformanceMode from "./pages/PerformanceMode";
 import NotFound from "./pages/NotFound";
@@ -160,6 +161,7 @@ const AppContent = () => {
 
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
+                <Route path="/admin/sessions" element={<ProtectedRoute><AdminSessions /></ProtectedRoute>} />
                 
                 <Route path="*" element={<NotFound />} />
             </Routes>

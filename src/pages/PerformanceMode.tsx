@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -41,21 +41,44 @@ const PerformanceMode = () => {
   const queryClient = useQueryClient();
   const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome } = useMetronome();
   
-  // -- Session Hook (Only run if real gig mode) --
+  // -- Session Hook --
   const { sessionData, participants, isLeader, loading: sessionLoading, userId } = useGigSession(isGigMode ? gigId : null);
 
-  // Local State (Synced from session if Follower, Driven by interactions if Leader)
+  // Local State
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [tempSong, setTempSong] = useState<Song | null>(null);
+
+  // -- Orphaned Session State --
+  const [isOrphaned, setIsOrphaned] = useState(false);
+  
+  useEffect(() => {
+      if (!isGigMode || isLeader || !sessionData) {
+          setIsOrphaned(false);
+          return;
+      }
+
+      const checkHeartbeat = () => {
+          const last = new Date(sessionData.last_heartbeat).getTime();
+          const now = Date.now();
+          // 10 minutes timeout
+          if (now - last > 10 * 60 * 1000) {
+              setIsOrphaned(true);
+          } else {
+              setIsOrphaned(false);
+          }
+      };
+
+      checkHeartbeat();
+      const interval = setInterval(checkHeartbeat, 30000); // Check every 30s
+      return () => clearInterval(interval);
+  }, [sessionData, isGigMode, isLeader]);
 
   // -- Derived Data --
   const setlist = useSetlistWithSongs(id);
   const { data: allSongs = [] } = useSyncedSongs();
   const { data: allSkipped = [] } = useSyncedSkippedSongs();
 
-  // Filter cached data for current gig (even in Standalone if gigId is present, we might want this?)
-  // For standalone, skip tracking
   const skippedSongs = useMemo(() => {
       if (!gigId) return [];
       return allSkipped
@@ -86,10 +109,8 @@ const PerformanceMode = () => {
   // -- Sync Effect (Follower Logic) --
   useEffect(() => {
       if (isGigMode && sessionData && !isLeader) {
-          // Follower: Update local state from remote session
           setCurrentSetIndex(sessionData.current_set_index);
           setCurrentSongIndex(sessionData.current_song_index);
-          
           if (sessionData.adhoc_song_id) {
               const found = allSongs.find(s => s.id === sessionData.adhoc_song_id);
               if (found) setTempSong(found);
@@ -117,9 +138,8 @@ const PerformanceMode = () => {
       if (isLeader) broadcastState(currentSetIndex, currentSongIndex, null);
       return;
     }
-    if (!setlist) return; // Wait for load
+    if (!setlist) return; 
     
-    // Safely get current set
     const currentSet = sets[currentSetIndex];
     if (!currentSet) return;
 
@@ -189,7 +209,7 @@ const PerformanceMode = () => {
   const [showLeaderRequest, setShowLeaderRequest] = useState(false);
   const [incomingRequest, setIncomingRequest] = useState<any>(null);
 
-  // -- Listen for Incoming Leadership Requests (Leader Only) --
+  // -- Listen for Incoming Leadership Requests --
   useEffect(() => {
       if (!isLeader || !sessionData) return;
       const channel = supabase.channel(`leader_req:${sessionData.id}`)
@@ -204,35 +224,32 @@ const PerformanceMode = () => {
       return () => { supabase.removeChannel(channel); };
   }, [isLeader, sessionData]);
 
-  // -- Listen for Session End (Follower) --
+  // -- Listen for Session End --
   const [sessionEndedInfo, setSessionEndedInfo] = useState<{ endedBy: string, at: string } | null>(null);
   
   useEffect(() => {
-      if(isGigMode && sessionData && !sessionData.is_active) {
-          // Fetch leader name who ended it? (Leader ID is on sessionData)
-          const fetchEnder = async () => {
-              const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', sessionData.leader_id).single();
-              setSessionEndedInfo({
-                  endedBy: data ? `${data.first_name} ${data.last_name}` : "Leader",
-                  at: new Date().toLocaleTimeString()
-              });
-          };
-          fetchEnder();
+      if(isGigMode && sessionData === null && sessionEndedInfo === null) {
+          // If sessionData becomes null, it was deleted/ended.
+          setSessionEndedInfo({
+              endedBy: "Leader",
+              at: new Date().toLocaleTimeString()
+          });
       }
   }, [sessionData, isGigMode]);
 
   // -- Leadership Actions --
   const handleRequestLeadership = async () => {
       if (!sessionData || !userId) return;
-      
       const now = new Date().getTime();
       const lastBeat = new Date(sessionData.last_heartbeat).getTime();
       const diff = (now - lastBeat) / 1000;
 
-      if (diff > 30) {
+      // Force take over if stale (30s)
+      if (diff > 30 || isOrphaned) {
           await forceLeadership(sessionData.id, userId);
-          toast.success("Leader was inactive. You are now the leader.");
+          toast.success("You are now the leader.");
           setShowLeaderRequest(false);
+          setIsOrphaned(false);
       } else {
           await requestLeadership(sessionData.id, userId);
           toast.info("Request sent to current leader.");
@@ -290,6 +307,33 @@ const PerformanceMode = () => {
 
   return (
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
+      {/* Orphaned Session Dialog */}
+      <AlertDialog open={isOrphaned}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+                      <AlertTriangle className="h-5 w-5" /> Connection Lost
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                      We haven't received updates from the leader for over 10 minutes.
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="py-4 space-y-3">
+                  <p className="text-sm font-medium">Waiting for leader to rejoin...</p>
+                  <div className="flex gap-2">
+                      <Button className="flex-1" onClick={handleRequestLeadership}>
+                          <Crown className="mr-2 h-4 w-4" /> Become Leader
+                      </Button>
+                      <Button variant="destructive" className="flex-1" onClick={() => {
+                          if(sessionData) endGigSession(sessionData.id);
+                      }}>
+                          End Session
+                      </Button>
+                  </div>
+              </div>
+          </AlertDialogContent>
+      </AlertDialog>
+
       {/* --- Top Bar --- */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-card shadow-sm shrink-0 h-14 gap-2">
         <div className="flex-1 max-w-[200px] shrink-0 flex items-center gap-2">
@@ -465,7 +509,6 @@ const PerformanceMode = () => {
           </DialogContent>
       </Dialog>
 
-      {/* Other Dialogs (Request, Participants) ... */}
       {/* Leadership Request from Follower */}
       <AlertDialog open={!!incomingRequest} onOpenChange={() => {}}>
           <AlertDialogContent>

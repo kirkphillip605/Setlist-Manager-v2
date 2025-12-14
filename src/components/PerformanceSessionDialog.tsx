@@ -32,8 +32,36 @@ export const PerformanceSessionDialog = ({ open, gigId, gigName, onClose, onJoin
         try {
             const session = await getGigSession(gigId!);
             if (session) {
+                // Auto-Join Logic
+                const userId = authSession?.user?.id;
+                
+                if (userId) {
+                    // Check if Leader
+                    if (session.leader_id === userId) {
+                        toast.success("Welcome back! Resuming session as Leader.");
+                        onJoin("leader", session.id);
+                        return; // Dialog will close via parent
+                    }
+
+                    // Check if existing participant
+                    const { data: participant } = await supabase
+                        .from('gig_session_participants')
+                        .select('id')
+                        .eq('session_id', session.id)
+                        .eq('user_id', userId)
+                        .maybeSingle();
+                        
+                    if (participant) {
+                        toast.success("Resuming session connection...");
+                        // Update last_seen immediately
+                        await joinGigSession(session.id, userId);
+                        onJoin("follower", session.id);
+                        return;
+                    }
+                }
+
                 setExistingSession(session);
-                // Fetch leader name
+                // Fetch leader name for display
                 const { data: profile } = await supabase.from('profiles').select('first_name, last_name').eq('id', session.leader_id).single();
                 if (profile) setLeaderName(`${profile.first_name} ${profile.last_name}`);
             } else {
