@@ -39,13 +39,11 @@ const AdminUsers = () => {
     // Dialog States
     const [inviteEmail, setInviteEmail] = useState("");
     const [isInviteOpen, setIsInviteOpen] = useState(false);
-    
-    // Ban State
     const [banReason, setBanReason] = useState("");
     const [userToBan, setUserToBan] = useState<any>(null);
     const [isBanOpen, setIsBanOpen] = useState(false);
     
-    // Reset Password State
+    // Password Reset
     const [resetUser, setResetUser] = useState<any>(null);
     const [newPassword, setNewPassword] = useState("");
     const [adminOtp, setAdminOtp] = useState("");
@@ -56,12 +54,23 @@ const AdminUsers = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        const { data: pData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+        // 1. Fetch all profiles (RLS Policy "Admins can view all" handles this)
+        const { data: pData, error: pError } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (pError) toast.error("Error fetching users: " + pError.message);
         if (pData) setProfiles(pData);
 
-        const { data: bData } = await supabase.from('banned_users').select('*').order('banned_at', { ascending: false });
+        // 2. Fetch Banned Users
+        const { data: bData } = await supabase
+            .from('banned_users')
+            .select('*')
+            .order('banned_at', { ascending: false });
         if (bData) setBannedUsers(bData);
 
+        // 3. Fetch Logs
         const lData = await getLogs();
         if (lData) setLogs(lData);
         
@@ -70,41 +79,52 @@ const AdminUsers = () => {
 
     useEffect(() => {
         fetchData();
+        // Subscribe to changes for live updates
         const channel = supabase.channel('admin-dashboard')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'banned_users' }, () => fetchData())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => fetchData())
             .subscribe();
             
         return () => { supabase.removeChannel(channel); };
     }, []);
 
+    // Derived Lists
     const pendingUsers = profiles.filter(p => !p.is_approved);
     const appUsers = profiles.filter(p => p.is_approved && (showDisabled || p.is_active));
 
-    // --- HELPER ACTIONS ---
+    // --- DIRECT DB OPERATIONS (Client SDK) ---
+
+    const updateUserField = async (userId: string, field: string, value: any) => {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ [field]: value })
+            .eq('id', userId);
+        
+        if (error) {
+            toast.error(`Failed to update ${field}: ${error.message}`);
+        } else {
+            toast.success("Updated successfully");
+        }
+    };
+
+    const handleApprove = (userId: string) => updateUserField(userId, 'is_approved', true);
+    
+    const handleRoleChange = (userId: string, newRole: string) => updateUserField(userId, 'role', newRole);
+    
+    const handlePositionChange = (userId: string, newPos: string) => updateUserField(userId, 'position', newPos);
+
+    // --- HYBRID ACTIONS ---
 
     const initiateBan = (user: any) => {
         setUserToBan(user);
-        setBanReason("");
         setIsBanOpen(true);
     };
-
-    const handleUpdateProfile = async (userId: string, updates: any) => {
-        const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
-        if (error) toast.error("Update failed: " + error.message);
-        else toast.success("User updated");
-    };
-
-    const handleRoleChange = (userId: string, newRole: string) => handleUpdateProfile(userId, { role: newRole });
-    const handlePositionChange = (userId: string, newPos: string) => handleUpdateProfile(userId, { position: newPos });
-    const handleApprove = (userId: string) => handleUpdateProfile(userId, { is_approved: true });
 
     const handleBan = async () => {
         if (!userToBan) return;
         setProcessing(true);
         
-        // 1. Client-side: Insert into banned_users (Allowed by RLS)
+        // 1. Add to Banned Users Table (Client SDK)
         const { error: banError } = await supabase.from('banned_users').insert({
             email: userToBan.email,
             reason: banReason,
@@ -112,24 +132,24 @@ const AdminUsers = () => {
         });
 
         if (banError) {
-            toast.error("Failed to ban: " + banError.message);
+            toast.error("Failed to add ban record: " + banError.message);
             setProcessing(false);
             return;
         }
 
-        // 2. Edge Function: Delete User from Auth (Strictly required)
+        // 2. Delete from Auth (Edge Function - Required for auth.users access)
         try {
             const { error } = await supabase.functions.invoke('admin-actions', {
                 body: { action: 'delete_user_auth', userId: userToBan.id }
             });
             if (error) throw new Error(error.message || "Auth deletion failed");
             
-            toast.success("User banned and removed");
+            toast.success("User banned and removed from Auth");
             setIsBanOpen(false);
             setBanReason("");
             setUserToBan(null);
         } catch (e: any) {
-            toast.error("User banned, but Auth cleanup failed: " + e.message);
+            toast.error("Ban recorded, but Auth removal failed: " + e.message);
         } finally {
             setProcessing(false);
         }
@@ -139,12 +159,18 @@ const AdminUsers = () => {
         if (!confirm("Unban this email address? The user will need to register again.")) return;
         setProcessing(true);
         
-        const { error } = await supabase.from('banned_users').delete().eq('email', email);
+        const { error } = await supabase
+            .from('banned_users')
+            .delete()
+            .eq('email', email);
+            
         if (error) toast.error("Failed to unban: " + error.message);
         else toast.success("User unbanned");
         
         setProcessing(false);
     };
+
+    // --- EDGE FUNCTION OPERATIONS (Auth API) ---
 
     const handleInvite = async () => {
         setProcessing(true);
@@ -152,13 +178,13 @@ const AdminUsers = () => {
             const { error } = await supabase.functions.invoke('admin-actions', {
                 body: { action: 'invite', email: inviteEmail }
             });
-            if (error) throw new Error(error.message || "Request failed");
+            if (error) throw error; 
             
             toast.success("Invite sent");
             setIsInviteOpen(false);
             setInviteEmail("");
         } catch(e: any) {
-            toast.error("Failed to invite: " + e.message);
+            toast.error("Invite failed. Check logs.");
         } finally {
             setProcessing(false);
         }
@@ -171,12 +197,13 @@ const AdminUsers = () => {
         setAdminOtp("");
         setNewPassword("");
         
+        // Security: Send OTP to Admin to confirm action
         const { error } = await supabase.auth.signInWithOtp({
             email: session?.user?.email!,
             options: { shouldCreateUser: false }
         });
         
-        if (error) toast.error(error.message);
+        if (error) toast.error("Failed to send verification code");
         else {
             setOtpSent(true);
             toast.info("Verification code sent to your email");
@@ -188,13 +215,15 @@ const AdminUsers = () => {
         setProcessing(true);
 
         try {
+            // 1. Verify Admin's Identity
             const { error: otpError } = await supabase.auth.verifyOtp({
                 email: session?.user?.email!,
                 token: adminOtp,
                 type: 'email'
             });
-            if (otpError) throw new Error("Invalid code");
+            if (otpError) throw new Error("Invalid verification code");
 
+            // 2. Call Edge Function to reset TARGET user's password
             const { error: funcError } = await supabase.functions.invoke('admin-actions', {
                 body: { 
                     action: 'admin_reset_password', 
@@ -241,10 +270,14 @@ const AdminUsers = () => {
                         <TabsTrigger value="logs">Logs</TabsTrigger>
                     </TabsList>
 
+                    {/* USERS TAB */}
                     <TabsContent value="users">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">
-                                <div><CardTitle>App Users</CardTitle><CardDescription>Manage roles and positions.</CardDescription></div>
+                                <div>
+                                    <CardTitle>App Users</CardTitle>
+                                    <CardDescription>Manage roles and positions.</CardDescription>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <Checkbox id="showDis" checked={showDisabled} onCheckedChange={(c) => setShowDisabled(!!c)} />
                                     <Label htmlFor="showDis" className="text-sm">Show Inactive</Label>
@@ -302,6 +335,7 @@ const AdminUsers = () => {
                         </Card>
                     </TabsContent>
 
+                    {/* APPROVALS TAB */}
                     <TabsContent value="approvals">
                         <Card>
                             <CardHeader><CardTitle>Pending Approvals</CardTitle></CardHeader>
@@ -331,6 +365,7 @@ const AdminUsers = () => {
                         </Card>
                     </TabsContent>
 
+                    {/* BANS TAB */}
                     <TabsContent value="bans">
                         <Card>
                              <CardHeader><CardTitle>Banned Users</CardTitle></CardHeader>
@@ -355,40 +390,40 @@ const AdminUsers = () => {
                         </Card>
                     </TabsContent>
 
+                    {/* LOGS TAB */}
                     <TabsContent value="logs">
                         <Card>
                             <CardHeader><CardTitle>System Logs</CardTitle></CardHeader>
                             <CardContent>
-                                {logs.length === 0 ? <div className="text-center py-8 text-muted-foreground">No logs found.</div> : (
-                                    <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                                        {logs.map(log => (
-                                            <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
-                                                <div className="mt-0.5">
-                                                    {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
-                                                        ? <Shield className="h-4 w-4 text-blue-500" /> 
-                                                        : <Activity className="h-4 w-4 text-green-500" />
-                                                    }
-                                                </div>
-                                                <div className="flex-1">
-                                                    <p className="font-medium text-xs text-muted-foreground mb-0.5">
-                                                        {log.action_type} • {log.resource_type}
-                                                    </p>
-                                                    <div className="text-sm">
-                                                        {JSON.stringify(log.details)}
-                                                    </div>
-                                                    <p className="text-[10px] text-muted-foreground mt-1">
-                                                        {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
-                                                    </p>
-                                                </div>
+                                <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                                    {logs.map(log => (
+                                        <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
+                                            <div className="mt-0.5">
+                                                {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
+                                                    ? <Shield className="h-4 w-4 text-blue-500" /> 
+                                                    : <Activity className="h-4 w-4 text-green-500" />
+                                                }
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
+                                            <div className="flex-1">
+                                                <p className="font-medium text-xs text-muted-foreground mb-0.5">
+                                                    {log.action_type} • {log.resource_type}
+                                                </p>
+                                                <div className="text-sm">
+                                                    {JSON.stringify(log.details)}
+                                                </div>
+                                                <p className="text-[10px] text-muted-foreground mt-1">
+                                                    {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </CardContent>
                         </Card>
                     </TabsContent>
                 </Tabs>
 
+                {/* MODALS */}
                 <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
                     <DialogContent>
                         <DialogHeader><DialogTitle>Invite Member</DialogTitle></DialogHeader>

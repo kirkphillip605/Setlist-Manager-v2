@@ -29,7 +29,6 @@ export const PendingApprovalNotifier = () => {
 
     fetchPending();
 
-    // Listen for changes
     const channel = supabase
       .channel('admin_approvals')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchPending())
@@ -54,7 +53,7 @@ export const PendingApprovalNotifier = () => {
               // Deny = Ban & Delete
               if (!email) throw new Error("Email required for ban");
               
-              // 1. Client-side: Insert Ban (Allowed by RLS)
+              // 1. Insert Ban (Allowed by RLS)
               const { error: banError } = await supabase.from('banned_users').insert({
                   email, 
                   reason: 'Denied via quick action',
@@ -62,7 +61,7 @@ export const PendingApprovalNotifier = () => {
               });
               if (banError) throw banError;
 
-              // 2. Edge Function: Delete Auth (Strictly required)
+              // 2. Delete Auth (Edge Function)
               const { error: funcError } = await supabase.functions.invoke('admin-actions', { 
                   body: { action: 'delete_user_auth', userId } 
               });

@@ -13,7 +13,7 @@ serve(async (req) => {
 
   try {
     // 1. Setup Clients
-    // Access environment variables securely. Deno.env.get works automatically in Supabase Functions.
+    // Deno.env.get works automatically in Supabase environment
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
