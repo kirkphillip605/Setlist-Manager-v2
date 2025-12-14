@@ -5,49 +5,57 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
-  // Handle CORS preflight request
+  // 1. Handle CORS Preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // 1. Initialize Client
+    // 2. Client Setup
+    // Use the User's JWT to verify they are an admin
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
-    // 2. Verify Admin Status
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error('Unauthorized');
-
-    const { data: profile } = await supabaseClient
-      .from('profiles')
-      .select('role, email')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.role !== 'admin') throw new Error('Forbidden: Admins only');
-
-    // 3. Initialize Admin Client
+    // Use Service Role for actual admin actions (bypass RLS)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, email, userId, reason, newPassword, targetPosition } = await req.json();
-    let logMessage = "";
+    // 3. Verify Requestor is Admin
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) throw new Error('Unauthorized');
 
-    // --- ACTIONS ---
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin') throw new Error('Forbidden: Admins only');
+
+    // 4. Parse Body
+    const { action, email, userId, reason, newPassword, targetPosition } = await req.json();
+    let logEntry = null;
+
+    // --- EXECUTE ACTIONS ---
 
     if (action === 'invite') {
       const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
       if (error) throw error;
-      logMessage = `Admin invited user ${email}`;
+      
+      logEntry = {
+        action_type: 'INVITE_USER',
+        resource_type: 'auth',
+        details: { target_email: email }
+      };
     }
 
     else if (action === 'approve_user') {
@@ -56,33 +64,42 @@ serve(async (req) => {
         .update({ is_approved: true })
         .eq('id', userId);
        if (error) throw error;
-       logMessage = `Admin approved user ID ${userId}`;
+
+       logEntry = {
+        action_type: 'APPROVE_USER',
+        resource_type: 'profile',
+        resource_id: userId,
+        details: {}
+      };
     }
 
     else if (action === 'deny_ban_user') {
-       // 1. Add to ban table
+       // Add to ban table
        const { error: banError } = await supabaseAdmin
         .from('banned_users')
         .insert({ email: email, reason: reason, banned_by: user.id });
        if (banError) throw banError;
 
-       // 2. Delete the user from Auth
+       // Delete from Auth
        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
        if (deleteError) throw deleteError;
        
-       logMessage = `Admin banned and deleted user ${email}`;
+       logEntry = {
+        action_type: 'BAN_USER',
+        resource_type: 'auth',
+        details: { target_email: email, reason }
+      };
     }
 
     else if (action === 'unban_user') {
         const { error } = await supabaseAdmin.from('banned_users').delete().eq('email', email);
         if (error) throw error;
-        logMessage = `Admin unbanned email ${email}`;
-    }
-
-    else if (action === 'delete_user') {
-        const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-        if (error) throw error;
-        logMessage = `Admin deleted user ID ${userId}`;
+        
+        logEntry = {
+            action_type: 'UNBAN_USER',
+            resource_type: 'auth',
+            details: { target_email: email }
+        };
     }
 
     else if (action === 'update_position') {
@@ -91,7 +108,13 @@ serve(async (req) => {
             .update({ position: targetPosition })
             .eq('id', userId);
         if (error) throw error;
-        // No log needed for trivial update, or optional
+        
+        logEntry = {
+            action_type: 'UPDATE_POSITION',
+            resource_type: 'profile',
+            resource_id: userId,
+            details: { new_position: targetPosition }
+        };
     }
 
     else if (action === 'admin_reset_password') {
@@ -103,23 +126,28 @@ serve(async (req) => {
         );
         if (error) throw error;
         
-        // Also ensure has_password is true
         await supabaseAdmin.from('profiles').update({ has_password: true }).eq('id', userId);
         
-        logMessage = `Admin reset password for user ID ${userId}`;
+        logEntry = {
+            action_type: 'RESET_PASSWORD',
+            resource_type: 'auth',
+            resource_id: userId,
+            details: { admin_action: true }
+        };
     }
     
     else {
         throw new Error('Invalid action');
     }
 
-    // 4. Log the action
-    if (logMessage) {
-        await supabaseAdmin.from('app_logs').insert({
-            category: 'AUTH',
-            message: logMessage,
+    // 5. Log to DB
+    if (logEntry) {
+        await supabaseAdmin.from('activity_logs').insert({
             user_id: user.id,
-            details: { action, target: email || userId }
+            action_type: logEntry.action_type,
+            resource_type: logEntry.resource_type,
+            resource_id: logEntry.resource_id,
+            details: logEntry.details
         });
     }
 

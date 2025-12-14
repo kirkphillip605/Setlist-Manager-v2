@@ -250,15 +250,12 @@ export const createSetlist = async (name: string, isPersonal: boolean = false, i
       await supabase.from('setlists').update({ is_default: false }).eq('is_default', true);
   }
 
-  // Note: we just pass dummy date/tbd to satisfy DB constraints if they exist, 
-  // or rely on default values if I could alter table. 
-  // Since I can't drop cols easily, I'll pass defaults.
   const { data, error } = await supabase
     .from('setlists')
     .insert({ 
         name, 
-        date: new Date().toISOString().split('T')[0], // Dummy value
-        is_tbd: false, // Dummy value
+        date: new Date().toISOString().split('T')[0], 
+        is_tbd: false,
         user_id: user.id, 
         is_personal: isPersonal,
         is_default: isDefault
@@ -384,9 +381,10 @@ export const moveSetSongToSet = async (setSongId: string, targetSetId: string, p
 };
 
 // --- Logs ---
+// Updated to use the new activity_logs schema
 export const getLogs = async () => {
     const { data, error } = await supabase
-        .from('app_logs')
+        .from('activity_logs')
         .select(`*, user:profiles(email, first_name, last_name)`)
         .order('created_at', { ascending: false })
         .limit(100);

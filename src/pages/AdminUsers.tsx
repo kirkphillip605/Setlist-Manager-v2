@@ -385,11 +385,28 @@ const AdminUsers = () => {
                                         {logs.map(log => (
                                             <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
                                                 <div className="mt-0.5">
-                                                    {log.category === 'AUTH' ? <Shield className="h-4 w-4 text-blue-500" /> : <Activity className="h-4 w-4 text-green-500" />}
+                                                    {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
+                                                        ? <Shield className="h-4 w-4 text-blue-500" /> 
+                                                        : <Activity className="h-4 w-4 text-green-500" />
+                                                    }
                                                 </div>
                                                 <div className="flex-1">
-                                                    <p>{log.message}</p>
-                                                    <p className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</p>
+                                                    <p className="font-medium text-xs text-muted-foreground mb-0.5">
+                                                        {log.action_type} • {log.resource_type}
+                                                    </p>
+                                                    <div className="text-sm">
+                                                        {log.action_type === 'CREATE' && `Created ${log.resource_type}`}
+                                                        {log.action_type === 'UPDATE' && `Updated ${log.resource_type}`}
+                                                        {log.action_type === 'DELETE' && `Deleted ${log.resource_type}`}
+                                                        {log.action_type === 'LOGIN' && `User Login: ${log.details?.email || 'Unknown'}`}
+                                                        
+                                                        {/* Detailed breakdown for updates */}
+                                                        {log.action_type === 'UPDATE' && log.details?.new?.title && ` "${log.details.new.title}"`}
+                                                        {log.action_type === 'CREATE' && log.details?.title && ` "${log.details.title}"`}
+                                                    </div>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">
+                                                        {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
+                                                    </p>
                                                 </div>
                                             </div>
                                         ))}

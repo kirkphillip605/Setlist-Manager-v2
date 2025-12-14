@@ -44,13 +44,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let mounted = true;
 
     // Listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (mounted) {
         setSession(newSession);
         setAuthLoading(false);
         // Clear profile cache on sign out
         if (event === 'SIGNED_OUT') {
             queryClient.setQueryData(['profile', session?.user?.id], null);
+        }
+        
+        // Log Login Event
+        if (event === 'SIGNED_IN' && newSession?.user) {
+            await supabase.from('activity_logs').insert({
+                user_id: newSession.user.id,
+                action_type: 'LOGIN',
+                resource_type: 'auth',
+                details: { email: newSession.user.email }
+            });
         }
       }
     });
