@@ -17,9 +17,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 
 const POSITIONS = [
-  "Lead Vocals", "Backing Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
-  "Drums", "Keyboard/Piano", "Saxophone", "Trumpet", "Percussion", 
-  "Sound Engineer", "Lighting", "Manager", "Other"
+  "Lead Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
+  "Drums", "Keyboard/Piano", "Sound Engineer", "Lighting", "Other"
 ];
 
 const Profile = () => {
@@ -47,7 +46,7 @@ const Profile = () => {
   // OTP State
   const [isOtpOpen, setIsOtpOpen] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [otpAction, setOtpAction] = useState<"profile" | "password" | "delete" | null>(null);
+  const [otpAction, setOtpAction] = useState<"password" | "delete" | null>(null);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
   // Delete State
@@ -80,10 +79,27 @@ const Profile = () => {
     fetchProfile();
   }, [session]);
 
-  const initiateSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setOtpAction("profile");
-    sendOtp();
+    if (!session?.user) return;
+    setSaving(true);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        position: profile.position,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', session.user.id);
+
+    if (error) {
+      toast.error("Failed to update profile: " + error.message);
+    } else {
+      toast.success("Profile updated successfully");
+    }
+    setSaving(false);
   };
 
   const initiateChangePassword = (e: React.FormEvent) => {
@@ -128,7 +144,6 @@ const Profile = () => {
     if (otpCode.length !== 6) return;
     setVerifyingOtp(true);
 
-    // Verify the OTP
     const { data, error } = await supabase.auth.verifyOtp({
       email: userEmail,
       token: otpCode,
@@ -141,9 +156,7 @@ const Profile = () => {
       return;
     }
 
-    if (otpAction === "profile") {
-        await saveProfileData();
-    } else if (otpAction === "password") {
+    if (otpAction === "password") {
         await savePasswordData();
     } else if (otpAction === "delete") {
         await performSoftDelete();
@@ -153,25 +166,6 @@ const Profile = () => {
     setOtpCode("");
     setVerifyingOtp(false);
     setSaving(false);
-  };
-
-  const saveProfileData = async () => {
-    if (!session?.user) return;
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        first_name: profile.first_name,
-        last_name: profile.last_name,
-        position: profile.position,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', session.user.id);
-
-    if (error) {
-      toast.error("Failed to update profile: " + error.message);
-    } else {
-      toast.success("Profile updated successfully");
-    }
   };
 
   const savePasswordData = async () => {
@@ -188,7 +182,6 @@ const Profile = () => {
   const performSoftDelete = async () => {
       if (!session?.user) return;
       
-      // Mark as inactive
       const { error } = await supabase
         .from('profiles')
         .update({ is_active: false })
@@ -198,7 +191,6 @@ const Profile = () => {
           toast.error("Failed to deactivate account: " + error.message);
       } else {
           toast.success("Account deactivated.");
-          // Sign out immediately
           await supabase.auth.signOut();
           navigate("/login");
       }
@@ -233,7 +225,7 @@ const Profile = () => {
             <CardDescription>Update your public band profile.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={initiateSaveProfile} className="space-y-4">
+            <form onSubmit={handleSaveProfile} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name</Label>
@@ -272,7 +264,7 @@ const Profile = () => {
 
               <div className="flex justify-end">
                 <Button type="submit" disabled={saving}>
-                  {saving && otpAction === "profile" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Changes
                 </Button>
               </div>

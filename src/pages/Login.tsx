@@ -34,11 +34,9 @@ const Login = () => {
 
   const getRedirectUrl = () => {
     if (Capacitor.isNativePlatform()) {
-        // Native redirect using new package name
         console.log("Native Platform detected. Using: com.kirknetllc.setlistpro://google-auth");
         return 'com.kirknetllc.setlistpro://google-auth';
     }
-    // Web fallback
     console.log("Web Platform detected. Using origin.");
     return `${window.location.origin}/auth/callback`;
   };
@@ -71,7 +69,7 @@ const Login = () => {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Check your email for the confirmation link!");
+      navigate("/verify-email");
     }
     setLoading(false);
   };
@@ -134,6 +132,7 @@ const Login = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                   />
                 </div>
                 <div className="space-y-2">
@@ -157,6 +156,7 @@ const Login = () => {
                                         value={resetEmail}
                                         onChange={(e) => setResetEmail(e.target.value)}
                                         required
+                                        autoComplete="email"
                                     />
                                 </div>
                                 <DialogFooter>
@@ -175,6 +175,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    autoComplete="current-password"
                   />
                 </div>
 
@@ -196,6 +197,7 @@ const Login = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                   />
                 </div>
                 <div className="space-y-2">
@@ -206,6 +208,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
                   />
                 </div>
 

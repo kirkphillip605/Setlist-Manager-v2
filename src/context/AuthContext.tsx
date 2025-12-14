@@ -5,8 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface Profile {
   id: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  position: string | null;
   role: string;
   is_approved: boolean;
   is_active: boolean;

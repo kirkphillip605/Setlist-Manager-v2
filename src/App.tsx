@@ -4,8 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { MetronomeProvider } from "@/components/MetronomeContext";
-import { Loader2, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +13,8 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import UpdatePassword from "./pages/UpdatePassword";
+import VerifyEmail from "./pages/VerifyEmail";
+import OnboardingWizard from "./pages/OnboardingWizard";
 import SongList from "./pages/SongList";
 import SongEdit from "./pages/SongEdit";
 import SongDetail from "./pages/SongDetail";
@@ -28,7 +29,6 @@ import PerformanceMode from "./pages/PerformanceMode";
 import NotFound from "./pages/NotFound";
 import PendingApproval from "./pages/PendingApproval";
 import ReactivateAccount from "./pages/ReactivateAccount";
-import SetInitialPassword from "./pages/SetInitialPassword";
 
 import { queryClient, persister } from "@/lib/queryClient";
 import { SyncIndicator } from "@/components/SyncIndicator";
@@ -60,11 +60,13 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
       return children;
   }
 
-  // 2. Check Profile Completion
-  const isProfileComplete = profile && profile.first_name && profile.last_name;
-  if (!isProfileComplete) {
-      if (location.pathname !== '/profile') {
-        return <Navigate to="/profile" replace />;
+  // 2. Check Profile Completion (Name & Position) OR Password not set
+  const isProfileComplete = profile && profile.first_name && profile.last_name && profile.position;
+  const hasPassword = profile && profile.has_password !== false; // has_password can be true or null (old users)
+
+  if (!isProfileComplete || !hasPassword) {
+      if (location.pathname !== '/onboarding') {
+        return <Navigate to="/onboarding" replace />;
       }
       return children;
   }
@@ -77,18 +79,10 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
       return children;
   }
 
-  // 4. Check Password Set (Google Users)
-  if (profile && profile.has_password === false) {
-      if (location.pathname !== '/set-password') {
-          return <Navigate to="/set-password" replace />;
-      }
-      return children;
-  }
-
   // Redirect away from special pages if conditions are met
   if (location.pathname === '/pending' && profile?.is_approved) return <Navigate to="/" replace />;
   if (location.pathname === '/reactivate' && profile?.is_active) return <Navigate to="/" replace />;
-  if (location.pathname === '/set-password' && profile?.has_password) return <Navigate to="/" replace />;
+  if (location.pathname === '/onboarding' && isProfileComplete && hasPassword) return <Navigate to="/" replace />;
 
   return children;
 };
@@ -143,12 +137,13 @@ const AppContent = () => {
             <Routes>
                 <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/verify-email" element={<PublicOnlyRoute><VerifyEmail /></PublicOnlyRoute>} />
                 <Route path="/update-password" element={<UpdatePassword />} />
                 
                 {/* Special Logic Routes (Protected checks handle the rendering) */}
+                <Route path="/onboarding" element={<ProtectedRoute><OnboardingWizard /></ProtectedRoute>} />
                 <Route path="/pending" element={<ProtectedRoute><PendingApproval /></ProtectedRoute>} />
                 <Route path="/reactivate" element={<ProtectedRoute><ReactivateAccount /></ProtectedRoute>} />
-                <Route path="/set-password" element={<ProtectedRoute><SetInitialPassword /></ProtectedRoute>} />
 
                 <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
                 <Route path="/songs" element={<ProtectedRoute><SongList /></ProtectedRoute>} />
