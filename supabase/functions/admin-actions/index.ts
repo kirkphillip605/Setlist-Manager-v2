@@ -13,19 +13,20 @@ serve(async (req) => {
 
   try {
     // 1. Setup Clients
+    // Access environment variables securely. Deno.env.get works automatically in Supabase Functions.
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    // Client for verifying the caller
+    // Client for verifying the caller (User Context)
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, { 
       global: { headers: { Authorization: req.headers.get('Authorization')! } } 
     });
 
-    // Admin client for Auth API operations
+    // Client for Auth Admin actions (Service Role Context)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Verify Requestor is Admin
+    // 2. Security Check: Verify Requestor is Admin
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error('Unauthorized');
 
@@ -37,58 +38,54 @@ serve(async (req) => {
 
     if (profile?.role !== 'admin') throw new Error('Forbidden: Admins only');
 
-    // 3. Parse Body
+    // 3. Process Action
     const { action, email, userId, newPassword } = await req.json();
-    let logMessage = "";
+    let logDetails = "";
 
-    // --- AUTH ACTIONS ONLY (Requires Service Role) ---
+    switch (action) {
+        case 'invite':
+            if (!email) throw new Error("Email is required");
+            const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
+            if (inviteError) throw inviteError;
+            logDetails = `Invited ${email}`;
+            break;
 
-    if (action === 'invite') {
-      if (!email) throw new Error("Email required");
-      const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-      if (error) throw error;
-      logMessage = `Invited ${email}`;
-    }
+        case 'delete_user_auth':
+            if (!userId) throw new Error("User ID is required");
+            const { error: delError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+            if (delError) throw delError;
+            logDetails = `Deleted user ${userId} from Auth`;
+            break;
 
-    else if (action === 'delete_user_auth') {
-       if (!userId) throw new Error("User ID required");
-       const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-       if (error) throw error;
-       logMessage = `Deleted user ${userId} from Auth`;
-    }
+        case 'admin_reset_password':
+            if (!userId || !newPassword) throw new Error("User ID and Password required");
+            if (newPassword.length < 6) throw new Error("Password too short");
+            
+            const { error: pwdError } = await supabaseAdmin.auth.admin.updateUserById(
+                userId,
+                { password: newPassword }
+            );
+            if (pwdError) throw pwdError;
+            
+            // Sync convenience flag
+            await supabaseAdmin.from('profiles').update({ has_password: true }).eq('id', userId);
+            logDetails = `Reset password for ${userId}`;
+            break;
 
-    else if (action === 'admin_reset_password') {
-        if (!userId || !newPassword) throw new Error("ID and Password required");
-        if (newPassword.length < 6) throw new Error("Password too short");
-        
-        const { error } = await supabaseAdmin.auth.admin.updateUserById(
-            userId,
-            { password: newPassword }
-        );
-        if (error) throw error;
-        
-        // Sync profile flag (optional, but good for consistency)
-        await supabaseAdmin.from('profiles').update({ has_password: true }).eq('id', userId);
-        
-        logMessage = `Reset password for ${userId}`;
-    }
-    
-    else {
-        throw new Error(`Invalid action: ${action}`);
+        default:
+            throw new Error(`Invalid action: ${action}`);
     }
 
     // 4. Log Action
-    if (logMessage) {
-        await supabaseAdmin.from('activity_logs').insert({
-            user_id: user.id,
-            action_type: action.toUpperCase(),
-            resource_type: 'auth',
-            resource_id: userId || email,
-            details: { message: logMessage }
-        });
-    }
+    await supabaseAdmin.from('activity_logs').insert({
+        user_id: user.id,
+        action_type: action.toUpperCase(),
+        resource_type: 'auth',
+        resource_id: userId || email,
+        details: { message: logDetails }
+    });
 
-    return new Response(JSON.stringify({ success: true }), { 
+    return new Response(JSON.stringify({ success: true, message: logDetails }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
 

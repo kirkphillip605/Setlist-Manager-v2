@@ -39,9 +39,13 @@ const AdminUsers = () => {
     // Dialog States
     const [inviteEmail, setInviteEmail] = useState("");
     const [isInviteOpen, setIsInviteOpen] = useState(false);
+    
+    // Ban State
     const [banReason, setBanReason] = useState("");
     const [userToBan, setUserToBan] = useState<any>(null);
     const [isBanOpen, setIsBanOpen] = useState(false);
+    
+    // Reset Password State
     const [resetUser, setResetUser] = useState<any>(null);
     const [newPassword, setNewPassword] = useState("");
     const [adminOtp, setAdminOtp] = useState("");
@@ -52,7 +56,6 @@ const AdminUsers = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        // Direct DB Query
         const { data: pData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
         if (pData) setProfiles(pData);
 
@@ -67,8 +70,6 @@ const AdminUsers = () => {
 
     useEffect(() => {
         fetchData();
-        
-        // Listen for updates to refresh UI automatically
         const channel = supabase.channel('admin-dashboard')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
             .on('postgres_changes', { event: '*', schema: 'public', table: 'banned_users' }, () => fetchData())
@@ -81,7 +82,13 @@ const AdminUsers = () => {
     const pendingUsers = profiles.filter(p => !p.is_approved);
     const appUsers = profiles.filter(p => p.is_approved && (showDisabled || p.is_active));
 
-    // --- DIRECT DB ACTIONS ---
+    // --- HELPER ACTIONS ---
+
+    const initiateBan = (user: any) => {
+        setUserToBan(user);
+        setBanReason("");
+        setIsBanOpen(true);
+    };
 
     const handleUpdateProfile = async (userId: string, updates: any) => {
         const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
@@ -92,13 +99,6 @@ const AdminUsers = () => {
     const handleRoleChange = (userId: string, newRole: string) => handleUpdateProfile(userId, { role: newRole });
     const handlePositionChange = (userId: string, newPos: string) => handleUpdateProfile(userId, { position: newPos });
     const handleApprove = (userId: string) => handleUpdateProfile(userId, { is_approved: true });
-
-    // --- HYBRID ACTIONS ---
-
-    const initiateBan = (user: any) => {
-        setUserToBan(user);
-        setIsBanOpen(true);
-    };
 
     const handleBan = async () => {
         if (!userToBan) return;
@@ -136,29 +136,32 @@ const AdminUsers = () => {
     };
 
     const handleUnban = async (email: string) => {
-        if (!confirm("Unban this user?")) return;
+        if (!confirm("Unban this email address? The user will need to register again.")) return;
         setProcessing(true);
-        // Client-side delete from banned_users (Allowed by RLS)
+        
         const { error } = await supabase.from('banned_users').delete().eq('email', email);
         if (error) toast.error("Failed to unban: " + error.message);
         else toast.success("User unbanned");
+        
         setProcessing(false);
     };
 
-    // --- EDGE FUNCTION ACTIONS ---
-
     const handleInvite = async () => {
         setProcessing(true);
-        const { error } = await supabase.functions.invoke('admin-actions', {
-            body: { action: 'invite', email: inviteEmail }
-        });
-        if (error) toast.error("Failed to invite: " + error.message);
-        else {
+        try {
+            const { error } = await supabase.functions.invoke('admin-actions', {
+                body: { action: 'invite', email: inviteEmail }
+            });
+            if (error) throw new Error(error.message || "Request failed");
+            
             toast.success("Invite sent");
             setIsInviteOpen(false);
             setInviteEmail("");
+        } catch(e: any) {
+            toast.error("Failed to invite: " + e.message);
+        } finally {
+            setProcessing(false);
         }
-        setProcessing(false);
     };
 
     const initiateReset = async (user: any) => {
@@ -185,7 +188,6 @@ const AdminUsers = () => {
         setProcessing(true);
 
         try {
-            // Verify OTP
             const { error: otpError } = await supabase.auth.verifyOtp({
                 email: session?.user?.email!,
                 token: adminOtp,
@@ -193,7 +195,6 @@ const AdminUsers = () => {
             });
             if (otpError) throw new Error("Invalid code");
 
-            // Edge Function: Force Password Update
             const { error: funcError } = await supabase.functions.invoke('admin-actions', {
                 body: { 
                     action: 'admin_reset_password', 
@@ -203,7 +204,7 @@ const AdminUsers = () => {
             });
             if (funcError) throw funcError;
 
-            toast.success("Password reset");
+            toast.success("Password reset successfully");
             setIsResetOpen(false);
         } catch (e: any) {
             toast.error(e.message || "Reset failed");
@@ -246,7 +247,7 @@ const AdminUsers = () => {
                                 <div><CardTitle>App Users</CardTitle><CardDescription>Manage roles and positions.</CardDescription></div>
                                 <div className="flex items-center gap-2">
                                     <Checkbox id="showDis" checked={showDisabled} onCheckedChange={(c) => setShowDisabled(!!c)} />
-                                    <Label htmlFor="showDis">Show Inactive</Label>
+                                    <Label htmlFor="showDis" className="text-sm">Show Inactive</Label>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -255,29 +256,41 @@ const AdminUsers = () => {
                                         <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Position</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                         <TableBody>
                                             {appUsers.map(user => (
-                                                <TableRow key={user.id} className={!user.is_active ? "opacity-50" : ""}>
+                                                <TableRow key={user.id} className={!user.is_active ? "opacity-50 bg-muted/50" : ""}>
                                                     <TableCell>
                                                         <div className="flex flex-col">
-                                                            <span className="font-medium">{user.first_name} {user.last_name}</span>
+                                                            <span className="font-medium flex items-center gap-2">
+                                                                {user.first_name} {user.last_name}
+                                                                {!user.is_active && <Badge variant="outline" className="text-[10px]">Inactive</Badge>}
+                                                            </span>
                                                             <span className="text-xs text-muted-foreground">{user.email}</span>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Select defaultValue={user.role} onValueChange={(v) => handleRoleChange(user.id, v)}>
                                                             <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                            <SelectContent><SelectItem value="standard">Standard</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
+                                                            <SelectContent>
+                                                                <SelectItem value="standard">Standard</SelectItem>
+                                                                <SelectItem value="admin">Admin</SelectItem>
+                                                            </SelectContent>
                                                         </Select>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Select defaultValue={user.position || "Other"} onValueChange={(v) => handlePositionChange(user.id, v)}>
                                                             <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                            <SelectContent>{POSITIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                                                            <SelectContent>
+                                                                {POSITIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                                                            </SelectContent>
                                                         </Select>
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-1">
-                                                            <Button variant="ghost" size="icon" className="text-blue-500" onClick={() => initiateReset(user)}><Lock className="h-4 w-4" /></Button>
-                                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => initiateBan(user)}><Ban className="h-4 w-4" /></Button>
+                                                            <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-700" onClick={() => initiateReset(user)} title="Reset Password">
+                                                                <Lock className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => initiateBan(user)} title="Ban User">
+                                                                <Ban className="h-4 w-4" />
+                                                            </Button>
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
@@ -346,26 +359,36 @@ const AdminUsers = () => {
                         <Card>
                             <CardHeader><CardTitle>System Logs</CardTitle></CardHeader>
                             <CardContent>
-                                <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                                    {logs.map(log => (
-                                        <div key={log.id} className="flex gap-3 text-sm border-b pb-2">
-                                            <div className="mt-0.5"><Activity className="h-4 w-4 text-primary" /></div>
-                                            <div className="flex-1">
-                                                <p className="font-medium text-xs text-muted-foreground">{log.action_type} • {log.resource_type}</p>
-                                                <div className="text-sm">
-                                                    {JSON.stringify(log.details)}
+                                {logs.length === 0 ? <div className="text-center py-8 text-muted-foreground">No logs found.</div> : (
+                                    <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                                        {logs.map(log => (
+                                            <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
+                                                <div className="mt-0.5">
+                                                    {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
+                                                        ? <Shield className="h-4 w-4 text-blue-500" /> 
+                                                        : <Activity className="h-4 w-4 text-green-500" />
+                                                    }
                                                 </div>
-                                                <p className="text-[10px] text-muted-foreground mt-1">{new Date(log.created_at).toLocaleString()}</p>
+                                                <div className="flex-1">
+                                                    <p className="font-medium text-xs text-muted-foreground mb-0.5">
+                                                        {log.action_type} • {log.resource_type}
+                                                    </p>
+                                                    <div className="text-sm">
+                                                        {JSON.stringify(log.details)}
+                                                    </div>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">
+                                                        {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
+                                                    </p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>
                 </Tabs>
 
-                {/* MODALS */}
                 <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
                     <DialogContent>
                         <DialogHeader><DialogTitle>Invite Member</DialogTitle></DialogHeader>
@@ -388,10 +411,10 @@ const AdminUsers = () => {
                         <div className="space-y-2 py-2">
                             <Label>Admin Code</Label>
                             <InputOTP maxLength={6} value={adminOtp} onChange={setAdminOtp}><InputOTPGroup><InputOTPSlot index={0}/><InputOTPSlot index={1}/><InputOTPSlot index={2}/></InputOTPGroup><div className="w-2"/><InputOTPGroup><InputOTPSlot index={3}/><InputOTPSlot index={4}/><InputOTPSlot index={5}/></InputOTPGroup></InputOTP>
-                            <Label>New Password</Label>
-                            <Input value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                            <Label>New User Password</Label>
+                            <Input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 6 chars" />
                         </div>
-                        <DialogFooter><Button onClick={handleResetPassword} disabled={processing}>Reset</Button></DialogFooter>
+                        <DialogFooter><Button onClick={handleResetPassword} disabled={processing || adminOtp.length !== 6 || newPassword.length < 6}>Reset</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
             </div>
