@@ -2,7 +2,7 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,7 +15,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Gig } from "@/types";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
 import { useNavigate } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
@@ -181,6 +181,7 @@ const Gigs = () => {
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>New Gig</DialogTitle>
+                            <DialogDescription>Enter the details for the new gig.</DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
@@ -237,6 +238,7 @@ const Gigs = () => {
                     <AlertDialogContent>
                         <AlertDialogHeader>
                             <AlertDialogTitle>Delete Gig?</AlertDialogTitle>
+                            <AlertDialogDescription>This will permanently delete the gig and its details.</AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>

@@ -17,10 +17,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { 
-    Loader2, UserPlus, Shield, Ban, Lock, Activity
+    Loader2, UserPlus, Ban, Lock
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getLogs } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 const POSITIONS = [
@@ -32,7 +31,6 @@ const AdminUsers = () => {
     const { session } = useAuth();
     const [profiles, setProfiles] = useState<any[]>([]);
     const [bannedUsers, setBannedUsers] = useState<any[]>([]);
-    const [logs, setLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showDisabled, setShowDisabled] = useState(false);
     
@@ -54,7 +52,7 @@ const AdminUsers = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        // 1. Fetch all profiles (RLS Policy "Admins can view all" handles this)
+        // 1. Fetch all profiles
         const { data: pData, error: pError } = await supabase
             .from('profiles')
             .select('*')
@@ -69,10 +67,6 @@ const AdminUsers = () => {
             .select('*')
             .order('banned_at', { ascending: false });
         if (bData) setBannedUsers(bData);
-
-        // 3. Fetch Logs
-        const lData = await getLogs();
-        if (lData) setLogs(lData);
         
         setLoading(false);
     };
@@ -184,7 +178,7 @@ const AdminUsers = () => {
             setIsInviteOpen(false);
             setInviteEmail("");
         } catch(e: any) {
-            toast.error("Invite failed. Check logs.");
+            toast.error("Invite failed.");
         } finally {
             setProcessing(false);
         }
@@ -248,7 +242,7 @@ const AdminUsers = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-                        <p className="text-muted-foreground">Manage users, approvals, logs and security.</p>
+                        <p className="text-muted-foreground">Manage users, approvals, and security.</p>
                     </div>
                     <Button onClick={() => setIsInviteOpen(true)}>
                         <UserPlus className="mr-2 h-4 w-4" /> Invite Member
@@ -256,7 +250,7 @@ const AdminUsers = () => {
                 </div>
 
                 <Tabs defaultValue="users" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4 overflow-x-auto">
+                    <TabsList className="grid w-full grid-cols-3 overflow-x-auto">
                         <TabsTrigger value="users">App Users</TabsTrigger>
                         <TabsTrigger value="approvals" className="relative">
                             Approvals
@@ -267,7 +261,6 @@ const AdminUsers = () => {
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="bans">Bans</TabsTrigger>
-                        <TabsTrigger value="logs">Logs</TabsTrigger>
                     </TabsList>
 
                     {/* USERS TAB */}
@@ -389,44 +382,15 @@ const AdminUsers = () => {
                             </CardContent>
                         </Card>
                     </TabsContent>
-
-                    {/* LOGS TAB */}
-                    <TabsContent value="logs">
-                        <Card>
-                            <CardHeader><CardTitle>System Logs</CardTitle></CardHeader>
-                            <CardContent>
-                                <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                                    {logs.map(log => (
-                                        <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
-                                            <div className="mt-0.5">
-                                                {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
-                                                    ? <Shield className="h-4 w-4 text-blue-500" /> 
-                                                    : <Activity className="h-4 w-4 text-green-500" />
-                                                }
-                                            </div>
-                                            <div className="flex-1">
-                                                <p className="font-medium text-xs text-muted-foreground mb-0.5">
-                                                    {log.action_type} • {log.resource_type}
-                                                </p>
-                                                <div className="text-sm">
-                                                    {JSON.stringify(log.details)}
-                                                </div>
-                                                <p className="text-[10px] text-muted-foreground mt-1">
-                                                    {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
                 </Tabs>
 
                 {/* MODALS */}
                 <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
                     <DialogContent>
-                        <DialogHeader><DialogTitle>Invite Member</DialogTitle></DialogHeader>
+                        <DialogHeader>
+                            <DialogTitle>Invite Member</DialogTitle>
+                            <DialogDescription>Send an invitation email to a new user.</DialogDescription>
+                        </DialogHeader>
                         <Input placeholder="Email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
                         <DialogFooter><Button onClick={handleInvite} disabled={processing}>Send</Button></DialogFooter>
                     </DialogContent>
@@ -434,7 +398,10 @@ const AdminUsers = () => {
 
                 <Dialog open={isBanOpen} onOpenChange={setIsBanOpen}>
                     <DialogContent>
-                        <DialogHeader><DialogTitle>Ban User</DialogTitle></DialogHeader>
+                        <DialogHeader>
+                            <DialogTitle>Ban User</DialogTitle>
+                            <DialogDescription>Banning a user will remove them from the app and prevent them from logging in.</DialogDescription>
+                        </DialogHeader>
                         <div className="py-2"><Input placeholder="Reason" value={banReason} onChange={e => setBanReason(e.target.value)} /></div>
                         <DialogFooter><Button variant="destructive" onClick={handleBan} disabled={processing}>Confirm</Button></DialogFooter>
                     </DialogContent>
@@ -442,7 +409,10 @@ const AdminUsers = () => {
 
                 <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
                     <DialogContent>
-                        <DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader>
+                        <DialogHeader>
+                            <DialogTitle>Reset Password</DialogTitle>
+                            <DialogDescription>Reset a user's password. Requires admin verification code.</DialogDescription>
+                        </DialogHeader>
                         <div className="space-y-2 py-2">
                             <Label>Admin Code</Label>
                             <InputOTP maxLength={6} value={adminOtp} onChange={setAdminOtp}><InputOTPGroup><InputOTPSlot index={0}/><InputOTPSlot index={1}/><InputOTPSlot index={2}/></InputOTPGroup><div className="w-2"/><InputOTPGroup><InputOTPSlot index={3}/><InputOTPSlot index={4}/><InputOTPSlot index={5}/></InputOTPGroup></InputOTP>

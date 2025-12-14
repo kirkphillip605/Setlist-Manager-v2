@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, Check, Plus, Loader2 } from "lucide-react";
 import { Song, Setlist } from "@/types";
@@ -110,6 +110,7 @@ export const AddSongDialog = ({
             <DialogContent className="max-w-2xl h-[85vh] flex flex-col p-0 gap-0">
                 <DialogHeader className="px-6 py-4 border-b">
                     <DialogTitle>Add Songs to {activeSet?.name}</DialogTitle>
+                    <DialogDescription>Search and select songs to include in this set.</DialogDescription>
                 </DialogHeader>
 
                 <div className="p-4 border-b bg-muted/20">

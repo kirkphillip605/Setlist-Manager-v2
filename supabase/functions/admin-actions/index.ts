@@ -12,21 +12,16 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    // 1. Setup Clients
-    // Deno.env.get works automatically in Supabase environment
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    // Client for verifying the caller (User Context)
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, { 
       global: { headers: { Authorization: req.headers.get('Authorization')! } } 
     });
 
-    // Client for Auth Admin actions (Service Role Context)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Security Check: Verify Requestor is Admin
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error('Unauthorized');
 
@@ -38,23 +33,22 @@ serve(async (req) => {
 
     if (profile?.role !== 'admin') throw new Error('Forbidden: Admins only');
 
-    // 3. Process Action
     const { action, email, userId, newPassword } = await req.json();
-    let logDetails = "";
+    let message = "";
 
     switch (action) {
         case 'invite':
             if (!email) throw new Error("Email is required");
             const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
             if (inviteError) throw inviteError;
-            logDetails = `Invited ${email}`;
+            message = `Invited ${email}`;
             break;
 
         case 'delete_user_auth':
             if (!userId) throw new Error("User ID is required");
             const { error: delError } = await supabaseAdmin.auth.admin.deleteUser(userId);
             if (delError) throw delError;
-            logDetails = `Deleted user ${userId} from Auth`;
+            message = `Deleted user ${userId} from Auth`;
             break;
 
         case 'admin_reset_password':
@@ -67,25 +61,15 @@ serve(async (req) => {
             );
             if (pwdError) throw pwdError;
             
-            // Sync convenience flag
             await supabaseAdmin.from('profiles').update({ has_password: true }).eq('id', userId);
-            logDetails = `Reset password for ${userId}`;
+            message = `Reset password for ${userId}`;
             break;
 
         default:
             throw new Error(`Invalid action: ${action}`);
     }
 
-    // 4. Log Action
-    await supabaseAdmin.from('activity_logs').insert({
-        user_id: user.id,
-        action_type: action.toUpperCase(),
-        resource_type: 'auth',
-        resource_id: userId || email,
-        details: { message: logDetails }
-    });
-
-    return new Response(JSON.stringify({ success: true, message: logDetails }), { 
+    return new Response(JSON.stringify({ success: true, message }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
 

@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface Profile {
   id: string;
@@ -22,6 +23,7 @@ interface AuthContextType {
   isAdmin: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => void;
+  checkSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   signOut: async () => {},
   refreshProfile: () => {},
+  checkSession: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -39,45 +42,100 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [authLoading, setAuthLoading] = useState(true);
   const queryClient = useQueryClient();
 
-  // 1. Auth State Management
+  // Helper to force check session validity
+  const checkSession = useCallback(async () => {
+    try {
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+            console.error("Session check error:", error);
+            if (error.message.includes("refresh_token_not_found") || error.status === 400) {
+               // Token invalid/gone -> Force Logout
+               await handleSignOut();
+               return;
+            }
+        }
+
+        if (currentSession) {
+            if (currentSession.access_token !== session?.access_token) {
+                setSession(currentSession);
+            }
+        } else if (session) {
+            // Had session, now gone -> Logout
+            await handleSignOut();
+        }
+    } catch (e) {
+        console.error("Unexpected session check failure:", e);
+    }
+  }, [session]);
+
+  const handleSignOut = async () => {
+    try {
+        await supabase.auth.signOut();
+    } catch (e) {
+        console.error("Sign out error", e);
+    } finally {
+        queryClient.clear();
+        setSession(null);
+        setAuthLoading(false);
+    }
+  };
+
+  // 1. Initial Load & Visibility Listener
   useEffect(() => {
     let mounted = true;
 
-    // Listener
+    // A. Initial Fetch
+    const init = async () => {
+        try {
+            const { data: { session: initialSession } } = await supabase.auth.getSession();
+            if (mounted) {
+                setSession(initialSession);
+                setAuthLoading(false);
+            }
+        } catch (e) {
+            console.error("Init session error", e);
+            if (mounted) setAuthLoading(false);
+        }
+    };
+    init();
+
+    // B. Auth State Change Listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (mounted) {
-        setSession(newSession);
-        setAuthLoading(false);
-        // Clear profile cache on sign out
+        // Handle explicit sign outs or token updates
         if (event === 'SIGNED_OUT') {
-            queryClient.setQueryData(['profile', session?.user?.id], null);
+            queryClient.clear();
+            setSession(null);
+        } else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            setSession(newSession);
         }
-        
-        // Log Login Event
-        if (event === 'SIGNED_IN' && newSession?.user) {
-            await supabase.from('activity_logs').insert({
-                user_id: newSession.user.id,
-                action_type: 'LOGIN',
-                resource_type: 'auth',
-                details: { email: newSession.user.email }
-            });
-        }
+        setAuthLoading(false);
       }
     });
 
-    // Initial Load
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      if (mounted) {
-        setSession(initialSession);
-        setAuthLoading(false);
-      }
-    });
+    // C. Window Focus / Visibility Listener (For stale session recovery)
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+            checkSession();
+        }
+    };
+    
+    // Also listen to focus for desktop tabs
+    const handleFocus = () => {
+        checkSession();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
-  }, [queryClient]);
+  }, [queryClient, checkSession]);
 
   // 2. Cached Profile Fetch
   const { data: profile, isLoading: profileLoading, refetch } = useQuery({
@@ -89,19 +147,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .select('*')
             .eq('id', session.user.id)
             .single();
-        if (error) throw error;
+        
+        if (error) {
+            // If profile fetch fails with 401/403, it might mean token is stale despite session existing
+            // Trigger a hard re-check
+            if (error.code === 'PGRST301' || error.message.includes("JWT")) { // common supabase auth errors
+                checkSession();
+            }
+            throw error;
+        }
         return data as Profile;
     },
     enabled: !!session?.user?.id,
     staleTime: Infinity,
     gcTime: Infinity,
+    retry: 1,
   });
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    queryClient.clear(); 
-    setSession(null);
-  };
 
   const isLoading = authLoading || (!!session && profileLoading && !profile);
 
@@ -111,8 +172,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     profile: profile || null,
     loading: isLoading,
     isAdmin: profile?.role === 'admin',
-    signOut,
+    signOut: handleSignOut,
     refreshProfile: refetch,
+    checkSession
   };
 
   return (

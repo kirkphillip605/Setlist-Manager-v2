@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
 import { createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage } from "@/lib/api";
 import { 
@@ -272,7 +272,10 @@ const Setlists = () => {
          {/* Create Modal */}
          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogContent>
-                <DialogHeader><DialogTitle>New Setlist</DialogTitle></DialogHeader>
+                <DialogHeader>
+                    <DialogTitle>New Setlist</DialogTitle>
+                    <DialogDescription>Enter a name for your new setlist.</DialogDescription>
+                </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
                         <Label>Name</Label>
@@ -303,6 +306,7 @@ const Setlists = () => {
                     <AlertDialogTitle className="flex items-center gap-2 text-destructive">
                         <AlertTriangle className="h-5 w-5" /> Delete Setlist?
                     </AlertDialogTitle>
+                    <AlertDialogDescription>This action is irreversible.</AlertDialogDescription>
                     <div className="pt-2 text-sm text-muted-foreground space-y-4">
                         {isCheckingUsage ? (
                             <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Checking usage...</div>
