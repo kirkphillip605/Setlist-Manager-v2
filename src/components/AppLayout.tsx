@@ -2,7 +2,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Music, ListMusic, Home, Settings, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Play, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
-import { ModeToggle } from "./mode-toggle";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,9 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useEffect, useState, useLayoutEffect } from "react";
 import { motion } from "framer-motion";
-import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/context/AuthContext";
-import { SyncStatusButton } from "./SyncStatusButton";
 import { PendingApprovalNotifier } from "./PendingApprovalNotifier";
 import { MainMenu } from "./MainMenu";
 
@@ -31,8 +28,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const navigate = useNavigate();
   const { signOut, isAdmin } = useAuth();
   
-  const { theme } = useTheme();
-  const [isDarkMode, setIsDarkMode] = useState(theme === 'dark');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -40,21 +35,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   // Dynamic Sidebar Items Calculation
   const [maxVisibleItems, setMaxVisibleItems] = useState(10);
 
-  useEffect(() => {
-    if (theme === 'system') {
-        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-        const updateMode = () => {
-            setIsDarkMode(mediaQuery.matches);
-        };
-        updateMode();
-        mediaQuery.addEventListener('change', updateMode);
-        return () => mediaQuery.removeEventListener('change', updateMode);
-    } else {
-        setIsDarkMode(theme === 'dark');
-    }
-  }, [theme]);
-
-  const logoPath = isDarkMode ? "/setlist-logo-dark.png" : "/setlist-logo-transparent.png";
   const iconPath = "/setlist-icon.png";
 
   const handleSignOut = async () => {
@@ -80,10 +60,11 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     const calculateItems = () => {
       const h = window.innerHeight;
       // Fixed areas: 
-      // Top Header: ~100px (Logo + Mode Toggle)
-      // Bottom Metronome: ~80px-100px
-      // We reduce reserved space to 180px to utilize more screen real estate before collapsing.
-      const reservedSpace = 180;
+      // Top Header: ~80px (Logo/Icon area)
+      // Bottom Metronome: ~100px
+      // Collapse button: ~30px
+      // Reserved: ~220px
+      const reservedSpace = 220;
       const itemHeight = 48; // Approx px per item (40px height + 8px gap)
       
       const availableHeight = h - reservedSpace;
@@ -141,18 +122,12 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </Button>
         </div>
 
-        <div className={cn("flex flex-col mb-4 pt-6 transition-all shrink-0", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
-          <div className={cn("flex items-center mb-4 transition-all", isSidebarCollapsed ? "justify-center" : "justify-between")}>
-             {isSidebarCollapsed ? (
-                 <img src={iconPath} alt="Icon" className="w-8 h-8" />
-             ) : (
-                 <img src={logoPath} alt="Setlist Manager Pro" className="h-8 object-contain" />
+        <div className={cn("flex flex-col mb-2 pt-6 transition-all shrink-0", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
+          <div className={cn("flex items-center gap-3 mb-4 transition-all h-10", isSidebarCollapsed ? "justify-center" : "justify-start")}>
+             <img src={iconPath} alt="Icon" className="w-8 h-8 shrink-0" />
+             {!isSidebarCollapsed && (
+                 <span className="font-bold text-sm tracking-tight truncate">Setlist Manager Pro</span>
              )}
-          </div>
-          
-          <div className={cn("flex items-center gap-1", isSidebarCollapsed ? "flex-col" : "flex-row")}>
-             <SyncStatusButton />
-             <ModeToggle />
           </div>
         </div>
         

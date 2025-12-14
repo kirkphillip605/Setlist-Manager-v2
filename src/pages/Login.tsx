@@ -12,18 +12,36 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { storageAdapter } from "@/lib/storageAdapter";
+import { useTheme } from "@/components/theme-provider";
 
 const Login = () => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Reset Password State
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
+
+  // Determine Logo Theme
+  useEffect(() => {
+    if (theme === 'system') {
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+        setIsDarkMode(mediaQuery.matches);
+        const listener = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
+        mediaQuery.addEventListener('change', listener);
+        return () => mediaQuery.removeEventListener('change', listener);
+    } else {
+        setIsDarkMode(theme === 'dark');
+    }
+  }, [theme]);
+
+  const logoSrc = isDarkMode ? "/setlist-logo-dark.png" : "/setlist-logo-transparent.png";
 
   // Load Remembered Email
   useEffect(() => {
@@ -131,9 +149,10 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-y-auto">
       <Card className="w-full max-w-md border-border shadow-lg my-auto">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl font-bold">Setlist Manager Pro</CardTitle>
-          <CardDescription className="text-center">By Kirknetworks, LLC</CardDescription>
+        <CardHeader className="text-center pb-2">
+          <div className="flex justify-center mb-2">
+             <img src={logoSrc} alt="Setlist Manager Pro" className="h-16 object-contain" />
+          </div>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
