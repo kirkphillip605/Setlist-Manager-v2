@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Users, Crown, Radio, Smartphone } from "lucide-react";
+import { Loader2, Users, Crown, Radio, Smartphone, CloudOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { createGigSession, getGigSession, joinGigSession } from "@/lib/api";
 import { toast } from "sonner";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 interface PerformanceSessionDialogProps {
     open: boolean;
@@ -17,15 +18,18 @@ interface PerformanceSessionDialogProps {
 
 export const PerformanceSessionDialog = ({ open, gigId, gigName, onClose, onJoin }: PerformanceSessionDialogProps) => {
     const { session: authSession } = useAuth();
+    const isOnline = useNetworkStatus();
     const [loading, setLoading] = useState(true);
     const [existingSession, setExistingSession] = useState<any>(null);
     const [leaderName, setLeaderName] = useState<string>("");
 
     useEffect(() => {
-        if (open && gigId) {
+        if (open && gigId && isOnline) {
             checkSession();
+        } else if (!isOnline) {
+            setLoading(false);
         }
-    }, [open, gigId]);
+    }, [open, gigId, isOnline]);
 
     const checkSession = async () => {
         setLoading(true);
@@ -118,11 +122,31 @@ export const PerformanceSessionDialog = ({ open, gigId, gigName, onClose, onJoin
                 <DialogHeader>
                     <DialogTitle>Start Performance: {gigName}</DialogTitle>
                     <DialogDescription>
-                        Sync your screen with the band for this gig.
+                        {isOnline 
+                            ? "Sync your screen with the band for this gig."
+                            : "Performance options limited while offline."
+                        }
                     </DialogDescription>
                 </DialogHeader>
 
-                {loading ? (
+                {!isOnline ? (
+                    <div className="py-4 text-center space-y-4">
+                        <div className="bg-muted/30 p-4 rounded-full inline-flex">
+                            <CloudOff className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-lg">You are Offline</h3>
+                            <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+                                Gig Sessions require an internet connection to sync with the band.
+                            </p>
+                        </div>
+                        <div className="pt-2">
+                            <Button className="w-full" onClick={handleStandalone}>
+                                <Smartphone className="mr-2 h-4 w-4" /> Start in Standalone Mode
+                            </Button>
+                        </div>
+                    </div>
+                ) : loading ? (
                     <div className="flex justify-center py-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
                 ) : (
                     <div className="space-y-4 py-4">

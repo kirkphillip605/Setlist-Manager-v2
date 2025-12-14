@@ -103,12 +103,12 @@ const SongDetail = () => {
         const currentMetronomeBpm = bpm;
         const songBpm = song?.tempo ? parseInt(song.tempo) : null;
 
-        if (songBpm !== currentMetronomeBpm) {
+        if (songBpm !== currentMetronomeBpm && isOnline) {
             setDetectedBpm(currentMetronomeBpm);
             setShowBpmDialog(true);
         }
     }
-  }, [isOpen, bpm, song]);
+  }, [isOpen, bpm, song, isOnline]);
 
   const deleteMutation = useMutation({
     mutationFn: deleteSong,
