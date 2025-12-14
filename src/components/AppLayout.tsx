@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { Music, ListMusic, Home, Settings, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Play, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -8,15 +8,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useLayoutEffect } from "react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/context/AuthContext";
@@ -37,6 +35,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const [isDarkMode, setIsDarkMode] = useState(theme === 'dark');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Dynamic Sidebar Items Calculation
+  const [maxVisibleItems, setMaxVisibleItems] = useState(10);
 
   useEffect(() => {
     if (theme === 'system') {
@@ -60,19 +62,56 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     navigate("/login");
   };
 
-  // Order: Dashboard, Songs, Perform, Setlists, Gigs
-  const navItems = [
+  // Nav Definition
+  const mainNavItems = [
     { icon: Home, label: "Dashboard", path: "/" },
     { icon: Music, label: "Songs", path: "/songs" },
-    { icon: Play, label: "Perform", path: "/performance", isSpecial: true },
+    { icon: Play, label: "Perform", path: "/performance" },
     { icon: ListMusic, label: "Setlists", path: "/setlists" },
     { icon: CalendarDays, label: "Gigs", path: "/gigs" },
+    { icon: Settings, label: "Settings", id: "settings" }, // Special handling
   ];
 
-  const desktopNavItems = [
-    ...navItems,
-    ...(isAdmin ? [{ icon: Shield, label: "Admin", path: "/admin/users" }] : [])
-  ];
+  // Mobile Nav (Bottom) - Only first 5 items (Dashboard, Songs, Perform, Setlists, Gigs)
+  const mobileNavItems = mainNavItems.filter(i => i.id !== 'settings');
+
+  // Sidebar Resize Logic
+  useLayoutEffect(() => {
+    const calculateItems = () => {
+      const h = window.innerHeight;
+      // Fixed areas: Header (~120px) + Footer/Controls (~80px depending on state)
+      // Actually we have Metronome Controls at bottom of sidebar which takes space.
+      // Let's reserve ~250px for logo area + metronome + margins.
+      const reservedSpace = 280;
+      const itemHeight = 48; // Approx px per item
+      
+      const availableHeight = h - reservedSpace;
+      const possibleItems = Math.floor(availableHeight / itemHeight);
+      
+      setMaxVisibleItems(Math.max(1, possibleItems));
+    };
+
+    calculateItems();
+    window.addEventListener('resize', calculateItems);
+    return () => window.removeEventListener('resize', calculateItems);
+  }, []);
+
+  const visibleItems = mainNavItems.slice(0, maxVisibleItems);
+  const overflowItems = mainNavItems.slice(maxVisibleItems);
+  const showMoreButton = overflowItems.length > 0;
+  
+  // If showing "More" button takes up a slot, we need to adjust logic, but slicing is simple enough.
+  // Ideally if overflowItems.length > 0, we slice 0 to maxVisibleItems - 1 to make room for "More".
+  const finalVisibleItems = showMoreButton ? mainNavItems.slice(0, maxVisibleItems - 1) : mainNavItems;
+  const finalOverflowItems = showMoreButton ? mainNavItems.slice(maxVisibleItems - 1) : [];
+
+  const handleItemClick = (item: any) => {
+      if (item.id === 'settings') {
+          setIsSettingsOpen(true);
+      } else if (item.path) {
+          navigate(item.path);
+      }
+  };
 
   return (
     <div className={cn(
@@ -81,6 +120,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64"
     )}>
       {isAdmin && <PendingApprovalNotifier />}
+
+      {/* Controlled Main Menu Sheet (Triggered by Settings) */}
+      <MainMenu open={isSettingsOpen} onOpenChange={setIsSettingsOpen} trigger={<span/>} />
 
       {/* Desktop Sidebar */}
       <aside className={cn(
@@ -99,7 +141,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </Button>
         </div>
 
-        <div className={cn("flex flex-col mb-6 pt-6 transition-all", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
+        <div className={cn("flex flex-col mb-4 pt-6 transition-all shrink-0", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
           <div className={cn("flex items-center mb-4 transition-all", isSidebarCollapsed ? "justify-center" : "justify-between")}>
              {isSidebarCollapsed ? (
                  <img src={iconPath} alt="Icon" className="w-8 h-8" />
@@ -114,15 +156,15 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           </div>
         </div>
         
-        <nav className="space-y-2 flex-1 px-3">
-          {desktopNavItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
+        <nav className="space-y-2 flex-1 px-3 overflow-hidden">
+          {finalVisibleItems.map((item) => (
+            <button
+              key={item.label}
+              onClick={() => handleItemClick(item)}
               className={cn(
-                "flex items-center gap-3 rounded-lg transition-all duration-200 font-medium",
+                "flex w-full items-center gap-3 rounded-lg transition-all duration-200 font-medium",
                 isSidebarCollapsed ? "justify-center p-3" : "px-3 py-2.5 text-sm",
-                location.pathname === item.path
+                location.pathname === item.path || (item.id === 'settings' && isSettingsOpen)
                   ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                   : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
               )}
@@ -130,30 +172,33 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             >
               <item.icon className={cn("shrink-0", isSidebarCollapsed ? "w-5 h-5" : "w-4 h-4")} />
               {!isSidebarCollapsed && <span>{item.label}</span>}
-            </Link>
+            </button>
           ))}
-        </nav>
 
-        <div className="mb-4 px-3">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className={cn("w-full hover:bg-accent border border-transparent", isSidebarCollapsed ? "justify-center px-0" : "justify-start gap-2 px-2 border-border/40")}>
-                        <User className="w-4 h-4" />
-                        {!isSidebarCollapsed && <span>Profile</span>}
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => navigate("/profile")}>
-                        <User className="mr-2 h-4 w-4" /> Profile
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setShowSignOutConfirm(true)} className="text-destructive focus:text-destructive">
-                        <LogOut className="mr-2 h-4 w-4" /> Log out
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
+          {finalOverflowItems.length > 0 && (
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                        className={cn(
+                            "flex w-full items-center gap-3 rounded-lg transition-all duration-200 font-medium hover:bg-accent hover:text-accent-foreground text-muted-foreground",
+                            isSidebarCollapsed ? "justify-center p-3" : "px-3 py-2.5 text-sm"
+                        )}
+                    >
+                        <MoreHorizontal className={cn("shrink-0", isSidebarCollapsed ? "w-5 h-5" : "w-4 h-4")} />
+                        {!isSidebarCollapsed && <span>More</span>}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start" className="w-48">
+                      {finalOverflowItems.map(item => (
+                          <DropdownMenuItem key={item.label} onClick={() => handleItemClick(item)} className="gap-2 py-2.5">
+                              <item.icon className="w-4 h-4" />
+                              {item.label}
+                          </DropdownMenuItem>
+                      ))}
+                  </DropdownMenuContent>
+              </DropdownMenu>
+          )}
+        </nav>
 
         {!isSidebarCollapsed && <MetronomeControls variant="desktop" />}
       </aside>
@@ -164,6 +209,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Setlist Manager Pro</span>
          </div>
+         {/* Use MainMenu normally here for mobile */}
          <MainMenu />
       </header>
 
@@ -189,10 +235,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         <div className="flex items-end justify-between px-2 h-16 relative">
             
             {/* Left Items */}
-            {navItems.slice(0, 2).map((item) => (
+            {mobileNavItems.slice(0, 2).map((item) => (
                 <Link
-                    key={item.path}
-                    to={item.path}
+                    key={item.label}
+                    to={item.path!}
                     className={cn(
                         "flex flex-col items-center justify-center gap-1 flex-1 h-full pb-2 transition-colors",
                         location.pathname === item.path ? "text-primary" : "text-muted-foreground hover:text-foreground"
@@ -207,10 +253,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <div className="w-16 shrink-0" />
 
             {/* Right Items */}
-            {navItems.slice(3).map((item) => (
+            {mobileNavItems.slice(3, 5).map((item) => (
                 <Link
-                    key={item.path}
-                    to={item.path}
+                    key={item.label}
+                    to={item.path!}
                     className={cn(
                         "flex flex-col items-center justify-center gap-1 flex-1 h-full pb-2 transition-colors",
                         location.pathname === item.path ? "text-primary" : "text-muted-foreground hover:text-foreground"

@@ -20,14 +20,25 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { toast } from "sonner";
 
-export const MainMenu = () => {
+interface MainMenuProps {
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    trigger?: React.ReactNode;
+}
+
+export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen, trigger }: MainMenuProps) => {
   const navigate = useNavigate();
   const { signOut, isAdmin } = useAuth();
   const { setTheme, theme } = useTheme();
   const { isSyncing, lastSyncedAt, refreshAll } = useSyncStatus();
   const isOnline = useNetworkStatus();
-  const [open, setOpen] = useState(false);
+  
+  const [internalOpen, setInternalOpen] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? setControlledOpen! : setInternalOpen;
 
   const handleSync = async () => {
     if (!isOnline) return;
@@ -51,9 +62,11 @@ export const MainMenu = () => {
     <>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="h-6 w-6" />
-          </Button>
+          {trigger || (
+            <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-6 w-6" />
+            </Button>
+          )}
         </SheetTrigger>
         <SheetContent side="right" className="w-[300px] sm:w-[350px] flex flex-col gap-0 p-0">
           
