@@ -12,6 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
@@ -32,6 +36,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const { theme } = useTheme();
   const [isDarkMode, setIsDarkMode] = useState(theme === 'dark');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   useEffect(() => {
     if (theme === 'system') {
@@ -143,7 +148,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                     <DropdownMenuItem onClick={() => navigate("/profile")}>
                         <User className="mr-2 h-4 w-4" /> Profile
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem onClick={() => setShowSignOutConfirm(true)} className="text-destructive focus:text-destructive">
                         <LogOut className="mr-2 h-4 w-4" /> Log out
                     </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -238,6 +243,21 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
         </div>
       </nav>
+
+      <AlertDialog open={showSignOutConfirm} onOpenChange={setShowSignOutConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign Out</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to sign out? This will clear your local data cache.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSignOut} className="bg-destructive hover:bg-destructive/90">Sign Out</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

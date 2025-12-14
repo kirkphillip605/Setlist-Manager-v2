@@ -5,6 +5,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
@@ -26,7 +30,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userEmail, setUserEmail] = useState("");
-  const { session } = useAuth();
+  const { session, signOut, refreshProfile } = useAuth();
   
   const { lastSyncedAt, isSyncing, refreshAll } = useSyncStatus();
   const isOnline = useNetworkStatus();
@@ -51,6 +55,7 @@ const Profile = () => {
 
   // Delete State
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -98,6 +103,7 @@ const Profile = () => {
       toast.error("Failed to update profile: " + error.message);
     } else {
       toast.success("Profile updated successfully");
+      refreshProfile();
     }
     setSaving(false);
   };
@@ -197,8 +203,7 @@ const Profile = () => {
   };
 
   const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) toast.error(error.message);
+    await signOut();
     navigate("/login");
   };
 
@@ -375,7 +380,7 @@ const Profile = () => {
         </Card>
 
         <div className="pt-4 flex justify-center">
-            <Button variant="ghost" onClick={handleSignOut} className="text-muted-foreground">
+            <Button variant="ghost" onClick={() => setShowSignOutConfirm(true)} className="text-muted-foreground">
                 <LogOut className="mr-2 h-4 w-4" /> Sign Out
             </Button>
         </div>
@@ -418,6 +423,21 @@ const Profile = () => {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        <AlertDialog open={showSignOutConfirm} onOpenChange={setShowSignOutConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Sign Out</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to sign out? This will clear your local data cache.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleSignOut} className="bg-destructive hover:bg-destructive/90">Sign Out</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );

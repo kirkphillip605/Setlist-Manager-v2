@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { storageAdapter } from "@/lib/storageAdapter";
 
 interface Profile {
   id: string;
@@ -50,7 +50,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (error) {
             console.error("Session check error:", error);
             if (error.message.includes("refresh_token_not_found") || error.status === 400) {
-               // Token invalid/gone -> Force Logout
                await handleSignOut();
                return;
             }
@@ -61,7 +60,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(currentSession);
             }
         } else if (session) {
-            // Had session, now gone -> Logout
             await handleSignOut();
         }
     } catch (e) {
@@ -70,12 +68,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [session]);
 
   const handleSignOut = async () => {
+    setAuthLoading(true);
     try {
-        await supabase.auth.signOut();
+        // 1. Attempt Supabase SignOut
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
     } catch (e) {
-        console.error("Sign out error", e);
+        console.error("Sign out error, forcing cleanup", e);
     } finally {
+        // 2. Clear React Query Cache (Memory)
+        queryClient.removeQueries();
         queryClient.clear();
+        
+        // 3. Clear Persisted Cache (Disk)
+        try {
+            await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
+        } catch (e) {
+            console.warn("Failed to clear offline cache", e);
+        }
+
+        // 4. Reset State
         setSession(null);
         setAuthLoading(false);
     }
@@ -103,7 +115,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // B. Auth State Change Listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (mounted) {
-        // Handle explicit sign outs or token updates
         if (event === 'SIGNED_OUT') {
             queryClient.clear();
             setSession(null);
@@ -114,14 +125,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    // C. Window Focus / Visibility Listener (For stale session recovery)
+    // C. Window Focus / Visibility Listener
     const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
             checkSession();
         }
     };
     
-    // Also listen to focus for desktop tabs
     const handleFocus = () => {
         checkSession();
     };
@@ -149,9 +159,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .single();
         
         if (error) {
-            // If profile fetch fails with 401/403, it might mean token is stale despite session existing
-            // Trigger a hard re-check
-            if (error.code === 'PGRST301' || error.message.includes("JWT")) { // common supabase auth errors
+            if (error.code === 'PGRST301' || error.message.includes("JWT")) { 
                 checkSession();
             }
             throw error;
