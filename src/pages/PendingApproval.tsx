@@ -1,25 +1,50 @@
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShieldAlert, Loader2, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const PendingApproval = () => {
-  const { profile, refreshProfile, signOut } = useAuth();
+  const { profile, refreshProfile, signOut, session } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Poll every 30 seconds
+    if (!session?.user?.id) return;
+
+    // 1. Setup Realtime Listener
+    const channel = supabase
+        .channel('profile_approval')
+        .on(
+            'postgres_changes',
+            { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'profiles', 
+                filter: `id=eq.${session.user.id}` 
+            },
+            (payload) => {
+                if (payload.new.is_approved === true) {
+                    refreshProfile(); // Update context
+                    navigate("/");    // Redirect immediately
+                }
+            }
+        )
+        .subscribe();
+
+    // 2. Poll as Failsafe (60s)
     const interval = setInterval(() => {
         refreshProfile();
-    }, 30000);
+    }, 60000);
 
-    return () => clearInterval(interval);
-  }, [refreshProfile]);
+    return () => {
+        supabase.removeChannel(channel);
+        clearInterval(interval);
+    };
+  }, [session?.user?.id, refreshProfile, navigate]);
 
   useEffect(() => {
-      // If profile becomes approved, redirect
       if (profile?.is_approved) {
           navigate("/");
       }
@@ -44,7 +69,7 @@ const PendingApproval = () => {
            </div>
            
            <p className="text-sm text-muted-foreground">
-             We will automatically check your status periodically. You can also contact an administrator to expedite this process.
+             We will automatically refresh this page once your account is approved.
            </p>
 
            <Button variant="outline" className="w-full" onClick={signOut}>

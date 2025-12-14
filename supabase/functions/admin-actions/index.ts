@@ -2,101 +2,130 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const getAllowedOrigin = (req: Request) => {
-  const origin = req.headers.get('Origin');
-  const allowedOriginsStr = Deno.env.get('ALLOWED_ORIGINS') || '*';
-  if (allowedOriginsStr === '*') return '*';
-  const allowedOrigins = allowedOriginsStr.split(',').map(u => u.trim());
-  return origin && allowedOrigins.includes(origin) ? origin : null;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
-  const allowedOrigin = getAllowedOrigin(req);
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': allowedOrigin || '',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  };
-
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-  if (!allowedOrigin) return new Response("CORS Not Allowed", { status: 403 });
+  // Handle CORS preflight request
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
+    // 1. Initialize Client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
-    // Verify Admin
+    // 2. Verify Admin Status
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error('Unauthorized');
 
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('role')
+      .select('role, email')
       .eq('id', user.id)
       .single();
 
     if (profile?.role !== 'admin') throw new Error('Forbidden: Admins only');
 
+    // 3. Initialize Admin Client
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action, email, userId, reason } = await req.json();
+    const { action, email, userId, reason, newPassword, targetPosition } = await req.json();
+    let logMessage = "";
+
+    // --- ACTIONS ---
 
     if (action === 'invite') {
       const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
       if (error) throw error;
-      return new Response(JSON.stringify(data), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      logMessage = `Admin invited user ${email}`;
     }
 
-    if (action === 'approve_user') {
+    else if (action === 'approve_user') {
        const { error } = await supabaseAdmin
         .from('profiles')
         .update({ is_approved: true })
         .eq('id', userId);
        if (error) throw error;
-       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+       logMessage = `Admin approved user ID ${userId}`;
     }
 
-    if (action === 'deny_ban_user') {
+    else if (action === 'deny_ban_user') {
        // 1. Add to ban table
        const { error: banError } = await supabaseAdmin
         .from('banned_users')
         .insert({ email: email, reason: reason, banned_by: user.id });
-       
        if (banError) throw banError;
 
-       // 2. Delete the user from Auth (this cascades to profile delete usually, but we want to ensure they are gone)
+       // 2. Delete the user from Auth
        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
        if (deleteError) throw deleteError;
-
-       return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+       
+       logMessage = `Admin banned and deleted user ${email}`;
     }
 
-    if (action === 'unban_user') {
+    else if (action === 'unban_user') {
         const { error } = await supabaseAdmin.from('banned_users').delete().eq('email', email);
         if (error) throw error;
-        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        logMessage = `Admin unbanned email ${email}`;
     }
 
-    if (action === 'reset_password') {
-        const { data, error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-            redirectTo: `${req.headers.get('origin')}/update-password`
-        });
-        if (error) throw error;
-        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    if (action === 'delete_user') {
+    else if (action === 'delete_user') {
         const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
         if (error) throw error;
-        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        logMessage = `Admin deleted user ID ${userId}`;
     }
 
-    throw new Error('Invalid action');
+    else if (action === 'update_position') {
+        const { error } = await supabaseAdmin
+            .from('profiles')
+            .update({ position: targetPosition })
+            .eq('id', userId);
+        if (error) throw error;
+        // No log needed for trivial update, or optional
+    }
+
+    else if (action === 'admin_reset_password') {
+        if (!newPassword || newPassword.length < 6) throw new Error("Password too short");
+        
+        const { error } = await supabaseAdmin.auth.admin.updateUserById(
+            userId,
+            { password: newPassword }
+        );
+        if (error) throw error;
+        
+        // Also ensure has_password is true
+        await supabaseAdmin.from('profiles').update({ has_password: true }).eq('id', userId);
+        
+        logMessage = `Admin reset password for user ID ${userId}`;
+    }
+    
+    else {
+        throw new Error('Invalid action');
+    }
+
+    // 4. Log the action
+    if (logMessage) {
+        await supabaseAdmin.from('app_logs').insert({
+            category: 'AUTH',
+            message: logMessage,
+            user_id: user.id,
+            details: { action, target: email || userId }
+        });
+    }
+
+    return new Response(JSON.stringify({ success: true }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
 
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), {

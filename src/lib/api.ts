@@ -382,3 +382,15 @@ export const moveSetSongToSet = async (setSongId: string, targetSetId: string, p
   const { error } = await supabase.from('set_songs').update({ set_id: targetSetId, position }).eq('id', setSongId);
   if (error) throw error;
 };
+
+// --- Logs ---
+export const getLogs = async () => {
+    const { data, error } = await supabase
+        .from('app_logs')
+        .select(`*, user:profiles(email, first_name, last_name)`)
+        .order('created_at', { ascending: false })
+        .limit(100);
+        
+    if (error) throw error;
+    return data;
+};

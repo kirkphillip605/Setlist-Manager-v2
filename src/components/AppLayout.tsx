@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/context/AuthContext";
 import { SyncStatusButton } from "./SyncStatusButton";
+import { PendingApprovalNotifier } from "./PendingApprovalNotifier";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -54,7 +55,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   };
 
   const navItems = [
-    { icon: Home, label: "Home", path: "/" },
+    { icon: Home, label: "Dashboard", path: "/" },
     { icon: CalendarDays, label: "Gigs", path: "/gigs" },
     { icon: ListMusic, label: "Setlists", path: "/setlists" },
     { icon: Music, label: "Songs", path: "/songs" },
@@ -71,6 +72,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         "pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-0", // INCREASED bottom spacing for mobile
         isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64" // Sidebar width adjustment
     )}>
+      {isAdmin && <PendingApprovalNotifier />}
+
       {/* Desktop Sidebar */}
       <aside className={cn(
         "hidden md:flex fixed left-0 top-0 h-full flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
