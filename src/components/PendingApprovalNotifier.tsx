@@ -29,18 +29,13 @@ export const PendingApprovalNotifier = () => {
 
     fetchPending();
 
+    // Listen for changes
     const channel = supabase
       .channel('admin_approvals')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles' },
-        () => fetchPending()
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchPending())
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [isAdmin]);
 
   const handleAction = async (action: 'approve' | 'deny', userId: string, email?: string) => {
@@ -59,7 +54,7 @@ export const PendingApprovalNotifier = () => {
               // Deny = Ban & Delete
               if (!email) throw new Error("Email required for ban");
               
-              // 1. Insert Ban (Allowed by RLS)
+              // 1. Client-side: Insert Ban (Allowed by RLS)
               const { error: banError } = await supabase.from('banned_users').insert({
                   email, 
                   reason: 'Denied via quick action',
@@ -67,7 +62,7 @@ export const PendingApprovalNotifier = () => {
               });
               if (banError) throw banError;
 
-              // 2. Delete Auth (Edge Function)
+              // 2. Edge Function: Delete Auth (Strictly required)
               const { error: funcError } = await supabase.functions.invoke('admin-actions', { 
                   body: { action: 'delete_user_auth', userId } 
               });
@@ -75,10 +70,6 @@ export const PendingApprovalNotifier = () => {
 
               toast.success("User Denied & Blocked");
           }
-
-          fetchPending();
-          if (pendingUsers.length <= 1) setShowDialog(false);
-
       } catch (e: any) {
           toast.error("Action failed: " + e.message);
       }

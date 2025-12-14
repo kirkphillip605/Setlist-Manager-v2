@@ -17,7 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { 
-    Loader2, UserPlus, Shield, Ban, Lock, FileText, Activity
+    Loader2, UserPlus, Shield, Ban, Lock, Activity
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getLogs } from "@/lib/api";
@@ -36,16 +36,12 @@ const AdminUsers = () => {
     const [loading, setLoading] = useState(true);
     const [showDisabled, setShowDisabled] = useState(false);
     
-    // Invite State
+    // Dialog States
     const [inviteEmail, setInviteEmail] = useState("");
     const [isInviteOpen, setIsInviteOpen] = useState(false);
-    
-    // Ban State
     const [banReason, setBanReason] = useState("");
     const [userToBan, setUserToBan] = useState<any>(null);
     const [isBanOpen, setIsBanOpen] = useState(false);
-    
-    // Reset Password State
     const [resetUser, setResetUser] = useState<any>(null);
     const [newPassword, setNewPassword] = useState("");
     const [adminOtp, setAdminOtp] = useState("");
@@ -56,15 +52,13 @@ const AdminUsers = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        // Fetch Profiles
+        // Direct DB Query
         const { data: pData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
         if (pData) setProfiles(pData);
 
-        // Fetch Banned
         const { data: bData } = await supabase.from('banned_users').select('*').order('banned_at', { ascending: false });
         if (bData) setBannedUsers(bData);
 
-        // Fetch Logs
         const lData = await getLogs();
         if (lData) setLogs(lData);
         
@@ -73,34 +67,33 @@ const AdminUsers = () => {
 
     useEffect(() => {
         fetchData();
+        
+        // Listen for updates to refresh UI automatically
+        const channel = supabase.channel('admin-dashboard')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'banned_users' }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => fetchData())
+            .subscribe();
+            
+        return () => { supabase.removeChannel(channel); };
     }, []);
 
-    // Filters
     const pendingUsers = profiles.filter(p => !p.is_approved);
     const appUsers = profiles.filter(p => p.is_approved && (showDisabled || p.is_active));
 
-    // --- DIRECT DB ACTIONS (RLS Protected) ---
+    // --- DIRECT DB ACTIONS ---
 
-    const handleUpdateProfile = async (userId: string, updates: any, successMessage = "Updated successfully") => {
-        setProcessing(true);
+    const handleUpdateProfile = async (userId: string, updates: any) => {
         const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
-        setProcessing(false);
-        
-        if (error) {
-            toast.error(error.message);
-        } else {
-            toast.success(successMessage);
-            fetchData();
-        }
+        if (error) toast.error("Update failed: " + error.message);
+        else toast.success("User updated");
     };
 
-    const handleApprove = (userId: string) => handleUpdateProfile(userId, { is_approved: true }, "User Approved");
-    
     const handleRoleChange = (userId: string, newRole: string) => handleUpdateProfile(userId, { role: newRole });
-    
     const handlePositionChange = (userId: string, newPos: string) => handleUpdateProfile(userId, { position: newPos });
+    const handleApprove = (userId: string) => handleUpdateProfile(userId, { is_approved: true });
 
-    // --- COMPLEX ACTIONS ---
+    // --- HYBRID ACTIONS ---
 
     const initiateBan = (user: any) => {
         setUserToBan(user);
@@ -111,7 +104,7 @@ const AdminUsers = () => {
         if (!userToBan) return;
         setProcessing(true);
         
-        // 1. Insert into banned_users (Direct DB)
+        // 1. Client-side: Insert into banned_users (Allowed by RLS)
         const { error: banError } = await supabase.from('banned_users').insert({
             email: userToBan.email,
             reason: banReason,
@@ -119,66 +112,53 @@ const AdminUsers = () => {
         });
 
         if (banError) {
-            toast.error("Failed to record ban: " + banError.message);
+            toast.error("Failed to ban: " + banError.message);
             setProcessing(false);
             return;
         }
 
-        // 2. Delete User from Auth (Edge Function required for Auth table)
+        // 2. Edge Function: Delete User from Auth (Strictly required)
         try {
             const { error } = await supabase.functions.invoke('admin-actions', {
                 body: { action: 'delete_user_auth', userId: userToBan.id }
             });
-            if (error) throw new Error(error.message || "Failed to remove user auth");
+            if (error) throw new Error(error.message || "Auth deletion failed");
             
-            toast.success("User banned and account removed");
+            toast.success("User banned and removed");
             setIsBanOpen(false);
             setBanReason("");
             setUserToBan(null);
-            fetchData();
         } catch (e: any) {
-            toast.error("User banned in DB, but Auth deletion failed: " + e.message);
+            toast.error("User banned, but Auth cleanup failed: " + e.message);
         } finally {
             setProcessing(false);
         }
     };
 
     const handleUnban = async (email: string) => {
-        if (!confirm("Unban this email address? They will need to sign up again.")) return;
+        if (!confirm("Unban this user?")) return;
         setProcessing(true);
-        
-        // Direct DB Delete
+        // Client-side delete from banned_users (Allowed by RLS)
         const { error } = await supabase.from('banned_users').delete().eq('email', email);
-        
-        if (error) {
-            toast.error(error.message);
-        } else {
-            toast.success("User unbanned");
-            fetchData();
-        }
+        if (error) toast.error("Failed to unban: " + error.message);
+        else toast.success("User unbanned");
         setProcessing(false);
     };
 
-    // --- EDGE FUNCTION ACTIONS (Auth API) ---
+    // --- EDGE FUNCTION ACTIONS ---
 
     const handleInvite = async () => {
         setProcessing(true);
-        try {
-            const { error } = await supabase.functions.invoke('admin-actions', {
-                body: { action: 'invite', email: inviteEmail }
-            });
-            
-            // Edge functions sometimes return 200 with error in body depending on wrapper
-            if (error) throw new Error(error.message || "Request failed");
-
+        const { error } = await supabase.functions.invoke('admin-actions', {
+            body: { action: 'invite', email: inviteEmail }
+        });
+        if (error) toast.error("Failed to invite: " + error.message);
+        else {
             toast.success("Invite sent");
             setIsInviteOpen(false);
             setInviteEmail("");
-        } catch(e: any) {
-            toast.error("Failed to invite: " + e.message);
-        } finally {
-            setProcessing(false);
         }
+        setProcessing(false);
     };
 
     const initiateReset = async (user: any) => {
@@ -188,16 +168,13 @@ const AdminUsers = () => {
         setAdminOtp("");
         setNewPassword("");
         
-        // Send OTP to Admin
         const { error } = await supabase.auth.signInWithOtp({
             email: session?.user?.email!,
             options: { shouldCreateUser: false }
         });
         
-        if (error) {
-            toast.error("Could not send verification code");
-            setIsResetOpen(false);
-        } else {
+        if (error) toast.error(error.message);
+        else {
             setOtpSent(true);
             toast.info("Verification code sent to your email");
         }
@@ -208,15 +185,15 @@ const AdminUsers = () => {
         setProcessing(true);
 
         try {
-            // 1. Verify Admin OTP locally
+            // Verify OTP
             const { error: otpError } = await supabase.auth.verifyOtp({
                 email: session?.user?.email!,
                 token: adminOtp,
                 type: 'email'
             });
-            if (otpError) throw new Error("Invalid verification code");
+            if (otpError) throw new Error("Invalid code");
 
-            // 2. Call Edge Function for Force Update
+            // Edge Function: Force Password Update
             const { error: funcError } = await supabase.functions.invoke('admin-actions', {
                 body: { 
                     action: 'admin_reset_password', 
@@ -224,13 +201,12 @@ const AdminUsers = () => {
                     newPassword: newPassword
                 }
             });
-            
-            if (funcError) throw new Error(funcError.message || "Failed to update password");
+            if (funcError) throw funcError;
 
-            toast.success("Password reset successfully");
+            toast.success("Password reset");
             setIsResetOpen(false);
         } catch (e: any) {
-            toast.error(e.message);
+            toast.error(e.message || "Reset failed");
         } finally {
             setProcessing(false);
         }
@@ -264,17 +240,13 @@ const AdminUsers = () => {
                         <TabsTrigger value="logs">Logs</TabsTrigger>
                     </TabsList>
 
-                    {/* APP USERS TAB */}
                     <TabsContent value="users">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>App Users</CardTitle>
-                                    <CardDescription>Manage roles and positions.</CardDescription>
-                                </div>
+                                <div><CardTitle>App Users</CardTitle><CardDescription>Manage roles and positions.</CardDescription></div>
                                 <div className="flex items-center gap-2">
                                     <Checkbox id="showDis" checked={showDisabled} onCheckedChange={(c) => setShowDisabled(!!c)} />
-                                    <Label htmlFor="showDis" className="text-sm">Show Inactive</Label>
+                                    <Label htmlFor="showDis">Show Inactive</Label>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -283,41 +255,29 @@ const AdminUsers = () => {
                                         <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Position</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                         <TableBody>
                                             {appUsers.map(user => (
-                                                <TableRow key={user.id} className={!user.is_active ? "opacity-50 bg-muted/50" : ""}>
+                                                <TableRow key={user.id} className={!user.is_active ? "opacity-50" : ""}>
                                                     <TableCell>
                                                         <div className="flex flex-col">
-                                                            <span className="font-medium flex items-center gap-2">
-                                                                {user.first_name} {user.last_name}
-                                                                {!user.is_active && <Badge variant="outline" className="text-[10px]">Inactive</Badge>}
-                                                            </span>
+                                                            <span className="font-medium">{user.first_name} {user.last_name}</span>
                                                             <span className="text-xs text-muted-foreground">{user.email}</span>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Select defaultValue={user.role} onValueChange={(v) => handleRoleChange(user.id, v)}>
                                                             <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="standard">Standard</SelectItem>
-                                                                <SelectItem value="admin">Admin</SelectItem>
-                                                            </SelectContent>
+                                                            <SelectContent><SelectItem value="standard">Standard</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
                                                         </Select>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Select defaultValue={user.position || "Other"} onValueChange={(v) => handlePositionChange(user.id, v)}>
                                                             <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {POSITIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                                                            </SelectContent>
+                                                            <SelectContent>{POSITIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
                                                         </Select>
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <div className="flex justify-end gap-1">
-                                                            <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-700" onClick={() => initiateReset(user)} title="Reset Password">
-                                                                <Lock className="h-4 w-4" />
-                                                            </Button>
-                                                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => initiateBan(user)} title="Ban User">
-                                                                <Ban className="h-4 w-4" />
-                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="text-blue-500" onClick={() => initiateReset(user)}><Lock className="h-4 w-4" /></Button>
+                                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => initiateBan(user)}><Ban className="h-4 w-4" /></Button>
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
@@ -329,7 +289,6 @@ const AdminUsers = () => {
                         </Card>
                     </TabsContent>
 
-                    {/* APPROVALS TAB */}
                     <TabsContent value="approvals">
                         <Card>
                             <CardHeader><CardTitle>Pending Approvals</CardTitle></CardHeader>
@@ -359,7 +318,6 @@ const AdminUsers = () => {
                         </Card>
                     </TabsContent>
 
-                    {/* BANS TAB */}
                     <TabsContent value="bans">
                         <Card>
                              <CardHeader><CardTitle>Banned Users</CardTitle></CardHeader>
@@ -384,50 +342,30 @@ const AdminUsers = () => {
                         </Card>
                     </TabsContent>
 
-                    {/* LOGS TAB */}
                     <TabsContent value="logs">
                         <Card>
                             <CardHeader><CardTitle>System Logs</CardTitle></CardHeader>
                             <CardContent>
-                                {logs.length === 0 ? <div className="text-center py-8 text-muted-foreground">No logs found.</div> : (
-                                    <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                                        {logs.map(log => (
-                                            <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
-                                                <div className="mt-0.5">
-                                                    {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
-                                                        ? <Shield className="h-4 w-4 text-blue-500" /> 
-                                                        : <Activity className="h-4 w-4 text-green-500" />
-                                                    }
+                                <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                                    {logs.map(log => (
+                                        <div key={log.id} className="flex gap-3 text-sm border-b pb-2">
+                                            <div className="mt-0.5"><Activity className="h-4 w-4 text-primary" /></div>
+                                            <div className="flex-1">
+                                                <p className="font-medium text-xs text-muted-foreground">{log.action_type} • {log.resource_type}</p>
+                                                <div className="text-sm">
+                                                    {JSON.stringify(log.details)}
                                                 </div>
-                                                <div className="flex-1">
-                                                    <p className="font-medium text-xs text-muted-foreground mb-0.5">
-                                                        {log.action_type} • {log.resource_type}
-                                                    </p>
-                                                    <div className="text-sm">
-                                                        {log.action_type === 'CREATE' && `Created ${log.resource_type}`}
-                                                        {log.action_type === 'UPDATE' && `Updated ${log.resource_type}`}
-                                                        {log.action_type === 'DELETE' && `Deleted ${log.resource_type}`}
-                                                        {log.action_type === 'LOGIN' && `User Login: ${log.details?.email || 'Unknown'}`}
-                                                        
-                                                        {log.action_type === 'UPDATE' && log.details?.new?.title && ` "${log.details.new.title}"`}
-                                                        {log.action_type === 'CREATE' && log.details?.title && ` "${log.details.title}"`}
-                                                    </div>
-                                                    <p className="text-[10px] text-muted-foreground mt-1">
-                                                        {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
-                                                    </p>
-                                                </div>
+                                                <p className="text-[10px] text-muted-foreground mt-1">{new Date(log.created_at).toLocaleString()}</p>
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
+                                        </div>
+                                    ))}
+                                </div>
                             </CardContent>
                         </Card>
                     </TabsContent>
                 </Tabs>
 
                 {/* MODALS */}
-                
-                {/* Invite */}
                 <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
                     <DialogContent>
                         <DialogHeader><DialogTitle>Invite Member</DialogTitle></DialogHeader>
@@ -436,7 +374,6 @@ const AdminUsers = () => {
                     </DialogContent>
                 </Dialog>
 
-                {/* Ban */}
                 <Dialog open={isBanOpen} onOpenChange={setIsBanOpen}>
                     <DialogContent>
                         <DialogHeader><DialogTitle>Ban User</DialogTitle></DialogHeader>
@@ -445,30 +382,16 @@ const AdminUsers = () => {
                     </DialogContent>
                 </Dialog>
 
-                {/* Reset Password */}
                 <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
                     <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Reset Password: {resetUser?.email}</DialogTitle>
-                            <DialogDescription>Enter the code sent to YOUR email to confirm.</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-2">
-                            <div className="space-y-2">
-                                <Label>Admin Verification Code</Label>
-                                <InputOTP maxLength={6} value={adminOtp} onChange={setAdminOtp}>
-                                    <InputOTPGroup><InputOTPSlot index={0} /><InputOTPSlot index={1} /><InputOTPSlot index={2} /></InputOTPGroup>
-                                    <div className="w-2" />
-                                    <InputOTPGroup><InputOTPSlot index={3} /><InputOTPSlot index={4} /><InputOTPSlot index={5} /></InputOTPGroup>
-                                </InputOTP>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>New User Password</Label>
-                                <Input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 6 chars" />
-                            </div>
+                        <DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader>
+                        <div className="space-y-2 py-2">
+                            <Label>Admin Code</Label>
+                            <InputOTP maxLength={6} value={adminOtp} onChange={setAdminOtp}><InputOTPGroup><InputOTPSlot index={0}/><InputOTPSlot index={1}/><InputOTPSlot index={2}/></InputOTPGroup><div className="w-2"/><InputOTPGroup><InputOTPSlot index={3}/><InputOTPSlot index={4}/><InputOTPSlot index={5}/></InputOTPGroup></InputOTP>
+                            <Label>New Password</Label>
+                            <Input value={newPassword} onChange={e => setNewPassword(e.target.value)} />
                         </div>
-                        <DialogFooter>
-                            <Button onClick={handleResetPassword} disabled={processing || adminOtp.length !== 6 || newPassword.length < 6}>Reset</Button>
-                        </DialogFooter>
+                        <DialogFooter><Button onClick={handleResetPassword} disabled={processing}>Reset</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
             </div>
