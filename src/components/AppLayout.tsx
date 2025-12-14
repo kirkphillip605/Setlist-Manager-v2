@@ -79,11 +79,12 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   useLayoutEffect(() => {
     const calculateItems = () => {
       const h = window.innerHeight;
-      // Fixed areas: Header (~120px) + Footer/Controls (~80px depending on state)
-      // Actually we have Metronome Controls at bottom of sidebar which takes space.
-      // Let's reserve ~250px for logo area + metronome + margins.
-      const reservedSpace = 280;
-      const itemHeight = 48; // Approx px per item
+      // Fixed areas: 
+      // Top Header: ~100px (Logo + Mode Toggle)
+      // Bottom Metronome: ~80px-100px
+      // We reduce reserved space to 180px to utilize more screen real estate before collapsing.
+      const reservedSpace = 180;
+      const itemHeight = 48; // Approx px per item (40px height + 8px gap)
       
       const availableHeight = h - reservedSpace;
       const possibleItems = Math.floor(availableHeight / itemHeight);
@@ -100,8 +101,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const overflowItems = mainNavItems.slice(maxVisibleItems);
   const showMoreButton = overflowItems.length > 0;
   
-  // If showing "More" button takes up a slot, we need to adjust logic, but slicing is simple enough.
-  // Ideally if overflowItems.length > 0, we slice 0 to maxVisibleItems - 1 to make room for "More".
+  // If showing "More" button takes up a slot, we slice to maxVisibleItems - 1 to make room.
   const finalVisibleItems = showMoreButton ? mainNavItems.slice(0, maxVisibleItems - 1) : mainNavItems;
   const finalOverflowItems = showMoreButton ? mainNavItems.slice(maxVisibleItems - 1) : [];
 
