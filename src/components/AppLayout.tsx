@@ -68,7 +68,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   return (
     <div className={cn(
         "min-h-screen bg-background text-foreground transition-all duration-300",
-        "pb-[calc(60px+env(safe-area-inset-bottom))] md:pb-0", // Mobile bottom spacing with safe area
+        "pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-0", // INCREASED bottom spacing for mobile
         isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64" // Sidebar width adjustment
     )}>
       {/* Desktop Sidebar */}
@@ -181,11 +181,11 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       {/* Mobile Metronome - Renders above bottom nav */}
       <div className="md:hidden">
         {/* Adjusted bottom position to account for safe area and nav bar height */}
-        <MetronomeControls variant="mobile" className="bottom-[calc(65px+env(safe-area-inset-bottom))]" />
+        <MetronomeControls variant="mobile" className="bottom-[calc(80px+env(safe-area-inset-bottom))]" />
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur-xl px-2 pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] flex justify-between items-center z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl px-2 py-2 flex justify-between items-center z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] rounded-t-2xl border-t border-x mx-2 mb-[env(safe-area-inset-bottom)]">
         {navItems.map((item) => (
           <Link
             key={item.path}
@@ -202,6 +202,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           </Link>
         ))}
       </nav>
+      {/* Spacer for the gesture bar area */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-[env(safe-area-inset-bottom)] bg-background z-40" />
     </div>
   );
 };

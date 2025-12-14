@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -31,6 +32,15 @@ const Login = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  const getRedirectUrl = () => {
+    if (Capacitor.isNativePlatform()) {
+        // Return to the app via Deep Link
+        return 'com.example.setlistmanagerv2://auth/callback';
+    }
+    // Web fallback
+    return `${window.location.origin}/auth/callback`;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -52,7 +62,7 @@ const Login = () => {
       email,
       password,
       options: { 
-        emailRedirectTo: `${window.location.origin}/auth/callback`
+        emailRedirectTo: getRedirectUrl()
       }
     });
 
@@ -68,7 +78,7 @@ const Login = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: getRedirectUrl()
       }
     });
 
@@ -80,8 +90,10 @@ const Login = () => {
     if (!resetEmail) return;
     setResetLoading(true);
 
+    // Note: Update Password flow also needs deep link if handled in app, 
+    // but usually user clicks email link on device which triggers deep link naturally.
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/update-password`
+      redirectTo: `${window.location.origin}/update-password` 
     });
 
     if (error) {

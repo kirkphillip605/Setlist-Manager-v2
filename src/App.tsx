@@ -6,6 +6,9 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { MetronomeProvider } from "@/components/MetronomeContext";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
+import { supabase } from "@/integrations/supabase/client";
 
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -82,6 +85,35 @@ const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
 };
 
 const AppContent = () => {
+    // Setup Deep Link Listener
+    useEffect(() => {
+        CapacitorApp.addListener('appUrlOpen', async (event) => {
+            console.log("App opened with URL:", event.url);
+            
+            // Handle Auth Callback (PKCE Flow)
+            if (event.url.includes('auth/callback') || event.url.includes('code=')) {
+                try {
+                    const url = new URL(event.url);
+                    const code = url.searchParams.get('code');
+                    
+                    if (code) {
+                        console.log("Exchanging code for session...");
+                        const { error } = await supabase.auth.exchangeCodeForSession(code);
+                        if (error) {
+                            console.error("Auth Error:", error.message);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing auth URL:", e);
+                }
+            }
+        });
+        
+        return () => {
+            CapacitorApp.removeAllListeners();
+        };
+    }, []);
+
     return (
         <>
             <CacheWarmer />
