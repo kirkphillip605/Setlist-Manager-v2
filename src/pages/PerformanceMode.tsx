@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,15 +33,16 @@ const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
   const [searchParams] = useSearchParams();
   const gigId = searchParams.get('gigId');
-  const isGigMode = !!gigId;
+  const isStandalone = searchParams.get('standalone') === 'true';
+  const isGigMode = !!gigId && !isStandalone;
   const isOnline = useNetworkStatus();
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome } = useMetronome();
   
-  // -- Session Hook --
-  const { sessionData, participants, isLeader, loading: sessionLoading, userId } = useGigSession(gigId);
+  // -- Session Hook (Only run if real gig mode) --
+  const { sessionData, participants, isLeader, loading: sessionLoading, userId } = useGigSession(isGigMode ? gigId : null);
 
   // Local State (Synced from session if Follower, Driven by interactions if Leader)
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
@@ -53,7 +54,8 @@ const PerformanceMode = () => {
   const { data: allSongs = [] } = useSyncedSongs();
   const { data: allSkipped = [] } = useSyncedSkippedSongs();
 
-  // Filter cached data for current gig
+  // Filter cached data for current gig (even in Standalone if gigId is present, we might want this?)
+  // For standalone, skip tracking
   const skippedSongs = useMemo(() => {
       if (!gigId) return [];
       return allSkipped
@@ -65,7 +67,7 @@ const PerformanceMode = () => {
   const sets = useMemo(() => {
       if (!setlist) return [];
       const baseSets = [...setlist.sets];
-      if (isGigMode && skippedSongs.length > 0) {
+      if (!!gigId && skippedSongs.length > 0) {
           baseSets.push({
               id: 'skipped-set',
               name: 'Skipped Songs',
@@ -79,7 +81,7 @@ const PerformanceMode = () => {
           });
       }
       return baseSets;
-  }, [setlist, skippedSongs, isGigMode]);
+  }, [setlist, skippedSongs, gigId]);
 
   // -- Sync Effect (Follower Logic) --
   useEffect(() => {
@@ -202,11 +204,27 @@ const PerformanceMode = () => {
       return () => { supabase.removeChannel(channel); };
   }, [isLeader, sessionData]);
 
+  // -- Listen for Session End (Follower) --
+  const [sessionEndedInfo, setSessionEndedInfo] = useState<{ endedBy: string, at: string } | null>(null);
+  
+  useEffect(() => {
+      if(isGigMode && sessionData && !sessionData.is_active) {
+          // Fetch leader name who ended it? (Leader ID is on sessionData)
+          const fetchEnder = async () => {
+              const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', sessionData.leader_id).single();
+              setSessionEndedInfo({
+                  endedBy: data ? `${data.first_name} ${data.last_name}` : "Leader",
+                  at: new Date().toLocaleTimeString()
+              });
+          };
+          fetchEnder();
+      }
+  }, [sessionData, isGigMode]);
+
   // -- Leadership Actions --
   const handleRequestLeadership = async () => {
       if (!sessionData || !userId) return;
       
-      // Failsafe Check
       const now = new Date().getTime();
       const lastBeat = new Date(sessionData.last_heartbeat).getTime();
       const diff = (now - lastBeat) / 1000;
@@ -226,25 +244,22 @@ const PerformanceMode = () => {
       if (!incomingRequest) return;
       await resolveLeadershipRequest(incomingRequest.id, approved ? 'approved' : 'denied');
       if (approved && userId) {
-          // Transfer leadership
           await forceLeadership(sessionData!.id, incomingRequest.requester_id);
           toast.success("Leadership transferred.");
       }
       setIncomingRequest(null);
   };
 
-  const handleExit = async (endSession: boolean) => {
-      if (isGigMode && isLeader && sessionData) {
-          if (endSession) {
-              await endGigSession(sessionData.id);
-              navigate('/gigs');
-          } else {
-              // Just leaving, maybe promote someone else or leave session hanging (not recommended but allowed)
-              navigate('/gigs'); // Session remains active
-          }
-      } else {
-          navigate('/performance'); // Practice mode
-      }
+  const handleTransferAndLeave = async (newLeaderId: string) => {
+      if (!sessionData) return;
+      await forceLeadership(sessionData.id, newLeaderId);
+      navigate('/gigs');
+  };
+
+  const handleEndSession = async () => {
+      if (!sessionData) return;
+      await endGigSession(sessionData.id);
+      navigate('/gigs');
   };
 
   // -- Render Helpers --
@@ -252,18 +267,23 @@ const PerformanceMode = () => {
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  if (!setlist || sessionLoading) {
+  if (!setlist || (isGigMode && sessionLoading)) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
-  // Handle "Session Ended" State
-  if (isGigMode && !sessionData && !sessionLoading) {
+  // Session Ended Screen
+  if (isGigMode && sessionEndedInfo) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
               <Radio className="h-16 w-16 text-muted-foreground mb-4" />
               <h2 className="text-2xl font-bold mb-2">Session Ended</h2>
-              <p className="text-muted-foreground mb-6">The leader has ended the performance session.</p>
-              <Button onClick={() => navigate('/gigs')}>Return to Gigs</Button>
+              <p className="text-muted-foreground mb-6">
+                  Performance ended by <span className="font-bold">{sessionEndedInfo.endedBy}</span> at {sessionEndedInfo.at}.
+              </p>
+              <div className="flex gap-4">
+                  <Button onClick={() => navigate('/gigs')}>Go to Gigs</Button>
+                  <Button variant="outline" onClick={() => navigate('/')}>Dashboard</Button>
+              </div>
           </div>
       );
   }
@@ -288,7 +308,6 @@ const PerformanceMode = () => {
           )}
         </div>
         
-        {/* Title */}
         <div className="flex-1 text-center hidden md:flex items-center justify-center min-w-0 px-2">
             <span className="font-bold text-lg truncate">{activeSong?.title}</span>
             <span className="text-muted-foreground ml-2 text-sm truncate max-w-[150px]">{activeSong?.artist}</span>
@@ -301,13 +320,13 @@ const PerformanceMode = () => {
                  </Button>
             )}
             
-            {isGigMode ? (
-                <Button variant="ghost" size="sm" onClick={() => isLeader ? setShowExitConfirm(true) : navigate('/gigs')} className="h-9 text-destructive hover:text-destructive">
-                    <span className="mr-2 hidden sm:inline">{isLeader ? "End Gig" : "Leave"}</span>
-                    <Minimize2 className="h-4 w-4" />
+            {isGigMode && isLeader ? (
+                <Button variant="ghost" size="sm" onClick={() => setShowExitConfirm(true)} className="h-9 text-destructive hover:text-destructive">
+                    <span className="mr-2 hidden sm:inline">End Gig</span>
+                    <LogOut className="h-4 w-4" />
                 </Button>
             ) : (
-                <Button variant="ghost" size="sm" onClick={() => navigate('/performance')} className="h-9">
+                <Button variant="ghost" size="sm" onClick={() => navigate(isStandalone ? '/performance' : '/gigs')} className="h-9">
                     Exit <Minimize2 className="h-4 w-4 ml-2" />
                 </Button>
             )}
@@ -338,20 +357,19 @@ const PerformanceMode = () => {
             ) : (
               <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
                 <Music className="h-16 w-16 mb-4 opacity-20" />
-                <p>{isLeader ? "Select a song to begin" : "Waiting for leader..."}</p>
+                <p>{isLeader || isStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
               </div>
             )}
           </div>
         </ScrollArea>
         {tempSong && <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">Ad-Hoc</div>}
-        {!isGigMode && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
+        {(!isGigMode || isStandalone) && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
       </div>
 
       {/* --- Footer Controls --- */}
       <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3 z-20 relative">
         {(isLeader || !isGigMode) ? (
             <>
-                {/* Leader Controls */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-5 w-5" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-48 mb-2">
@@ -377,7 +395,6 @@ const PerformanceMode = () => {
             </>
         ) : (
             <>
-                {/* Follower View */}
                 <Button variant="outline" className="flex-1 h-12" onClick={() => setShowParticipants(true)}>
                     <Users className="mr-2 h-4 w-4" /> In Session
                 </Button>
@@ -409,18 +426,47 @@ const PerformanceMode = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Exit Confirm (Leader) */}
-      <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>End Performance?</AlertDialogTitle><AlertDialogDescription>Ending the session will disconnect all followers. If you just want to leave, cancel and assign a new leader first.</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleExit(true)} className="bg-destructive">End Session</AlertDialogAction>
-              </AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
+      {/* Leader Exit Dialog */}
+      <Dialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+          <DialogContent>
+              <DialogHeader>
+                  <DialogTitle>End Performance Session?</DialogTitle>
+                  <DialogDescription>
+                      You are the leader of this session.
+                  </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4 py-2">
+                  <div className="rounded-lg border p-4 bg-muted/20">
+                      <h4 className="font-semibold mb-2">Option 1: Transfer Leadership</h4>
+                      <p className="text-sm text-muted-foreground mb-3">Select another user to take over, then you will leave the session.</p>
+                      
+                      <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                          {participants.filter(p => p.user_id !== userId).map(p => (
+                              <div key={p.id} className="flex items-center justify-between p-2 bg-background border rounded cursor-pointer hover:bg-accent" onClick={() => handleTransferAndLeave(p.user_id)}>
+                                  <span className="text-sm">{p.profile?.first_name} {p.profile?.last_name}</span>
+                                  <Crown className="h-3 w-3 text-muted-foreground" />
+                              </div>
+                          ))}
+                          {participants.length <= 1 && (
+                              <div className="text-sm italic text-muted-foreground">No other participants available.</div>
+                          )}
+                      </div>
+                  </div>
 
-      {/* Incoming Leadership Request (Leader) */}
+                  <Button variant="destructive" className="w-full" onClick={handleEndSession}>
+                      Option 2: End Session for Everyone
+                  </Button>
+              </div>
+              
+              <DialogFooter>
+                  <Button variant="ghost" onClick={() => setShowExitConfirm(false)}>Cancel</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      {/* Other Dialogs (Request, Participants) ... */}
+      {/* Leadership Request from Follower */}
       <AlertDialog open={!!incomingRequest} onOpenChange={() => {}}>
           <AlertDialogContent>
               <AlertDialogHeader>
@@ -436,7 +482,6 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
-      {/* Request Leadership (Follower) */}
       <AlertDialog open={showLeaderRequest} onOpenChange={setShowLeaderRequest}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>Take Control?</AlertDialogTitle><AlertDialogDescription>This will send a request to the current leader. If they are inactive for 30s, you will be promoted automatically.</AlertDialogDescription></AlertDialogHeader>
@@ -447,7 +492,6 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
-      {/* Participants List */}
       <Dialog open={showParticipants} onOpenChange={setShowParticipants}>
           <DialogContent>
               <DialogHeader><DialogTitle>In Session</DialogTitle></DialogHeader>

@@ -426,7 +426,8 @@ export const moveSetSongToSet = async (setSongId: string, targetSetId: string, p
 // --- Gig Sessions (Realtime) ---
 
 export const getGigSession = async (gigId: string): Promise<GigSession | null> => {
-    const { data, error } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).maybeSingle();
+    // Only return ACTIVE sessions
+    const { data, error } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).eq('is_active', true).maybeSingle();
     if (error && error.code !== 'PGRST116') throw error;
     return data;
 };
@@ -442,7 +443,13 @@ export const createGigSession = async (gigId: string, leaderId: string): Promise
 };
 
 export const endGigSession = async (sessionId: string) => {
-    await supabase.from('gig_sessions').delete().eq('id', sessionId);
+    // Soft delete / Mark inactive
+    await supabase.from('gig_sessions')
+        .update({ 
+            is_active: false, 
+            ended_at: new Date().toISOString() 
+        })
+        .eq('id', sessionId);
 };
 
 export const joinGigSession = async (sessionId: string, userId: string) => {

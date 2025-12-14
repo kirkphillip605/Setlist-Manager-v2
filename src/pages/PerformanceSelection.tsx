@@ -32,8 +32,11 @@ const PerformanceSelection = () => {
   };
 
   const handleSessionJoin = (role: string, sessionId: string) => {
-      // We don't strictly need sessionId in URL if we query by gigId, but good for debugging
-      navigate(`/performance/${selectedGig.setlist_id}?gigId=${selectedGig.id}`);
+      let url = `/performance/${selectedGig.setlist_id}?gigId=${selectedGig.id}`;
+      if (role === 'standalone') {
+          url += '&standalone=true';
+      }
+      navigate(url);
   };
 
   return (
