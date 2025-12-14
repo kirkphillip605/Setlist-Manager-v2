@@ -5,22 +5,37 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
+import { storageAdapter } from "@/lib/storageAdapter";
 
 const Login = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Reset Password State
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
+
+  // Load Remembered Email
+  useEffect(() => {
+    const loadSavedEmail = async () => {
+        const saved = await storageAdapter.getItem("login_email");
+        if (saved) {
+            setEmail(saved);
+            setRememberMe(true);
+        }
+    };
+    loadSavedEmail();
+  }, []);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -34,16 +49,22 @@ const Login = () => {
 
   const getRedirectUrl = () => {
     if (Capacitor.isNativePlatform()) {
-        console.log("Native Platform detected. Using: com.kirknetllc.setlistpro://google-auth");
         return 'com.kirknetllc.setlistpro://google-auth';
     }
-    console.log("Web Platform detected. Using origin.");
     return `${window.location.origin}/auth/callback`;
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    // Save/Clear Remember Me
+    if (rememberMe) {
+        await storageAdapter.setItem("login_email", email);
+    } else {
+        await storageAdapter.removeItem("login_email");
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -108,8 +129,8 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md border-border shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-y-auto">
+      <Card className="w-full max-w-md border-border shadow-lg my-auto">
         <CardHeader>
           <CardTitle className="text-center text-2xl font-bold">Setlist Manager Pro</CardTitle>
           <CardDescription className="text-center">By Kirknetworks, LLC</CardDescription>
@@ -177,6 +198,13 @@ const Login = () => {
                     required
                     autoComplete="current-password"
                   />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                    <Checkbox id="remember" checked={rememberMe} onCheckedChange={(c) => setRememberMe(!!c)} />
+                    <Label htmlFor="remember" className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        Remember email
+                    </Label>
                 </div>
 
                 <Button type="submit" className="w-full" disabled={loading}>

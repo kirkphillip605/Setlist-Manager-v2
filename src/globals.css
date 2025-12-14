@@ -87,16 +87,32 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
+  html, body {
+    @apply h-full w-full overflow-x-hidden;
+    /* Prevent text inflation algorithms from breaking layout */
+    -webkit-text-size-adjust: 100%; 
   }
 
   body {
     @apply bg-background text-foreground antialiased;
+    /* Ensure grid/flex containers don't overflow viewport */
+    max-width: 100vw; 
+  }
+  
+  * {
+    @apply border-border;
+    /* Ensure padding doesn't add to width */
+    box-sizing: border-box; 
   }
   
   /* Improve card definition globally */
   .card-shadow {
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+  
+  /* Utilities for extreme text scaling */
+  .text-scale-safe {
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
 }

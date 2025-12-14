@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,24 +31,33 @@ const OnboardingWizard = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Pre-fill logic
+  const initializedRef = useRef(false);
+
+  // Pre-fill logic (Run ONCE)
   useEffect(() => {
+    if (initializedRef.current) return;
+
     if (profile) {
-        setFirstName(profile.first_name || "");
-        setLastName(profile.last_name || "");
-        setPosition(profile.position || "");
+        if (profile.first_name) setFirstName(profile.first_name);
+        if (profile.last_name) setLastName(profile.last_name);
+        if (profile.position) setPosition(profile.position);
+        
+        // If we found data, mark initialized to stop overwriting user typing
+        if (profile.first_name || profile.last_name) initializedRef.current = true;
     }
     
-    // If profile is empty, try to get from Google metadata
-    if (session?.user?.user_metadata) {
+    // If profile is empty/loading, try to get from Google metadata
+    if ((!profile?.first_name) && session?.user?.user_metadata) {
         const meta = session.user.user_metadata;
-        if (!profile?.first_name && meta.full_name) {
+        if (meta.full_name) {
             const parts = meta.full_name.split(' ');
             if (parts.length >= 1) setFirstName(parts[0]);
             if (parts.length >= 2) setLastName(parts.slice(1).join(' '));
+            initializedRef.current = true;
         } else {
-            if (!profile?.first_name && meta.given_name) setFirstName(meta.given_name);
-            if (!profile?.last_name && meta.family_name) setLastName(meta.family_name);
+            if (meta.given_name) setFirstName(meta.given_name);
+            if (meta.family_name) setLastName(meta.family_name);
+            initializedRef.current = true;
         }
     }
   }, [profile, session]);
@@ -124,8 +133,8 @@ const OnboardingWizard = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md border-border shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-y-auto">
+      <Card className="w-full max-w-md border-border shadow-lg my-auto">
         
         {step === 1 && (
             <form onSubmit={handleProfileSubmit}>
