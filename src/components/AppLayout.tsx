@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Music, ListMusic, Home, User, LogOut, Shield, PlayCircle, CalendarDays, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MetronomeControls } from "./MetronomeControls";
 import { ModeToggle } from "./mode-toggle";
@@ -18,6 +18,7 @@ import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/context/AuthContext";
 import { SyncStatusButton } from "./SyncStatusButton";
 import { PendingApprovalNotifier } from "./PendingApprovalNotifier";
+import { MainMenu } from "./MainMenu";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -54,23 +55,25 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     navigate("/login");
   };
 
+  // Order: Dashboard, Songs, Perform, Setlists, Gigs
   const navItems = [
     { icon: Home, label: "Dashboard", path: "/" },
-    { icon: CalendarDays, label: "Gigs", path: "/gigs" },
-    { icon: ListMusic, label: "Setlists", path: "/setlists" },
     { icon: Music, label: "Songs", path: "/songs" },
-    { icon: PlayCircle, label: "Perform", path: "/performance" },
+    { icon: Play, label: "Perform", path: "/performance", isSpecial: true },
+    { icon: ListMusic, label: "Setlists", path: "/setlists" },
+    { icon: CalendarDays, label: "Gigs", path: "/gigs" },
   ];
 
-  if (isAdmin) {
-    navItems.push({ icon: Shield, label: "Admin", path: "/admin/users" });
-  }
+  const desktopNavItems = [
+    ...navItems,
+    ...(isAdmin ? [{ icon: Shield, label: "Admin", path: "/admin/users" }] : [])
+  ];
 
   return (
     <div className={cn(
         "min-h-screen bg-background text-foreground transition-all duration-300",
-        "pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-0", // INCREASED bottom spacing for mobile
-        isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64" // Sidebar width adjustment
+        "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0", // Increased bottom padding for floating FAB
+        isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64"
     )}>
       {isAdmin && <PendingApprovalNotifier />}
 
@@ -79,7 +82,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         "hidden md:flex fixed left-0 top-0 h-full flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
         isSidebarCollapsed ? "w-[80px]" : "w-64"
       )}>
-        {/* Collapse Button - Floating on Border */}
+        {/* Collapse Button */}
         <div className="absolute -right-3 top-9 z-30">
             <Button
                 variant="outline"
@@ -93,7 +96,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
         <div className={cn("flex flex-col mb-6 pt-6 transition-all", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
           <div className={cn("flex items-center mb-4 transition-all", isSidebarCollapsed ? "justify-center" : "justify-between")}>
-             {/* Logo Logic: Collapsed = Icon, Expanded = Logo Only */}
              {isSidebarCollapsed ? (
                  <img src={iconPath} alt="Icon" className="w-8 h-8" />
              ) : (
@@ -101,7 +103,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
              )}
           </div>
           
-          {/* Action Bar (Sync/Theme) */}
           <div className={cn("flex items-center gap-1", isSidebarCollapsed ? "flex-col" : "flex-row")}>
              <SyncStatusButton />
              <ModeToggle />
@@ -109,7 +110,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         </div>
         
         <nav className="space-y-2 flex-1 px-3">
-          {navItems.map((item) => (
+          {desktopNavItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
@@ -128,7 +129,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           ))}
         </nav>
 
-        {/* User Menu */}
         <div className="mb-4 px-3">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -150,23 +150,16 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </DropdownMenu>
         </div>
 
-        {/* Desktop Metronome */}
         {!isSidebarCollapsed && <MetronomeControls variant="desktop" />}
       </aside>
 
-      {/* Mobile Header (Top Bar) */}
+      {/* Mobile Header */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 border-b bg-background/80 backdrop-blur-md z-40 px-4 flex items-center justify-between">
          <div className="flex items-center gap-2">
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Setlist Manager Pro</span>
          </div>
-         <div className="flex items-center gap-1">
-             <SyncStatusButton />
-             <ModeToggle />
-             <Button variant="ghost" size="icon" onClick={() => navigate("/profile")}>
-                <User className="w-5 h-5" />
-             </Button>
-         </div>
+         <MainMenu />
       </header>
 
       {/* Mobile Content Area */}
@@ -181,32 +174,70 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         </motion.div>
       </main>
 
-      {/* Mobile Metronome - Renders above bottom nav */}
+      {/* Mobile Metronome - Above Nav */}
       <div className="md:hidden">
-        {/* Adjusted bottom position to account for safe area and nav bar height */}
-        <MetronomeControls variant="mobile" className="bottom-[calc(80px+env(safe-area-inset-bottom))]" />
+        <MetronomeControls variant="mobile" className="bottom-[calc(90px+env(safe-area-inset-bottom))]" />
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl px-2 py-2 flex justify-between items-center z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] rounded-t-2xl border-t border-x mx-2 mb-[env(safe-area-inset-bottom)]">
-        {navItems.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={cn(
-              "flex flex-col items-center justify-center gap-1 w-full p-2 rounded-xl transition-all active:scale-95",
-              location.pathname === item.path
-                ? "text-primary bg-primary/10"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <item.icon className={cn("w-5 h-5", location.pathname === item.path && "fill-current")} />
-            <span className="text-[10px] font-medium truncate w-full text-center leading-none">{item.label}</span>
-          </Link>
-        ))}
+      {/* Mobile Bottom Navigation (Floating FAB Style) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t z-50 pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-end justify-between px-2 h-16 relative">
+            
+            {/* Left Items */}
+            {navItems.slice(0, 2).map((item) => (
+                <Link
+                    key={item.path}
+                    to={item.path}
+                    className={cn(
+                        "flex flex-col items-center justify-center gap-1 flex-1 h-full pb-2 transition-colors",
+                        location.pathname === item.path ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <item.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-medium">{item.label}</span>
+                </Link>
+            ))}
+
+            {/* Spacer for FAB */}
+            <div className="w-16 shrink-0" />
+
+            {/* Right Items */}
+            {navItems.slice(3).map((item) => (
+                <Link
+                    key={item.path}
+                    to={item.path}
+                    className={cn(
+                        "flex flex-col items-center justify-center gap-1 flex-1 h-full pb-2 transition-colors",
+                        location.pathname === item.path ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <item.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-medium">{item.label}</span>
+                </Link>
+            ))}
+
+            {/* Floating Perform Button */}
+            <div className="absolute left-1/2 -top-6 -translate-x-1/2">
+                <Link to="/performance">
+                    <div className={cn(
+                        "w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 border-4 border-background",
+                        location.pathname === "/performance" 
+                            ? "bg-primary text-primary-foreground" 
+                            : "bg-primary text-primary-foreground"
+                    )}>
+                        <Play className="w-6 h-6 ml-1 fill-current" />
+                    </div>
+                    <div className={cn(
+                        "text-[10px] font-medium text-center mt-1 transition-colors",
+                        location.pathname === "/performance" ? "text-primary" : "text-muted-foreground"
+                    )}>
+                        Perform
+                    </div>
+                </Link>
+            </div>
+
+        </div>
       </nav>
-      {/* Spacer for the gesture bar area */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-[env(safe-area-inset-bottom)] bg-background z-40" />
     </div>
   );
 };
