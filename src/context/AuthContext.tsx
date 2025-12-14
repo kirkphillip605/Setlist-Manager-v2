@@ -8,6 +8,9 @@ interface Profile {
   first_name: string;
   last_name: string;
   role: string;
+  is_approved: boolean;
+  is_active: boolean;
+  has_password: boolean;
 }
 
 interface AuthContextType {
@@ -17,6 +20,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   signOut: () => Promise<void>;
+  refreshProfile: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -26,6 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   signOut: async () => {},
+  refreshProfile: () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -64,8 +69,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [queryClient]);
 
   // 2. Cached Profile Fetch
-  // We use useQuery so the profile survives offline restarts thanks to the persister
-  const { data: profile, isLoading: profileLoading } = useQuery({
+  const { data: profile, isLoading: profileLoading, refetch } = useQuery({
     queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
         if (!session?.user?.id) return null;
@@ -84,7 +88,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    queryClient.clear(); // Clear all cache on logout for security
+    queryClient.clear(); 
     setSession(null);
   };
 
@@ -97,6 +101,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     loading: isLoading,
     isAdmin: profile?.role === 'admin',
     signOut,
+    refreshProfile: refetch,
   };
 
   return (

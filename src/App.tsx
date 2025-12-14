@@ -26,6 +26,9 @@ import AdminUsers from "./pages/AdminUsers";
 import PerformanceSelection from "./pages/PerformanceSelection";
 import PerformanceMode from "./pages/PerformanceMode";
 import NotFound from "./pages/NotFound";
+import PendingApproval from "./pages/PendingApproval";
+import ReactivateAccount from "./pages/ReactivateAccount";
+import SetInitialPassword from "./pages/SetInitialPassword";
 
 import { queryClient, persister } from "@/lib/queryClient";
 import { SyncIndicator } from "@/components/SyncIndicator";
@@ -49,23 +52,43 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // If session exists but profile failed to load (offline + no cache)
-  if (!profile) {
-     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 p-4 text-center">
-            <AlertCircle className="h-10 w-10 text-destructive" />
-            <h2 className="text-xl font-semibold">Unable to load profile</h2>
-            <p className="text-muted-foreground">Please check your internet connection and try again.</p>
-            <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
-            <Button variant="ghost" onClick={() => signOut()}>Sign Out</Button>
-        </div>
-     );
+  // 1. Check inactive (Soft Deleted)
+  if (profile && !profile.is_active) {
+      if (location.pathname !== '/reactivate') {
+          return <Navigate to="/reactivate" replace />;
+      }
+      return children;
   }
 
-  const isProfileComplete = profile.first_name && profile.last_name;
-  if (!isProfileComplete && location.pathname !== '/profile') {
-    return <Navigate to="/profile" replace />;
+  // 2. Check Profile Completion
+  const isProfileComplete = profile && profile.first_name && profile.last_name;
+  if (!isProfileComplete) {
+      if (location.pathname !== '/profile') {
+        return <Navigate to="/profile" replace />;
+      }
+      return children;
   }
+
+  // 3. Check Pending Approval (Must be done AFTER profile is set)
+  if (profile && !profile.is_approved) {
+      if (location.pathname !== '/pending') {
+          return <Navigate to="/pending" replace />;
+      }
+      return children;
+  }
+
+  // 4. Check Password Set (Google Users)
+  if (profile && profile.has_password === false) {
+      if (location.pathname !== '/set-password') {
+          return <Navigate to="/set-password" replace />;
+      }
+      return children;
+  }
+
+  // Redirect away from special pages if conditions are met
+  if (location.pathname === '/pending' && profile?.is_approved) return <Navigate to="/" replace />;
+  if (location.pathname === '/reactivate' && profile?.is_active) return <Navigate to="/" replace />;
+  if (location.pathname === '/set-password' && profile?.has_password) return <Navigate to="/" replace />;
 
   return children;
 };
@@ -88,38 +111,20 @@ const AppContent = () => {
     // Setup Deep Link Listener
     useEffect(() => {
         CapacitorApp.addListener('appUrlOpen', async (event) => {
-            console.log("App opened with URL:", event.url);
-            
-            // Check for the Google Auth deep link specific path
-            // Example: com.kirknetworks.setlistmanager://google-auth?code=...
             const isGoogleAuth = event.url.includes('google-auth') || event.url.includes('auth/callback');
 
             if (isGoogleAuth) {
                 try {
-                    // Extract code from query params
                     const urlObj = new URL(event.url);
                     let code = urlObj.searchParams.get('code');
                     
-                    // Also check for hash params if using implicit flow (though we use PKCE)
                     if (!code && urlObj.hash) {
                          const params = new URLSearchParams(urlObj.hash.substring(1));
                          code = params.get('code') || params.get('access_token');
                     }
 
                     if (code) {
-                        console.log("Exchanging code for session...");
-                        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-                        if (error) {
-                            console.error("Auth Error:", error.message);
-                        } else {
-                            console.log("Session exchanged successfully", data.session);
-                        }
-                    } else {
-                        // Check for errors
-                        const errorDescription = urlObj.searchParams.get('error_description');
-                        if (errorDescription) {
-                            console.error("Auth Callback Error:", errorDescription);
-                        }
+                        await supabase.auth.exchangeCodeForSession(code);
                     }
                 } catch (e) {
                     console.error("Error parsing auth URL:", e);
@@ -140,6 +145,11 @@ const AppContent = () => {
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/update-password" element={<UpdatePassword />} />
                 
+                {/* Special Logic Routes (Protected checks handle the rendering) */}
+                <Route path="/pending" element={<ProtectedRoute><PendingApproval /></ProtectedRoute>} />
+                <Route path="/reactivate" element={<ProtectedRoute><ReactivateAccount /></ProtectedRoute>} />
+                <Route path="/set-password" element={<ProtectedRoute><SetInitialPassword /></ProtectedRoute>} />
+
                 <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
                 <Route path="/songs" element={<ProtectedRoute><SongList /></ProtectedRoute>} />
                 <Route path="/songs/new" element={<ProtectedRoute><SongEdit /></ProtectedRoute>} />
@@ -150,7 +160,6 @@ const AppContent = () => {
                 <Route path="/gigs" element={<ProtectedRoute><Gigs /></ProtectedRoute>} />
                 <Route path="/gigs/:id" element={<ProtectedRoute><GigDetail /></ProtectedRoute>} />
                 
-                {/* Performance Mode Routes */}
                 <Route path="/performance" element={<ProtectedRoute><PerformanceSelection /></ProtectedRoute>} />
                 <Route path="/performance/:id" element={<ProtectedRoute><PerformanceMode /></ProtectedRoute>} />
 
@@ -174,14 +183,7 @@ const App = () => {
         <AuthProvider>
             <MetronomeProvider>
                 <Toaster />
-                {/* Sonner Configured for Mobile/Desktop Bottom Position + Close Button */}
-                <Sonner 
-                    position="bottom-center" 
-                    closeButton 
-                    toastOptions={{
-                        className: "mb-[60px] md:mb-0", // Lift above mobile nav
-                    }}
-                />
+                <Sonner position="bottom-center" closeButton toastOptions={{ className: "mb-[60px] md:mb-0" }} />
                 <SyncIndicator />
                 <BrowserRouter>
                     <AppContent />

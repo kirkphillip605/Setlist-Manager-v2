@@ -2,18 +2,19 @@ import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, User, Save, LogOut, ShieldAlert, Cloud, RefreshCw } from "lucide-react";
+import { Loader2, User, Save, LogOut, ShieldAlert, Cloud, RefreshCw, AlertTriangle, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSyncStatus } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 const POSITIONS = [
   "Lead Vocals", "Backing Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
@@ -26,6 +27,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [userEmail, setUserEmail] = useState("");
+  const { session } = useAuth();
   
   const { lastSyncedAt, isSyncing, refreshAll } = useSyncStatus();
   const isOnline = useNetworkStatus();
@@ -45,19 +47,21 @@ const Profile = () => {
   // OTP State
   const [isOtpOpen, setIsOtpOpen] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [otpAction, setOtpAction] = useState<"profile" | "password" | null>(null);
+  const [otpAction, setOtpAction] = useState<"profile" | "password" | "delete" | null>(null);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
+
+  // Delete State
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserEmail(user.email || "");
+      if (!session?.user) return;
+      setUserEmail(session.user.email || "");
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user.id)
+        .eq('id', session.user.id)
         .single();
 
       if (error) {
@@ -74,9 +78,7 @@ const Profile = () => {
     };
 
     fetchProfile();
-  }, []);
-
-  // -- Action Handlers --
+  }, [session]);
 
   const initiateSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,12 +100,18 @@ const Profile = () => {
     sendOtp();
   };
 
+  const initiateDeleteAccount = () => {
+      setIsDeleteOpen(false);
+      setOtpAction("delete");
+      sendOtp();
+  };
+
   const sendOtp = async () => {
     setSaving(true);
     // Send OTP to user's email
     const { error } = await supabase.auth.signInWithOtp({
       email: userEmail,
-      options: { shouldCreateUser: false } // ensure we don't create new users
+      options: { shouldCreateUser: false } 
     });
 
     if (error) {
@@ -133,11 +141,12 @@ const Profile = () => {
       return;
     }
 
-    // If verification successful, proceed with action
     if (otpAction === "profile") {
         await saveProfileData();
     } else if (otpAction === "password") {
         await savePasswordData();
+    } else if (otpAction === "delete") {
+        await performSoftDelete();
     }
 
     setIsOtpOpen(false);
@@ -147,9 +156,7 @@ const Profile = () => {
   };
 
   const saveProfileData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+    if (!session?.user) return;
     const { error } = await supabase
       .from('profiles')
       .update({
@@ -158,7 +165,7 @@ const Profile = () => {
         position: profile.position,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq('id', session.user.id);
 
     if (error) {
       toast.error("Failed to update profile: " + error.message);
@@ -178,15 +185,29 @@ const Profile = () => {
     }
   };
 
+  const performSoftDelete = async () => {
+      if (!session?.user) return;
+      
+      // Mark as inactive
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: false })
+        .eq('id', session.user.id);
+      
+      if (error) {
+          toast.error("Failed to deactivate account: " + error.message);
+      } else {
+          toast.success("Account deactivated.");
+          // Sign out immediately
+          await supabase.auth.signOut();
+          navigate("/login");
+      }
+  };
+
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) toast.error(error.message);
-  };
-
-  const handleManualSync = async () => {
-      toast.info("Syncing data...");
-      await refreshAll();
-      toast.success("Sync complete");
+    navigate("/login");
   };
 
   if (loading) return (
@@ -259,7 +280,7 @@ const Profile = () => {
           </CardContent>
         </Card>
 
-        {/* Sync Status Card */}
+        {/* Sync Status */}
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -285,24 +306,17 @@ const Profile = () => {
                         </div>
                     </div>
                 </div>
-                
-                <div className="mt-4 pt-4 border-t flex justify-end">
-                    <Button variant="outline" onClick={handleManualSync} disabled={isSyncing || !isOnline}>
-                        <RefreshCw className={cn("mr-2 h-4 w-4", isSyncing && "animate-spin")} />
-                        {isSyncing ? "Syncing..." : "Force Sync Now"}
-                    </Button>
-                </div>
             </CardContent>
         </Card>
 
-        {/* Password Change Form */}
+        {/* Security / Password */}
         <Card>
           <CardHeader>
              <CardTitle className="flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-orange-500" />
                 Security
              </CardTitle>
-             <CardDescription>Change your password. Requires email verification.</CardDescription>
+             <CardDescription>Change your password.</CardDescription>
           </CardHeader>
           <CardContent>
              <form onSubmit={initiateChangePassword} className="space-y-4">
@@ -333,9 +347,43 @@ const Profile = () => {
              </form>
           </CardContent>
         </Card>
+        
+        {/* Delete Account Zone */}
+        <Card className="border-destructive/30 bg-destructive/5">
+            <CardHeader>
+                <CardTitle className="text-destructive flex items-center gap-2">
+                    <Trash2 className="h-5 w-5" /> Delete Account
+                </CardTitle>
+                <CardDescription>Permanently remove your access.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                    Deleting your account will remove your personal data and personal setlists. 
+                    However, any public data you created (songs, public setlists, gigs) will remain for the band's use.
+                    You will need to verify your email to reactivate your account in the future.
+                </p>
+                <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="destructive" className="w-full">Delete My Account</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Are you absolutely sure?</DialogTitle>
+                            <DialogDescription>
+                                This action marks your account as inactive. You will be logged out immediately.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="ghost" onClick={() => setIsDeleteOpen(false)}>Cancel</Button>
+                            <Button variant="destructive" onClick={initiateDeleteAccount}>Yes, Delete Account</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
 
         <div className="pt-4 flex justify-center">
-            <Button variant="ghost" onClick={handleSignOut} className="text-destructive hover:bg-destructive/10">
+            <Button variant="ghost" onClick={handleSignOut} className="text-muted-foreground">
                 <LogOut className="mr-2 h-4 w-4" /> Sign Out
             </Button>
         </div>
@@ -373,7 +421,7 @@ const Profile = () => {
                      <Button variant="ghost" onClick={() => setIsOtpOpen(false)} disabled={verifyingOtp}>Cancel</Button>
                      <Button onClick={handleVerifyOtp} disabled={otpCode.length !== 6 || verifyingOtp}>
                         {verifyingOtp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Verify & Save
+                        {otpAction === 'delete' ? 'Verify & Delete' : 'Verify & Save'}
                      </Button>
                 </DialogFooter>
             </DialogContent>
