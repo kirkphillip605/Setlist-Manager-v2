@@ -79,43 +79,28 @@ const AdminUsers = () => {
     const pendingUsers = profiles.filter(p => !p.is_approved);
     const appUsers = profiles.filter(p => p.is_approved && (showDisabled || p.is_active));
 
-    // --- ACTIONS ---
+    // --- DIRECT DB ACTIONS (RLS Protected) ---
 
-    const handleUpdate = async (userId: string, updates: any) => {
-        const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
-        if (error) toast.error("Failed to update");
-        else {
-            toast.success("Updated successfully");
-            fetchData();
-        }
-    };
-
-    const handleRoleChange = (userId: string, newRole: string) => handleUpdate(userId, { role: newRole });
-    const handlePositionChange = (userId: string, newPos: string) => handleUpdate(userId, { position: newPos });
-
-    // Helper for safe error messages
-    const parseError = (e: any) => {
-        if (e instanceof Error) return e.message;
-        if (typeof e === 'string') return e;
-        if (e && typeof e === 'object' && e.message) return e.message;
-        return JSON.stringify(e);
-    };
-
-    const handleApprove = async (userId: string) => {
+    const handleUpdateProfile = async (userId: string, updates: any, successMessage = "Updated successfully") => {
         setProcessing(true);
-        try {
-            const { error } = await supabase.functions.invoke('admin-actions', {
-                body: { action: 'approve_user', userId }
-            });
-            if (error) throw error;
-            toast.success("User approved");
+        const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+        setProcessing(false);
+        
+        if (error) {
+            toast.error(error.message);
+        } else {
+            toast.success(successMessage);
             fetchData();
-        } catch (e: any) {
-            toast.error("Action failed: " + parseError(e));
-        } finally {
-            setProcessing(false);
         }
     };
+
+    const handleApprove = (userId: string) => handleUpdateProfile(userId, { is_approved: true }, "User Approved");
+    
+    const handleRoleChange = (userId: string, newRole: string) => handleUpdateProfile(userId, { role: newRole });
+    
+    const handlePositionChange = (userId: string, newPos: string) => handleUpdateProfile(userId, { position: newPos });
+
+    // --- COMPLEX ACTIONS ---
 
     const initiateBan = (user: any) => {
         setUserToBan(user);
@@ -125,46 +110,76 @@ const AdminUsers = () => {
     const handleBan = async () => {
         if (!userToBan) return;
         setProcessing(true);
+        
+        // 1. Insert into banned_users (Direct DB)
+        const { error: banError } = await supabase.from('banned_users').insert({
+            email: userToBan.email,
+            reason: banReason,
+            banned_by: session?.user?.id
+        });
+
+        if (banError) {
+            toast.error("Failed to record ban: " + banError.message);
+            setProcessing(false);
+            return;
+        }
+
+        // 2. Delete User from Auth (Edge Function required for Auth table)
         try {
             const { error } = await supabase.functions.invoke('admin-actions', {
-                body: { 
-                    action: 'deny_ban_user', 
-                    userId: userToBan.id, 
-                    email: userToBan.email,
-                    reason: banReason 
-                }
+                body: { action: 'delete_user_auth', userId: userToBan.id }
             });
-            if (error) throw error;
-            toast.success("User banned");
+            if (error) throw new Error(error.message || "Failed to remove user auth");
+            
+            toast.success("User banned and account removed");
             setIsBanOpen(false);
             setBanReason("");
             setUserToBan(null);
             fetchData();
         } catch (e: any) {
-            toast.error("Action failed: " + parseError(e));
+            toast.error("User banned in DB, but Auth deletion failed: " + e.message);
         } finally {
             setProcessing(false);
         }
     };
 
     const handleUnban = async (email: string) => {
-        if (!confirm("Unban this email address?")) return;
+        if (!confirm("Unban this email address? They will need to sign up again.")) return;
+        setProcessing(true);
+        
+        // Direct DB Delete
+        const { error } = await supabase.from('banned_users').delete().eq('email', email);
+        
+        if (error) {
+            toast.error(error.message);
+        } else {
+            toast.success("User unbanned");
+            fetchData();
+        }
+        setProcessing(false);
+    };
+
+    // --- EDGE FUNCTION ACTIONS (Auth API) ---
+
+    const handleInvite = async () => {
         setProcessing(true);
         try {
             const { error } = await supabase.functions.invoke('admin-actions', {
-                body: { action: 'unban_user', email }
+                body: { action: 'invite', email: inviteEmail }
             });
-            if (error) throw error;
-            toast.success("User unbanned");
-            fetchData();
-        } catch (e: any) {
-            toast.error("Action failed: " + parseError(e));
+            
+            // Edge functions sometimes return 200 with error in body depending on wrapper
+            if (error) throw new Error(error.message || "Request failed");
+
+            toast.success("Invite sent");
+            setIsInviteOpen(false);
+            setInviteEmail("");
+        } catch(e: any) {
+            toast.error("Failed to invite: " + e.message);
         } finally {
             setProcessing(false);
         }
     };
-
-    // --- PASSWORD RESET FLOW ---
 
     const initiateReset = async (user: any) => {
         setResetUser(user);
@@ -193,7 +208,7 @@ const AdminUsers = () => {
         setProcessing(true);
 
         try {
-            // 1. Verify Admin OTP
+            // 1. Verify Admin OTP locally
             const { error: otpError } = await supabase.auth.verifyOtp({
                 email: session?.user?.email!,
                 token: adminOtp,
@@ -201,7 +216,7 @@ const AdminUsers = () => {
             });
             if (otpError) throw new Error("Invalid verification code");
 
-            // 2. Call Edge Function to force update
+            // 2. Call Edge Function for Force Update
             const { error: funcError } = await supabase.functions.invoke('admin-actions', {
                 body: { 
                     action: 'admin_reset_password', 
@@ -210,29 +225,12 @@ const AdminUsers = () => {
                 }
             });
             
-            if (funcError) throw funcError;
+            if (funcError) throw new Error(funcError.message || "Failed to update password");
 
             toast.success("Password reset successfully");
             setIsResetOpen(false);
         } catch (e: any) {
-            toast.error(parseError(e));
-        } finally {
-            setProcessing(false);
-        }
-    };
-
-    const handleInvite = async () => {
-        setProcessing(true);
-        try {
-            const { error } = await supabase.functions.invoke('admin-actions', {
-                body: { action: 'invite', email: inviteEmail }
-            });
-            if (error) throw error;
-            toast.success("Invite sent");
-            setIsInviteOpen(false);
-            setInviteEmail("");
-        } catch(e: any) {
-            toast.error("Failed to invite: " + parseError(e));
+            toast.error(e.message);
         } finally {
             setProcessing(false);
         }
@@ -396,11 +394,27 @@ const AdminUsers = () => {
                                         {logs.map(log => (
                                             <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
                                                 <div className="mt-0.5">
-                                                    {log.category === 'AUTH' ? <Shield className="h-4 w-4 text-blue-500" /> : <Activity className="h-4 w-4 text-green-500" />}
+                                                    {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
+                                                        ? <Shield className="h-4 w-4 text-blue-500" /> 
+                                                        : <Activity className="h-4 w-4 text-green-500" />
+                                                    }
                                                 </div>
                                                 <div className="flex-1">
-                                                    <p>{log.message || "No message"}</p>
-                                                    <p className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</p>
+                                                    <p className="font-medium text-xs text-muted-foreground mb-0.5">
+                                                        {log.action_type} • {log.resource_type}
+                                                    </p>
+                                                    <div className="text-sm">
+                                                        {log.action_type === 'CREATE' && `Created ${log.resource_type}`}
+                                                        {log.action_type === 'UPDATE' && `Updated ${log.resource_type}`}
+                                                        {log.action_type === 'DELETE' && `Deleted ${log.resource_type}`}
+                                                        {log.action_type === 'LOGIN' && `User Login: ${log.details?.email || 'Unknown'}`}
+                                                        
+                                                        {log.action_type === 'UPDATE' && log.details?.new?.title && ` "${log.details.new.title}"`}
+                                                        {log.action_type === 'CREATE' && log.details?.title && ` "${log.details.title}"`}
+                                                    </div>
+                                                    <p className="text-[10px] text-muted-foreground mt-1">
+                                                        {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
+                                                    </p>
                                                 </div>
                                             </div>
                                         ))}

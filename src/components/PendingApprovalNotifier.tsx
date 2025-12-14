@@ -10,11 +10,11 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 export const PendingApprovalNotifier = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, session } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
   const [showDialog, setShowDialog] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
-  const [isDisabled, setIsDisabled] = useState(false); // Session-based disable
+  const [isDisabled, setIsDisabled] = useState(false);
 
   const fetchPending = async () => {
       const { data } = await supabase.from('profiles').select('*').eq('is_approved', false);
@@ -43,34 +43,44 @@ export const PendingApprovalNotifier = () => {
     };
   }, [isAdmin]);
 
-  // Helper for safe error messages
-  const parseError = (e: any) => {
-      if (e instanceof Error) return e.message;
-      if (typeof e === 'string') return e;
-      if (e && typeof e === 'object' && e.message) return e.message;
-      return JSON.stringify(e);
-  };
-
   const handleAction = async (action: 'approve' | 'deny', userId: string, email?: string) => {
       try {
-          const body: any = { userId };
-          if (action === 'approve') body.action = 'approve_user';
+          if (action === 'approve') {
+              // Direct DB Update (Allowed by RLS)
+              const { error } = await supabase
+                .from('profiles')
+                .update({ is_approved: true })
+                .eq('id', userId);
+              
+              if (error) throw error;
+              toast.success("User Approved");
+          } 
           else {
-              body.action = 'deny_ban_user';
-              body.email = email;
-              body.reason = 'Denied via quick action';
+              // Deny = Ban & Delete
+              if (!email) throw new Error("Email required for ban");
+              
+              // 1. Insert Ban (Allowed by RLS)
+              const { error: banError } = await supabase.from('banned_users').insert({
+                  email, 
+                  reason: 'Denied via quick action',
+                  banned_by: session?.user?.id
+              });
+              if (banError) throw banError;
+
+              // 2. Delete Auth (Edge Function)
+              const { error: funcError } = await supabase.functions.invoke('admin-actions', { 
+                  body: { action: 'delete_user_auth', userId } 
+              });
+              if (funcError) throw funcError;
+
+              toast.success("User Denied & Blocked");
           }
 
-          const { error } = await supabase.functions.invoke('admin-actions', { body });
-          if (error) throw error;
-          
-          toast.success(action === 'approve' ? "User Approved" : "User Denied");
           fetchPending();
-          // If no more users, close dialog
           if (pendingUsers.length <= 1) setShowDialog(false);
 
-      } catch (e) {
-          toast.error("Action failed: " + parseError(e));
+      } catch (e: any) {
+          toast.error("Action failed: " + e.message);
       }
   };
 
