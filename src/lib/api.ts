@@ -426,19 +426,22 @@ export const moveSetSongToSet = async (setSongId: string, targetSetId: string, p
 // --- Gig Sessions (Realtime) ---
 
 export const getGigSession = async (gigId: string): Promise<GigSession | null> => {
-    // Only return ACTIVE sessions
-    const { data, error } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).eq('is_active', true).maybeSingle();
+    // Return session regardless of is_active status to handle rejoining ended ones if needed, 
+    // but typically we filter for active.
+    // Modified: Check for ANY session. If inactive/ended, the UI/logic handles it.
+    const { data, error } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).maybeSingle();
     if (error && error.code !== 'PGRST116') throw error;
     return data;
 };
 
 export const getAllGigSessions = async () => {
+    // Explicitly select columns to ensure proper relation mapping
     const { data, error } = await supabase
         .from('gig_sessions')
         .select(`
             *, 
             gig:gigs(name), 
-            leader:profiles(first_name, last_name),
+            leader:profiles!gig_sessions_leader_id_fkey(first_name, last_name),
             participants:gig_session_participants(
                 profile:profiles(first_name, last_name)
             )
@@ -451,6 +454,20 @@ export const getAllGigSessions = async () => {
 };
 
 export const createGigSession = async (gigId: string, leaderId: string): Promise<GigSession> => {
+    // 1. Check for existing session (Active or Inactive)
+    const { data: existing } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).maybeSingle();
+    
+    if (existing) {
+        if (!existing.is_active) {
+            // Found a stale/ended session. Delete it to clear the unique constraint.
+            console.log("Cleaning up inactive session before creating new one...");
+            await supabase.from('gig_sessions').delete().eq('id', existing.id);
+        } else {
+            // Active session exists - should join instead
+            throw new Error("Active session already exists");
+        }
+    }
+
     const { data, error } = await supabase
         .from('gig_sessions')
         .insert({ gig_id: gigId, leader_id: leaderId })
@@ -461,11 +478,11 @@ export const createGigSession = async (gigId: string, leaderId: string): Promise
 };
 
 export const endGigSession = async (sessionId: string) => {
-    await supabase.from('gig_sessions').delete().eq('id', sessionId);
+    await supabase.from('gig_sessions').update({ is_active: false, ended_at: new Date().toISOString() }).eq('id', sessionId);
 };
 
 export const endAllSessions = async () => {
-    await supabase.from('gig_sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+    await supabase.from('gig_sessions').update({ is_active: false, ended_at: new Date().toISOString() }).neq('id', '00000000-0000-0000-0000-000000000000');
 };
 
 export const cleanupStaleSessions = async () => {
