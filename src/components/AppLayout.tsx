@@ -96,7 +96,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
   return (
     <div className={cn(
-        "min-h-screen bg-background text-foreground transition-all duration-300",
+        "min-h-dvh bg-background text-foreground transition-all duration-300",
         "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0", // Increased bottom padding for floating FAB
         isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64"
     )}>
@@ -107,7 +107,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
       {/* Desktop Sidebar */}
       <aside className={cn(
-        "hidden md:flex fixed left-0 top-0 h-full flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
+        "hidden md:flex fixed left-0 top-0 h-dvh flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
         isSidebarCollapsed ? "w-[80px]" : "w-64"
       )}>
         {/* Collapse Button */}
@@ -179,7 +179,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </aside>
 
       {/* Mobile Header */}
-      <header className="md:hidden fixed top-0 left-0 right-0 h-14 border-b bg-background/80 backdrop-blur-md z-40 px-4 flex items-center justify-between">
+      <header className={cn("md:hidden fixed top-0 left-0 right-0 z-40 border-b bg-background/80 backdrop-blur-md px-4 flex items-center justify-between box-border","pt-[env(safe-area-inset-top)]","h-[calc(var(--app-header-h)+env(safe-area-inset-top))]")}>
          <div className="flex items-center gap-2">
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Setlist Manager Pro</span>
@@ -189,7 +189,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </header>
 
       {/* Mobile Content Area */}
-      <main className="container mx-auto max-w-5xl p-4 pt-20 md:p-8 md:pt-8">
+      <main className={cn("container mx-auto max-w-5xl p-4 md:p-8 md:pt-8","pt-[calc(var(--app-header-h)+env(safe-area-inset-top)+1rem)]")}>
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 10 }}
