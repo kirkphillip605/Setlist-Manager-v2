@@ -350,13 +350,14 @@ const PerformanceMode = () => {
   
   useEffect(() => {
       // Only show session ended if we aren't in forced standalone mode
-      if(isGigMode && sessionData === null && sessionEndedInfo === null && !isForcedStandalone) {
+      // CRITICAL FIX: Must verify loading is complete before deciding session is null
+      if(isGigMode && !sessionLoading && sessionData === null && sessionEndedInfo === null && !isForcedStandalone) {
           setSessionEndedInfo({
-              endedBy: "Leader",
+              endedBy: "Leader", // Default message since we can't always know who ended it if record is gone
               at: new Date().toLocaleTimeString()
           });
       }
-  }, [sessionData, isGigMode, isForcedStandalone]);
+  }, [sessionData, isGigMode, isForcedStandalone, sessionLoading]);
 
   // -- Leadership Actions --
   const handleRequestLeadership = async () => {
