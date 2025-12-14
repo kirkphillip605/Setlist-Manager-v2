@@ -93,6 +93,14 @@ const AdminUsers = () => {
     const handleRoleChange = (userId: string, newRole: string) => handleUpdate(userId, { role: newRole });
     const handlePositionChange = (userId: string, newPos: string) => handleUpdate(userId, { position: newPos });
 
+    // Helper for safe error messages
+    const parseError = (e: any) => {
+        if (e instanceof Error) return e.message;
+        if (typeof e === 'string') return e;
+        if (e && typeof e === 'object' && e.message) return e.message;
+        return JSON.stringify(e);
+    };
+
     const handleApprove = async (userId: string) => {
         setProcessing(true);
         try {
@@ -103,7 +111,7 @@ const AdminUsers = () => {
             toast.success("User approved");
             fetchData();
         } catch (e: any) {
-            toast.error("Action failed: " + e.message);
+            toast.error("Action failed: " + parseError(e));
         } finally {
             setProcessing(false);
         }
@@ -133,7 +141,7 @@ const AdminUsers = () => {
             setUserToBan(null);
             fetchData();
         } catch (e: any) {
-            toast.error("Action failed: " + e.message);
+            toast.error("Action failed: " + parseError(e));
         } finally {
             setProcessing(false);
         }
@@ -150,7 +158,7 @@ const AdminUsers = () => {
             toast.success("User unbanned");
             fetchData();
         } catch (e: any) {
-            toast.error("Action failed");
+            toast.error("Action failed: " + parseError(e));
         } finally {
             setProcessing(false);
         }
@@ -207,7 +215,7 @@ const AdminUsers = () => {
             toast.success("Password reset successfully");
             setIsResetOpen(false);
         } catch (e: any) {
-            toast.error(e.message);
+            toast.error(parseError(e));
         } finally {
             setProcessing(false);
         }
@@ -215,16 +223,19 @@ const AdminUsers = () => {
 
     const handleInvite = async () => {
         setProcessing(true);
-        const { error } = await supabase.functions.invoke('admin-actions', {
-            body: { action: 'invite', email: inviteEmail }
-        });
-        if (error) toast.error("Failed to invite");
-        else {
+        try {
+            const { error } = await supabase.functions.invoke('admin-actions', {
+                body: { action: 'invite', email: inviteEmail }
+            });
+            if (error) throw error;
             toast.success("Invite sent");
             setIsInviteOpen(false);
             setInviteEmail("");
+        } catch(e: any) {
+            toast.error("Failed to invite: " + parseError(e));
+        } finally {
+            setProcessing(false);
         }
-        setProcessing(false);
     };
 
     return (
@@ -385,28 +396,11 @@ const AdminUsers = () => {
                                         {logs.map(log => (
                                             <div key={log.id} className="flex gap-3 text-sm border-b pb-2 last:border-0">
                                                 <div className="mt-0.5">
-                                                    {log.action_type && ['LOGIN', 'BAN_USER', 'APPROVE_USER'].includes(log.action_type) 
-                                                        ? <Shield className="h-4 w-4 text-blue-500" /> 
-                                                        : <Activity className="h-4 w-4 text-green-500" />
-                                                    }
+                                                    {log.category === 'AUTH' ? <Shield className="h-4 w-4 text-blue-500" /> : <Activity className="h-4 w-4 text-green-500" />}
                                                 </div>
                                                 <div className="flex-1">
-                                                    <p className="font-medium text-xs text-muted-foreground mb-0.5">
-                                                        {log.action_type} • {log.resource_type}
-                                                    </p>
-                                                    <div className="text-sm">
-                                                        {log.action_type === 'CREATE' && `Created ${log.resource_type}`}
-                                                        {log.action_type === 'UPDATE' && `Updated ${log.resource_type}`}
-                                                        {log.action_type === 'DELETE' && `Deleted ${log.resource_type}`}
-                                                        {log.action_type === 'LOGIN' && `User Login: ${log.details?.email || 'Unknown'}`}
-                                                        
-                                                        {/* Detailed breakdown for updates */}
-                                                        {log.action_type === 'UPDATE' && log.details?.new?.title && ` "${log.details.new.title}"`}
-                                                        {log.action_type === 'CREATE' && log.details?.title && ` "${log.details.title}"`}
-                                                    </div>
-                                                    <p className="text-[10px] text-muted-foreground mt-1">
-                                                        {new Date(log.created_at).toLocaleString()} • {log.user?.email || 'System'}
-                                                    </p>
+                                                    <p>{log.message || "No message"}</p>
+                                                    <p className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</p>
                                                 </div>
                                             </div>
                                         ))}

@@ -43,6 +43,14 @@ export const PendingApprovalNotifier = () => {
     };
   }, [isAdmin]);
 
+  // Helper for safe error messages
+  const parseError = (e: any) => {
+      if (e instanceof Error) return e.message;
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && e.message) return e.message;
+      return JSON.stringify(e);
+  };
+
   const handleAction = async (action: 'approve' | 'deny', userId: string, email?: string) => {
       try {
           const body: any = { userId };
@@ -62,7 +70,7 @@ export const PendingApprovalNotifier = () => {
           if (pendingUsers.length <= 1) setShowDialog(false);
 
       } catch (e) {
-          toast.error("Action failed");
+          toast.error("Action failed: " + parseError(e));
       }
   };
 
