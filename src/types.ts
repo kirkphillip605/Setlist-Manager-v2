@@ -61,6 +61,7 @@ export interface GigSession {
   is_active: boolean;
   started_at: string;
   last_heartbeat: string;
+  ended_at?: string | null;
 }
 
 export interface GigSessionParticipant {

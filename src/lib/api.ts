@@ -113,7 +113,7 @@ export const getGig = async (id: string): Promise<Gig | null> => {
 export const saveGig = async (gig: Partial<Gig>) => {
     // Check for active session first to prevent edits during show
     if (gig.id) {
-        const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', gig.id).single();
+        const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', gig.id).eq('is_active', true).maybeSingle();
         if (session) throw new Error("Cannot edit gig while a performance session is active.");
     }
 
@@ -146,7 +146,7 @@ export const saveGig = async (gig: Partial<Gig>) => {
 
 export const deleteGig = async (id: string) => {
     // Check for active session
-    const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', id).single();
+    const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', id).eq('is_active', true).maybeSingle();
     if (session) throw new Error("Cannot delete gig while a performance session is active.");
 
     const { error } = await supabase.from('gigs').delete().eq('id', id);
@@ -280,17 +280,10 @@ export const createSetlist = async (name: string, isPersonal: boolean = false, i
 
 export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
   // Lock Check: Is this setlist used in an active gig?
-  const { data: activeGig } = await supabase.from('gig_sessions')
-    .select('gig_id, gigs(setlist_id)')
-    .eq('gigs.setlist_id', id)
-    .single();
-    
-  // Note: The above join query might need adjustment depending on how Supabase resolves nested filters on joins.
-  // A safer two-step check:
   const { data: gigsUsingSetlist } = await supabase.from('gigs').select('id').eq('setlist_id', id);
   if (gigsUsingSetlist && gigsUsingSetlist.length > 0) {
       const gigIds = gigsUsingSetlist.map(g => g.id);
-      const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigIds).single();
+      const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigIds).eq('is_active', true).maybeSingle();
       if (session) throw new Error("Cannot edit setlist while it is being used in an active performance.");
   }
 
@@ -333,10 +326,9 @@ export const deleteSetlist = async (id: string) => {
 // --- Set Operations ---
 
 export const createSet = async (setlistId: string, name: string, position: number) => {
-  // Check active session lock (reuse logic from updateSetlist ideally, but simple check here)
   const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', setlistId);
   if (gigs && gigs.length > 0) {
-      const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).single();
+      const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).eq('is_active', true).maybeSingle();
       if (session) throw new Error("Cannot modify sets during active performance.");
   }
 
@@ -379,12 +371,11 @@ export const deleteSet = async (setId: string, setlistId: string) => {
 };
 
 export const addSongsToSet = async (setId: string, songIds: string[], startPosition: number) => {
-  // Need to find setlist ID first to check locks
   const { data: set } = await supabase.from('sets').select('setlist_id').eq('id', setId).single();
   if (set) {
       const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', set.setlist_id);
       if (gigs && gigs.length > 0) {
-          const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).single();
+          const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).eq('is_active', true).maybeSingle();
           if (session) throw new Error("Cannot add songs during active performance.");
       }
   }
@@ -455,16 +446,18 @@ export const getAllGigSessions = async () => {
 
 export const createGigSession = async (gigId: string, leaderId: string): Promise<GigSession> => {
     // 1. Check for existing session (Active or Inactive)
-    const { data: existing } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).maybeSingle();
+    // Use .select() without maybeSingle to handle potential duplicates cleanly if unique constraint failed previously
+    const { data: existing } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId);
     
-    if (existing) {
-        if (!existing.is_active) {
-            // Found a stale/ended session. Delete it to clear the unique constraint.
-            console.log("Cleaning up inactive session before creating new one...");
-            await supabase.from('gig_sessions').delete().eq('id', existing.id);
+    if (existing && existing.length > 0) {
+        // Filter out any that are active
+        const active = existing.find(s => s.is_active);
+        if (active) {
+             throw new Error("Active session already exists");
         } else {
-            // Active session exists - should join instead
-            throw new Error("Active session already exists");
+            // Delete ALL inactive/stale sessions for this gig to clean up
+            const idsToDelete = existing.map(s => s.id);
+            await supabase.from('gig_sessions').delete().in('id', idsToDelete);
         }
     }
 

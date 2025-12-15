@@ -35,7 +35,10 @@ export const PerformanceSessionDialog = ({ open, gigId, gigName, onClose, onJoin
         setLoading(true);
         try {
             const session = await getGigSession(gigId!);
-            if (session) {
+            
+            // Only consider ACTIVE sessions. 
+            // Inactive sessions are dead and should be overwritten by "Start as Leader".
+            if (session && session.is_active) {
                 // Auto-Join Logic
                 const userId = authSession?.user?.id;
                 
@@ -86,6 +89,7 @@ export const PerformanceSessionDialog = ({ open, gigId, gigName, onClose, onJoin
             if (existingSession) {
                 sessionId = existingSession.id;
             } else {
+                // createGigSession handles deletion of any stale/inactive sessions automatically
                 const newSession = await createGigSession(gigId, authSession.user.id);
                 sessionId = newSession.id;
             }

@@ -349,11 +349,18 @@ const PerformanceMode = () => {
   const [sessionEndedInfo, setSessionEndedInfo] = useState<{ endedBy: string, at: string } | null>(null);
   
   useEffect(() => {
-      // Only show session ended if we aren't in forced standalone mode
-      // CRITICAL FIX: Must verify loading is complete before deciding session is null
+      // 1. Check for explicit "session ended" flag on an existing session record
+      if (isGigMode && sessionData && !sessionData.is_active && !isForcedStandalone) {
+           setSessionEndedInfo({
+              endedBy: "Leader",
+              at: new Date(sessionData.ended_at || new Date()).toLocaleTimeString()
+          });
+      }
+      
+      // 2. Check for session deletion (if hook returns null after loading)
       if(isGigMode && !sessionLoading && sessionData === null && sessionEndedInfo === null && !isForcedStandalone) {
           setSessionEndedInfo({
-              endedBy: "Leader", // Default message since we can't always know who ended it if record is gone
+              endedBy: "Leader",
               at: new Date().toLocaleTimeString()
           });
       }
