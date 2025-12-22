@@ -35,6 +35,7 @@ import { queryClient, persister } from "@/lib/queryClient";
 import { SyncIndicator } from "@/components/SyncIndicator";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CacheWarmer } from "@/components/CacheWarmer";
+import ScrollToTop from "@/components/ScrollToTop";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -134,6 +135,7 @@ const AppContent = () => {
 
     return (
         <>
+            <ScrollToTop />
             <CacheWarmer />
             <Routes>
                 <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />

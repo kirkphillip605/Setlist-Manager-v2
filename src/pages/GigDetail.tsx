@@ -16,6 +16,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Gig } from "@/types";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const GigDetail = () => {
     const { id } = useParams();
@@ -96,6 +97,7 @@ const GigDetail = () => {
 
     return (
         <AppLayout>
+            <LoadingDialog open={saveMutation.isPending} />
             <div className="space-y-6 pb-20 max-w-3xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between">
@@ -240,7 +242,7 @@ const GigDetail = () => {
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button onClick={() => saveMutation.mutate(editForm)}>Save Changes</Button>
+                            <Button onClick={() => saveMutation.mutate(editForm)} disabled={saveMutation.isPending}>Save Changes</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/AuthContext";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const POSITIONS = [
   "Lead Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
@@ -238,6 +239,7 @@ const AdminUsers = () => {
 
     return (
         <AppLayout>
+            <LoadingDialog open={processing} />
             <div className="space-y-6 pb-20">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>

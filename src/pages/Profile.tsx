@@ -19,6 +19,7 @@ import { useSyncStatus } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const POSITIONS = [
   "Lead Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
@@ -217,6 +218,7 @@ const Profile = () => {
 
   return (
     <AppLayout>
+      <LoadingDialog open={saving || verifyingOtp} />
       <div className="space-y-6 max-w-2xl mx-auto pb-20">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Profile & Security</h1>

@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Save, Search, Music, Loader2, ArrowRight, CloudOff } from "lucide-react";
 import { useSongFromCache } from "@/hooks/useData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const SongEdit = () => {
   const { id } = useParams();
@@ -201,6 +202,7 @@ const SongEdit = () => {
 
   return (
     <AppLayout>
+      <LoadingDialog open={saveMutation.isPending} />
       <div className="space-y-6 pb-20">
         {mode === 'edit' && (
           <div className="flex items-center gap-4">

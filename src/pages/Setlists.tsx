@@ -28,6 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Gig, Setlist } from "@/types";
 import { useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const Setlists = () => {
   const navigate = useNavigate();
@@ -157,6 +158,15 @@ const Setlists = () => {
 
   return (
     <AppLayout>
+      <LoadingDialog 
+        open={createMutation.isPending || deleteMutation.isPending || convertMutation.isPending} 
+        message={
+            createMutation.isPending ? "Creating setlist..." : 
+            deleteMutation.isPending ? "Deleting setlist..." : 
+            "Converting setlist..."
+        }
+      />
+
       <div className="space-y-6 pb-20">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
             <div>
@@ -168,10 +178,10 @@ const Setlists = () => {
                     {isOnline ? "Manage song collections." : "Offline Mode: Read Only"}
                 </p>
             </div>
-            
+            {/* Desktop Button */}
             <Button 
                 onClick={() => setIsTypeSelectionOpen(true)} 
-                className="rounded-full shadow-lg"
+                className="hidden md:flex rounded-full shadow-lg"
                 disabled={!isOnline}
             >
                 <Plus className="mr-2 h-4 w-4" /> Create Setlist
@@ -258,6 +268,16 @@ const Setlists = () => {
             </div>
         )}
 
+        {/* Mobile FAB */}
+        <Button
+            onClick={() => setIsTypeSelectionOpen(true)}
+            size="icon"
+            className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
+            disabled={!isOnline}
+        >
+            <Plus className="h-8 w-8" />
+        </Button>
+
          {/* Type Selection Dialog */}
          <Dialog open={isTypeSelectionOpen} onOpenChange={setIsTypeSelectionOpen}>
             <DialogContent className="sm:max-w-lg">
@@ -327,7 +347,10 @@ const Setlists = () => {
                         </div>
                     )}
                     <DialogFooter>
-                        <Button onClick={() => createMutation.mutate()} disabled={!newListName.trim()}>Create</Button>
+                        <Button onClick={() => createMutation.mutate()} disabled={!newListName.trim() || createMutation.isPending}>
+                            {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Create
+                        </Button>
                     </DialogFooter>
                 </div>
             </DialogContent>
@@ -345,8 +368,8 @@ const Setlists = () => {
                      </AlertDialogDescription>
                  </AlertDialogHeader>
                  <AlertDialogFooter>
-                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                     <AlertDialogAction onClick={() => convertId && convertMutation.mutate(convertId)}>Convert</AlertDialogAction>
+                     <AlertDialogCancel disabled={convertMutation.isPending}>Cancel</AlertDialogCancel>
+                     <AlertDialogAction onClick={() => convertId && convertMutation.mutate(convertId)} disabled={convertMutation.isPending}>Convert</AlertDialogAction>
                  </AlertDialogFooter>
              </AlertDialogContent>
          </AlertDialog>
@@ -386,11 +409,11 @@ const Setlists = () => {
                     </div>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
                     <AlertDialogAction 
                         onClick={() => deleteId && deleteMutation.mutate(deleteId)} 
                         className="bg-destructive"
-                        disabled={usageData.length > 0} // Prevent delete if used
+                        disabled={usageData.length > 0 || deleteMutation.isPending} // Prevent delete if used
                     >
                         Delete
                     </AlertDialogAction>

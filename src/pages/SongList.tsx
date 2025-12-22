@@ -21,6 +21,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSyncedSongs } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDeleteRequest: (song: Song) => void; isOnline: boolean }) => {
   const navigate = useNavigate();
@@ -218,6 +219,8 @@ const SongList = () => {
 
   return (
     <AppLayout>
+      <LoadingDialog open={deleteMutation.isPending || retireMutation.isPending} />
+      
       <div className="space-y-6 pb-20">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
           <div>
@@ -229,10 +232,11 @@ const SongList = () => {
               {isOnline ? "Manage your repertoire." : "Offline Mode: Read Only"}
             </p>
           </div>
+          {/* Desktop Button */}
           <Button 
             asChild 
             disabled={!isOnline}
-            className="rounded-full shadow-lg hover:shadow-xl transition-all h-12 px-6 text-base"
+            className="hidden md:flex rounded-full shadow-lg hover:shadow-xl transition-all h-12 px-6 text-base"
           >
             <Link to={isOnline ? "/songs/new" : "#"}>
               <Plus className="mr-2 h-5 w-5" /> Add Song
@@ -303,6 +307,18 @@ const SongList = () => {
           </div>
         )}
 
+        {/* Mobile FAB */}
+        <Button
+            asChild
+            size="icon"
+            className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
+            disabled={!isOnline}
+        >
+            <Link to={isOnline ? "/songs/new" : "#"}>
+                <Plus className="h-8 w-8" />
+            </Link>
+        </Button>
+
         {/* Safe Delete Dialog */}
         <AlertDialog open={!!songToDelete} onOpenChange={(open) => !open && setSongToDelete(null)}>
             <AlertDialogContent className="max-w-md">
@@ -336,13 +352,13 @@ const SongList = () => {
                     </div>
                 </AlertDialogHeader>
                 <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={deleteMutation.isPending || retireMutation.isPending}>Cancel</AlertDialogCancel>
                     {!isCheckingUsage && usageData.length > 0 && (
-                        <Button variant="secondary" onClick={() => songToDelete && retireMutation.mutate(songToDelete.id)} className="w-full sm:w-auto">
+                        <Button variant="secondary" onClick={() => songToDelete && retireMutation.mutate(songToDelete.id)} className="w-full sm:w-auto" disabled={retireMutation.isPending}>
                             <Archive className="mr-2 h-4 w-4" /> Retire Instead
                         </Button>
                     )}
-                    <Button variant="destructive" onClick={() => songToDelete && deleteMutation.mutate(songToDelete.id)} className="w-full sm:w-auto" disabled={isCheckingUsage}>
+                    <Button variant="destructive" onClick={() => songToDelete && deleteMutation.mutate(songToDelete.id)} className="w-full sm:w-auto" disabled={isCheckingUsage || deleteMutation.isPending}>
                         {usageData.length > 0 ? "Delete Anyway" : "Delete Permanently"}
                     </Button>
                 </AlertDialogFooter>

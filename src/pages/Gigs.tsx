@@ -17,9 +17,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const Gigs = () => {
     const navigate = useNavigate();
@@ -136,6 +137,8 @@ const Gigs = () => {
 
     return (
         <AppLayout>
+             <LoadingDialog open={saveMutation.isPending || deleteMutation.isPending} />
+
              <div className="space-y-6 pb-20">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
                     <div>
@@ -147,7 +150,8 @@ const Gigs = () => {
                             {isOnline ? "Upcoming shows and events." : "Offline Mode: Read Only"}
                         </p>
                     </div>
-                    <Button onClick={openCreate} className="rounded-full shadow-lg" disabled={!isOnline}>
+                    {/* Desktop Button */}
+                    <Button onClick={openCreate} className="hidden md:flex rounded-full shadow-lg" disabled={!isOnline}>
                         <Plus className="mr-2 h-4 w-4" /> Add Gig
                     </Button>
                 </div>
@@ -175,6 +179,16 @@ const Gigs = () => {
                         </div>
                     </>
                 )}
+
+                {/* Mobile FAB */}
+                <Button
+                    onClick={openCreate}
+                    size="icon"
+                    className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    disabled={!isOnline}
+                >
+                    <Plus className="h-8 w-8" />
+                </Button>
 
                 {/* Create Dialog Only */}
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -226,7 +240,11 @@ const Gigs = () => {
                                 />
                             </div>
                             <DialogFooter>
-                                <Button onClick={() => saveMutation.mutate(newGig as Gig)} disabled={!newGig.name || !newGig.date}>
+                                <Button 
+                                    onClick={() => saveMutation.mutate(newGig as Gig)} 
+                                    disabled={!newGig.name || !newGig.date || saveMutation.isPending}
+                                >
+                                    {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Save Gig
                                 </Button>
                             </DialogFooter>
@@ -241,8 +259,8 @@ const Gigs = () => {
                             <AlertDialogDescription>This will permanently delete the gig and its details.</AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive">Delete</AlertDialogAction>
+                            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive" disabled={deleteMutation.isPending}>Delete</AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
