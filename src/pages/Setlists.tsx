@@ -15,17 +15,17 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
-import { createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage } from "@/lib/api";
+import { createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage, convertSetlistToBand } from "@/lib/api";
 import { 
   Plus, Trash2, Loader2, Copy, MoreVertical, 
-  Lock, Globe, Filter, AlertTriangle, Users, CloudOff
+  Lock, Globe, Filter, AlertTriangle, Users, CloudOff, RefreshCw
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Gig } from "@/types";
+import { Gig, Setlist } from "@/types";
 import { useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
@@ -45,8 +45,9 @@ const Setlists = () => {
   const [newListName, setNewListName] = useState("");
   const [isDefault, setIsDefault] = useState(false);
 
-  // Safe Delete
+  // Conversion / Deletion
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [convertId, setConvertId] = useState<string | null>(null);
   const [usageData, setUsageData] = useState<Gig[]>([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
@@ -99,6 +100,15 @@ const Setlists = () => {
     }
   });
 
+  const convertMutation = useMutation({
+      mutationFn: convertSetlistToBand,
+      onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['setlists'] });
+          setConvertId(null);
+          toast.success("Setlist converted to Band Setlist");
+      }
+  });
+
   const resetForm = () => {
       setNewListName("");
       setIsDefault(false);
@@ -113,7 +123,7 @@ const Setlists = () => {
       setCreateMode(mode);
       if (mode === "clone" && sourceId) {
           setSourceSetlistId(sourceId);
-          setCloneType("personal");
+          setCloneType("personal"); // Default to personal copy
           const src = setlists.find(l => l.id === sourceId);
           if (src) setNewListName(`${src.name} (Copy)`);
       }
@@ -135,6 +145,14 @@ const Setlists = () => {
       } finally {
           setIsCheckingUsage(false);
       }
+  };
+
+  const handleCloneAsBand = (list: Setlist) => {
+      setSourceSetlistId(list.id);
+      setNewListName(list.name + " (Band)");
+      setCreateMode("clone");
+      setCloneType("public");
+      setIsCreateOpen(true);
   };
 
   return (
@@ -189,7 +207,7 @@ const Setlists = () => {
                 {filteredSetlists.map(list => (
                     <Link key={list.id} to={`/setlists/${list.id}`}>
                         <Card className={`hover:bg-accent/40 hover:border-primary/50 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
-                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
+                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-14">
                                 <div className="space-y-1">
                                     <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
                                     {list.is_default && <Badge variant="default" className="text-[10px] h-5">Default</Badge>}
@@ -206,16 +224,28 @@ const Setlists = () => {
                                 <div className="absolute top-2 right-2">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                            <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-muted" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                                <MoreVertical className="h-5 w-5 text-muted-foreground" />
                                             </Button>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
+                                        <DropdownMenuContent align="end" className="w-56">
+                                            <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
                                                 <Copy className="mr-2 h-4 w-4" /> Clone...
                                             </DropdownMenuItem>
+                                            
+                                            {list.is_personal && (
+                                                <>
+                                                    <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCloneAsBand(list); }}>
+                                                        <Globe className="mr-2 h-4 w-4" /> Clone to Band
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvertId(list.id); }}>
+                                                        <RefreshCw className="mr-2 h-4 w-4" /> Convert to Band...
+                                                    </DropdownMenuItem>
+                                                </>
+                                            )}
+
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem className="text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
+                                            <DropdownMenuItem className="text-destructive py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
                                                 <Trash2 className="mr-2 h-4 w-4" /> Delete
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
@@ -273,8 +303,12 @@ const Setlists = () => {
          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>New Setlist</DialogTitle>
-                    <DialogDescription>Enter a name for your new setlist.</DialogDescription>
+                    <DialogTitle>
+                        {createMode === 'clone' 
+                            ? (cloneType === 'public' ? 'Clone as Band Setlist' : 'Clone Setlist') 
+                            : 'New Setlist'}
+                    </DialogTitle>
+                    <DialogDescription>Enter a name for your setlist.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -286,7 +320,7 @@ const Setlists = () => {
                             autoFocus
                         />
                     </div>
-                    {createMode === 'public' && !hasDefault && (
+                    {((createMode === 'public') || (createMode === 'clone' && cloneType === 'public')) && !hasDefault && (
                         <div className="flex items-center gap-2">
                             <Checkbox id="isDef" checked={isDefault} onCheckedChange={(c) => setIsDefault(c === true)} />
                             <Label htmlFor="isDef">Make Default Band Setlist</Label>
@@ -298,6 +332,24 @@ const Setlists = () => {
                 </div>
             </DialogContent>
          </Dialog>
+
+         {/* Convert Dialog */}
+         <AlertDialog open={!!convertId} onOpenChange={(val) => !val && setConvertId(null)}>
+             <AlertDialogContent>
+                 <AlertDialogHeader>
+                     <AlertDialogTitle>Convert to Band Setlist?</AlertDialogTitle>
+                     <AlertDialogDescription>
+                         This action is <b>not reversible</b>. This setlist will become publicly viewable and editable by all band members.
+                         <br/><br/>
+                         If you want to keep your personal copy, choose "Clone to Band" instead.
+                     </AlertDialogDescription>
+                 </AlertDialogHeader>
+                 <AlertDialogFooter>
+                     <AlertDialogCancel>Cancel</AlertDialogCancel>
+                     <AlertDialogAction onClick={() => convertId && convertMutation.mutate(convertId)}>Convert</AlertDialogAction>
+                 </AlertDialogFooter>
+             </AlertDialogContent>
+         </AlertDialog>
 
          {/* Delete Alert */}
          <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>

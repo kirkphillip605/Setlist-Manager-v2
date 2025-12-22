@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, Check, Plus, Loader2 } from "lucide-react";
 import { Song, Setlist } from "@/types";
 import { formatSecondsToDuration, parseDurationToSeconds } from "@/lib/utils";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 
 interface AddSongDialogProps {
@@ -32,6 +32,7 @@ export const AddSongDialog = ({
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     // Filter Logic
     const filteredSongs = useMemo(() => {
@@ -75,6 +76,11 @@ export const AddSongDialog = ({
     const toggleSelection = (id: string) => {
         setSearchTerm(""); // Clear search on select
         setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        
+        // Re-focus input immediately
+        setTimeout(() => {
+            if (inputRef.current) inputRef.current.focus();
+        }, 10);
     };
 
     const handleAdd = async () => {
@@ -117,11 +123,15 @@ export const AddSongDialog = ({
                     <div className="relative">
                         <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                         <Input
+                            ref={inputRef}
                             placeholder="Search repertoire..."
                             className="pl-10 h-11 text-base"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             autoFocus
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck="false"
                         />
                     </div>
                 </div>
@@ -130,11 +140,6 @@ export const AddSongDialog = ({
                     <div className="divide-y">
                         {filteredSongs.map((song) => {
                             const isSelected = selectedIds.includes(song.id);
-                            // Only check if used in OTHER sets if we want strict uniqueness per setlist? 
-                            // Prompt says: "restrictions that prevent a song from being added more than once in a given setlist"
-                            // So we check used IDs globally in SetlistDetail usually, but we can pass it in or calculate here.
-                            // For performance, let's assume `availableSongs` are all valid or we handle dupes.
-                            // Let's implement global check here:
                             const isUsed = setlist.sets.some(s => s.songs.some(ss => ss.songId === song.id));
                             
                             return (

@@ -6,10 +6,11 @@ import {
     DropdownMenuSeparator, DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { 
-    Plus, Trash2, ArrowUp, ArrowDown, MoreVertical, ArrowRightLeft, Clock 
+    Plus, Trash2, ArrowUp, ArrowDown, MoreVertical, ArrowRightLeft, Clock, Star 
 } from "lucide-react";
 import { Set as SetType, Setlist } from "@/types";
 import { formatSecondsToDuration } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 interface SetCardProps {
     set: SetType;
@@ -32,11 +33,22 @@ export const SetCard = ({
     onMoveOrder,
     onMoveToSet
 }: SetCardProps) => {
+    const isEncore = set.name === "Encore";
+
     return (
-        <Card className="overflow-hidden border-2">
-            <CardHeader className="bg-muted/40 py-3 flex flex-row items-center justify-between gap-2">
+        <Card className={cn(
+            "overflow-hidden border-2 transition-all",
+            isEncore ? "border-amber-400 bg-amber-50/30 dark:bg-amber-950/10" : ""
+        )}>
+            <CardHeader className={cn(
+                "py-3 flex flex-row items-center justify-between gap-2",
+                isEncore ? "bg-amber-100/50 dark:bg-amber-900/20" : "bg-muted/40"
+            )}>
                 <div className="flex items-center gap-3 min-w-0">
-                    <Badge variant="outline" className="bg-background text-base px-3 py-1 whitespace-nowrap shrink-0">{set.name}</Badge>
+                    <Badge variant={isEncore ? "default" : "outline"} className={cn("text-base px-3 py-1 whitespace-nowrap shrink-0", isEncore ? "bg-amber-500 hover:bg-amber-600" : "bg-background")}>
+                        {isEncore && <Star className="w-3 h-3 mr-1 fill-current" />}
+                        {set.name}
+                    </Badge>
                     <div className="flex items-center gap-1 text-sm text-muted-foreground truncate">
                         <Clock className="w-3 h-3 shrink-0" />
                         <span className="truncate">{formatSecondsToDuration(setDuration)}</span>

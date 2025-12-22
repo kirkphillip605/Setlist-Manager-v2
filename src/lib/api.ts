@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Song, Setlist, Gig, GigSession } from "@/types";
+import { Song, Setlist, Gig, GigSession, Set as SetType, SetSong } from "@/types";
 
 // ... existing code ...
 
@@ -302,6 +302,78 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
   return data;
 };
 
+// Batch Sync for "Save" functionality
+export const syncSetlist = async (setlist: Setlist) => {
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) throw new Error("No user");
+
+    // 1. Update Setlist Name
+    await updateSetlist(setlist.id, { name: setlist.name });
+
+    // 2. Sync Sets
+    // Get existing sets from DB to know what to delete
+    const { data: dbSets } = await supabase.from('sets').select('id').eq('setlist_id', setlist.id);
+    const dbSetIds = new Set(dbSets?.map(s => s.id) || []);
+    const currentSetIds = new Set(setlist.sets.filter(s => !s.id.startsWith('temp-')).map(s => s.id));
+
+    // Delete removed sets
+    const setsToDelete = [...dbSetIds].filter(id => !currentSetIds.has(id));
+    if (setsToDelete.length > 0) {
+        await supabase.from('sets').delete().in('id', setsToDelete);
+    }
+
+    // Upsert Sets (Create new or Update position/name)
+    for (const set of setlist.sets) {
+        let setId = set.id;
+        
+        if (setId.startsWith('temp-')) {
+            const { data: newSet, error } = await supabase
+                .from('sets')
+                .insert({ setlist_id: setlist.id, name: set.name, position: set.position, user_id: user.id })
+                .select('id')
+                .single();
+            if (error) throw error;
+            setId = newSet.id;
+        } else {
+            await supabase.from('sets').update({ name: set.name, position: set.position }).eq('id', setId);
+        }
+
+        // 3. Sync Set Songs
+        // This is nested because we need the real Set ID (setId) if we just created it
+        const { data: dbSongs } = await supabase.from('set_songs').select('id').eq('set_id', setId);
+        const dbSongIds = new Set(dbSongs?.map(s => s.id) || []);
+        const currentSongIds = new Set(set.songs.filter(s => !s.id.startsWith('temp-')).map(s => s.id));
+
+        // Delete removed songs
+        const songsToDelete = [...dbSongIds].filter(id => !currentSongIds.has(id));
+        if (songsToDelete.length > 0) {
+            await supabase.from('set_songs').delete().in('id', songsToDelete);
+        }
+
+        // Upsert Songs
+        for (const song of set.songs) {
+            if (song.id.startsWith('temp-')) {
+                await supabase.from('set_songs').insert({
+                    set_id: setId,
+                    song_id: song.songId,
+                    position: song.position,
+                    user_id: user.id
+                });
+            } else {
+                await supabase.from('set_songs').update({
+                    set_id: setId,
+                    position: song.position
+                }).eq('id', song.id);
+            }
+        }
+    }
+};
+
+export const convertSetlistToBand = async (id: string) => {
+    const { error } = await supabase.from('setlists').update({ is_personal: false }).eq('id', id);
+    if (error) throw error;
+};
+
 export const cloneSetlist = async (sourceId: string, newName: string, isPersonal: boolean) => {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
@@ -323,7 +395,8 @@ export const deleteSetlist = async (id: string) => {
   if (error) throw error;
 };
 
-// --- Set Operations ---
+// --- Set Operations (Legacy / Single Action) ---
+// These are kept for compatibility if needed, but SetlistDetail will mostly use syncSetlist now.
 
 export const createSet = async (setlistId: string, name: string, position: number) => {
   const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', setlistId);
