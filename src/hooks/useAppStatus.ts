@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
@@ -28,7 +28,6 @@ export const useAppStatus = () => {
   const getEnvironment = (): string => {
     if (import.meta.env.PROD) return 'production';
     return 'development'; 
-    // You could add logic for 'staging' based on specific env vars if needed
   };
 
   const getPlatform = (): AppPlatform => {
@@ -39,34 +38,29 @@ export const useAppStatus = () => {
   };
 
   const checkVersion = async (status: AppStatus): Promise<boolean> => {
-    // If update not required by flag, return false (no update needed)
     if (!status.requires_update) return false;
-
-    // Web doesn't handle version codes strictly like native
     if (getPlatform() === 'web') return false; 
 
     try {
       const info = await App.getInfo();
-      const currentBuild = parseInt(info.build); // Build number/Version Code
+      // Handle build number parsing carefully as it can vary by platform config
+      const currentBuild = parseInt(info.build) || 0; 
       
-      // Check Build Code
       if (status.min_version_code && currentBuild < status.min_version_code) {
-        return true; // Update IS required
+        return true;
       }
-      
       return false;
     } catch (e) {
       console.warn("Failed to check app version", e);
-      return false; // Fail safe
+      return false;
     }
   };
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     const env = getEnvironment();
     const platform = getPlatform();
     
-    // Logic: Try to find specific platform row first, fall back to 'any'
-    // We fetch both potentially matching rows
+    // Fetch matching status rows
     const { data, error } = await supabase
       .from('app_statuses')
       .select('*')
@@ -75,12 +69,12 @@ export const useAppStatus = () => {
 
     if (error) {
       console.error("Failed to fetch app status", error);
+      // Don't block app on error, assume safe
       setState(prev => ({ ...prev, loading: false }));
       return;
     }
 
     if (!data || data.length === 0) {
-      // No config found, allow app to load
       setState({ 
         isMaintenance: false, 
         isUpdateRequired: false, 
@@ -97,44 +91,54 @@ export const useAppStatus = () => {
 
     const updateNeeded = await checkVersion(effectiveStatus);
 
-    // Detect transition from Maintenance -> Normal
-    // Only if we were previously initialized and in maintenance
-    if (!state.loading && state.isMaintenance && !effectiveStatus.is_maintenance) {
-        console.log("Maintenance lifted! triggering re-sync...");
-        // Nuke cache
-        queryClient.clear(); 
-        // Trigger sync
-        refreshAll();
-    }
-
-    setState({
-      isMaintenance: effectiveStatus.is_maintenance,
-      isUpdateRequired: updateNeeded,
-      statusData: effectiveStatus,
-      loading: false
+    // Detect lifting of maintenance mode to trigger sync
+    setState(prev => {
+        if (!prev.loading && prev.isMaintenance && !effectiveStatus.is_maintenance) {
+            console.log("Maintenance lifted! Triggering full re-sync...");
+            queryClient.clear(); 
+            refreshAll();
+        }
+        return {
+            isMaintenance: effectiveStatus.is_maintenance,
+            isUpdateRequired: updateNeeded,
+            statusData: effectiveStatus,
+            loading: false
+        };
     });
-  };
+  }, [queryClient, refreshAll]);
 
   useEffect(() => {
     fetchStatus();
 
-    // Subscribe to changes
+    // 1. Realtime Subscription
     const channel = supabase
       .channel('app_status_changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'app_statuses' },
         () => {
-          console.log("App status update received");
+          console.log("App status update received via Realtime");
           fetchStatus();
         }
       )
       .subscribe();
 
+    // 2. Window Focus / Visibility Listener (Catch-up mechanism)
+    const handleFocus = () => {
+        if (document.visibilityState === 'visible') {
+            fetchStatus();
+        }
+    };
+    
+    window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('focus', handleFocus);
+
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [fetchStatus]);
 
   return state;
 };

@@ -5,7 +5,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { MetronomeProvider } from "@/components/MetronomeContext";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -39,6 +39,8 @@ import ScrollToTop from "@/components/ScrollToTop";
 import { ImmersiveModeProvider } from "@/context/ImmersiveModeContext";
 import { useAppStatus } from "@/hooks/useAppStatus";
 import { SystemStatusScreen } from "@/components/SystemStatusScreen";
+import { MobileAppSuggestion } from "@/components/MobileAppSuggestion";
+import { storageAdapter } from "@/lib/storageAdapter";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -177,6 +179,22 @@ const AppContent = () => {
 // Wrapper component to handle System Status logic at the top level
 const AppStatusWrapper = () => {
     const { isMaintenance, isUpdateRequired, statusData, loading } = useAppStatus();
+    const [showSuggestion, setShowSuggestion] = useState(false);
+
+    useEffect(() => {
+      const checkSuggestion = async () => {
+        const dismissed = await storageAdapter.getItem("dismissed_mobile_app_suggestion");
+        if (!dismissed) {
+          setShowSuggestion(true);
+        }
+      };
+      checkSuggestion();
+    }, []);
+
+    const handleDismissSuggestion = () => {
+      setShowSuggestion(false);
+      storageAdapter.setItem("dismissed_mobile_app_suggestion", "true");
+    };
 
     if (loading) {
         // Optional: Show splash or nothing while checking status
@@ -193,6 +211,7 @@ const AppStatusWrapper = () => {
 
     return (
         <BrowserRouter>
+            {showSuggestion && <MobileAppSuggestion onDismiss={handleDismissSuggestion} />}
             <AppContent />
         </BrowserRouter>
     );
