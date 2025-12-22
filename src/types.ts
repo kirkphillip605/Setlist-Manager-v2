@@ -10,8 +10,6 @@ export interface Song {
   cover_url?: string;
   spotify_url?: string;
   is_retired?: boolean;
-  created_by?: string;
-  last_updated_by?: string;
 }
 
 export interface SetSong {
@@ -19,7 +17,6 @@ export interface SetSong {
   position: number;
   songId: string;
   song?: Song; // Hydrated song data
-  created_by?: string;
 }
 
 export interface Set {
@@ -27,8 +24,6 @@ export interface Set {
   name: string;
   position: number;
   songs: SetSong[];
-  created_by?: string;
-  last_updated_by?: string;
 }
 
 export interface Setlist {
@@ -38,8 +33,6 @@ export interface Setlist {
   is_default: boolean;
   created_at?: string;
   updated_at?: string;
-  created_by?: string;
-  last_updated_by?: string;
   sets: Set[];
 }
 
@@ -55,8 +48,7 @@ export interface Gig {
   city?: string;
   state?: string;
   zip?: string;
-  created_by?: string;
-  last_updated_by?: string;
+  user_id?: string;
 }
 
 export interface GigSession {
