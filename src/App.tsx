@@ -36,6 +36,7 @@ import { SyncIndicator } from "@/components/SyncIndicator";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CacheWarmer } from "@/components/CacheWarmer";
 import ScrollToTop from "@/components/ScrollToTop";
+import { ImmersiveModeProvider } from "@/context/ImmersiveModeContext";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -180,14 +181,16 @@ const App = () => {
     >
       <TooltipProvider>
         <AuthProvider>
-            <MetronomeProvider>
-                <Toaster />
-                <Sonner position="bottom-center" closeButton toastOptions={{ className: "mb-[60px] md:mb-0" }} />
-                <SyncIndicator />
-                <BrowserRouter>
-                    <AppContent />
-                </BrowserRouter>
-            </MetronomeProvider>
+            <ImmersiveModeProvider>
+                <MetronomeProvider>
+                    <Toaster />
+                    <Sonner position="bottom-center" closeButton toastOptions={{ className: "mb-[60px] md:mb-0" }} />
+                    <SyncIndicator />
+                    <BrowserRouter>
+                        <AppContent />
+                    </BrowserRouter>
+                </MetronomeProvider>
+            </ImmersiveModeProvider>
         </AuthProvider>
       </TooltipProvider>
     </PersistQueryClientProvider>

@@ -2,7 +2,6 @@ package com.kirknetllc.setlistpro;
 
 import android.os.Bundle;
 import android.view.View;
-import android.view.Window;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -14,29 +13,22 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // We initially set the app to draw edge-to-edge
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        applyFullscreen();
+        
+        // Initial immersive application. 
+        // Note: We do NOT re-apply on window focus change to allow JS to control the state via plugins.
+        applyImmersiveMode();
     }
 
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            applyFullscreen();
-        }
-    }
-
-    private void applyFullscreen() {
-        Window window = getWindow();
-        View decorView = window.getDecorView();
-
-        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, decorView);
+    private void applyImmersiveMode() {
+        View decorView = getWindow().getDecorView();
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), decorView);
         if (controller == null) return;
 
+        controller.hide(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
         controller.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         );
-
-        controller.hide(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
     }
 }

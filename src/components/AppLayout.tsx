@@ -18,8 +18,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { PendingApprovalNotifier } from "./PendingApprovalNotifier";
 import { MainMenu } from "./MainMenu";
-import { useImmersive } from "@/context/ImmersiveContext";
-import { Capacitor } from "@capacitor/core";
+import { useImmersiveMode } from "@/context/ImmersiveModeContext";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -29,8 +28,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, isAdmin } = useAuth();
-  const { isImmersive } = useImmersive();
-  const isNative = Capacitor.isNativePlatform();
+  const { isImmersive } = useImmersiveMode();
   
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -98,21 +96,35 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       }
   };
 
-  // Logic to determine if we should apply extra padding
-  // If we are native AND immersive, we do NOT want extra safe-area padding.
-  const applySafeArea = !isImmersive || !isNative;
+  // --- Styles Logic ---
+  // When immersive is TRUE, we assume system bars are hidden, so safe-area-insets are 0 or ignored.
+  // We remove the explicit padding so content flows edge-to-edge.
+  const headerClass = cn(
+      "md:hidden fixed top-0 left-0 right-0 z-40 border-b bg-background/80 backdrop-blur-md px-4 flex items-center justify-between box-border",
+      isImmersive ? "pt-0 h-[var(--app-header-h)]" : "pt-[env(safe-area-inset-top)] h-[calc(var(--app-header-h)+env(safe-area-inset-top))]"
+  );
+
+  const mainClass = cn(
+      "container mx-auto max-w-5xl p-4 md:p-8 md:pt-8",
+      isImmersive ? "pt-[calc(var(--app-header-h)+1rem)]" : "pt-[calc(var(--app-header-h)+env(safe-area-inset-top)+1rem)]"
+  );
+
+  const bottomNavClass = cn(
+      "md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t z-50",
+      isImmersive ? "pb-0" : "pb-[env(safe-area-inset-bottom)]"
+  );
+
+  const layoutContainerClass = cn(
+      "min-h-dvh bg-background text-foreground transition-all duration-300",
+      isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64",
+      // Mobile bottom padding logic
+      isImmersive 
+        ? "pb-[90px] md:pb-0" 
+        : "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0"
+  );
 
   return (
-    <div className={cn(
-        "min-h-dvh bg-background text-foreground transition-all duration-300",
-        // Bottom Padding logic:
-        // Standard: 90px (nav) + safe-area
-        // Immersive: 90px (nav) only
-        applySafeArea 
-            ? "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0" 
-            : "pb-[90px] md:pb-0",
-        isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64"
-    )}>
+    <div className={layoutContainerClass}>
       {isAdmin && <PendingApprovalNotifier />}
 
       {/* Controlled Main Menu Sheet (Triggered by Settings) */}
@@ -192,14 +204,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </aside>
 
       {/* Mobile Header */}
-      <header className={cn(
-          "md:hidden fixed top-0 left-0 right-0 z-40 border-b bg-background/80 backdrop-blur-md px-4 flex items-center justify-between box-border",
-          // Header Padding Logic
-          applySafeArea ? "pt-[env(safe-area-inset-top)]" : "pt-0",
-          applySafeArea 
-            ? "h-[calc(var(--app-header-h)+env(safe-area-inset-top))]" 
-            : "h-[var(--app-header-h)]"
-      )}>
+      <header className={headerClass}>
          <div className="flex items-center gap-2">
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Setlist Manager Pro</span>
@@ -209,13 +214,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </header>
 
       {/* Mobile Content Area */}
-      <main className={cn(
-          "container mx-auto max-w-5xl p-4 md:p-8 md:pt-8",
-          // Content Padding Logic
-          applySafeArea 
-            ? "pt-[calc(var(--app-header-h)+env(safe-area-inset-top)+1rem)]"
-            : "pt-[calc(var(--app-header-h)+1rem)]"
-      )}>
+      <main className={mainClass}>
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 10 }}
@@ -228,18 +227,11 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
       {/* Mobile Metronome - Above Nav */}
       <div className="md:hidden">
-        <MetronomeControls variant="mobile" className={cn(
-            applySafeArea 
-                ? "bottom-[calc(90px+env(safe-area-inset-bottom))]"
-                : "bottom-[90px]"
-        )} />
+        <MetronomeControls variant="mobile" className={isImmersive ? "bottom-[90px]" : "bottom-[calc(90px+env(safe-area-inset-bottom))]"} />
       </div>
 
       {/* Mobile Bottom Navigation (Floating FAB Style) */}
-      <nav className={cn(
-          "md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t z-50",
-          applySafeArea ? "pb-[env(safe-area-inset-bottom)]" : "pb-0"
-      )}>
+      <nav className={bottomNavClass}>
         <div className="flex items-end justify-between px-2 h-16 relative">
             
             {/* Left Items */}
