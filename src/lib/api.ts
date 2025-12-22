@@ -1,14 +1,13 @@
 import { supabase } from "@/integrations/supabase/client";
 import { Song, Setlist, Gig, GigSession, Set as SetType, SetSong } from "@/types";
 
-// ... existing code ...
-
 // --- Types Helper ---
 interface SupabaseSetSong {
   id: string;
   position: number;
   song_id: string;
   song: Song | null;
+  created_by: string;
 }
 
 interface SupabaseSet {
@@ -16,6 +15,7 @@ interface SupabaseSet {
   name: string;
   position: number;
   set_songs: SupabaseSetSong[];
+  created_by: string;
 }
 
 interface SupabaseSetlist extends Omit<Setlist, 'sets'> {
@@ -51,7 +51,8 @@ export const saveSong = async (song: Partial<Song>) => {
     cover_url: song.cover_url || null,
     spotify_url: song.spotify_url || null,
     is_retired: song.is_retired || false,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
+    last_updated_by: user.id
   };
 
   if (song.id) {
@@ -59,7 +60,7 @@ export const saveSong = async (song: Partial<Song>) => {
     if (error) throw error;
     return data;
   } else {
-    const { data, error } = await supabase.from('songs').insert({ ...songData, user_id: user.id }).select().single();
+    const { data, error } = await supabase.from('songs').insert({ ...songData, created_by: user.id }).select().single();
     if (error) throw error;
     return data;
   }
@@ -111,7 +112,6 @@ export const getGig = async (id: string): Promise<Gig | null> => {
 };
 
 export const saveGig = async (gig: Partial<Gig>) => {
-    // Check for active session first to prevent edits during show
     if (gig.id) {
         const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', gig.id).eq('is_active', true).maybeSingle();
         if (session) throw new Error("Cannot edit gig while a performance session is active.");
@@ -125,12 +125,12 @@ export const saveGig = async (gig: Partial<Gig>) => {
         date: gig.date,
         notes: gig.notes,
         setlist_id: gig.setlist_id,
-        user_id: user.id,
         venue_name: gig.venue_name,
         address: gig.address,
         city: gig.city,
         state: gig.state,
-        zip: gig.zip
+        zip: gig.zip,
+        last_updated_by: user.id
     };
 
     if (gig.id) {
@@ -138,14 +138,13 @@ export const saveGig = async (gig: Partial<Gig>) => {
         if (error) throw error;
         return data;
     } else {
-        const { data, error } = await supabase.from('gigs').insert(gigData).select().single();
+        const { data, error } = await supabase.from('gigs').insert({ ...gigData, created_by: user.id }).select().single();
         if (error) throw error;
         return data;
     }
 };
 
 export const deleteGig = async (id: string) => {
-    // Check for active session
     const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', id).eq('is_active', true).maybeSingle();
     if (session) throw new Error("Cannot delete gig while a performance session is active.");
 
@@ -205,13 +204,15 @@ export const getSetlists = async (): Promise<Setlist[]> => {
         id: set.id,
         name: set.name,
         position: set.position,
+        created_by: set.created_by,
         songs: set.set_songs
           .sort((a, b) => a.position - b.position)
           .map(ss => ({
             id: ss.id,
             position: ss.position,
             songId: ss.song_id,
-            song: ss.song || undefined 
+            song: ss.song || undefined,
+            created_by: ss.created_by
           }))
       }))
   }));
@@ -235,13 +236,15 @@ export const getSetlist = async (id: string): Promise<Setlist | null> => {
         id: set.id,
         name: set.name,
         position: set.position,
+        created_by: set.created_by,
         songs: set.set_songs
           .sort((a, b) => a.position - b.position)
           .map(ss => ({
             id: ss.id,
             position: ss.position,
             songId: ss.song_id,
-            song: ss.song || undefined
+            song: ss.song || undefined,
+            created_by: ss.created_by
           }))
       }))
   };
@@ -267,7 +270,8 @@ export const createSetlist = async (name: string, isPersonal: boolean = false, i
         name, 
         date: new Date().toISOString().split('T')[0], 
         is_tbd: false,
-        user_id: user.id, 
+        created_by: user.id, 
+        last_updated_by: user.id,
         is_personal: isPersonal,
         is_default: isDefault
     })
@@ -279,7 +283,6 @@ export const createSetlist = async (name: string, isPersonal: boolean = false, i
 };
 
 export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
-  // Lock Check: Is this setlist used in an active gig?
   const { data: gigsUsingSetlist } = await supabase.from('gigs').select('id').eq('setlist_id', id);
   if (gigsUsingSetlist && gigsUsingSetlist.length > 0) {
       const gigIds = gigsUsingSetlist.map(g => g.id);
@@ -291,9 +294,15 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
        await supabase.from('setlists').update({ is_default: false }).eq('is_default', true);
   }
 
+  const payload = {
+      ...updates,
+      last_updated_by: (await supabase.auth.getUser()).data.user?.id,
+      updated_at: new Date().toISOString()
+  };
+
   const { data, error } = await supabase
     .from('setlists')
-    .update(updates)
+    .update(payload)
     .eq('id', id)
     .select()
     .single();
@@ -302,31 +311,30 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
   return data;
 };
 
-// Robust Diff-based Sync
 export const syncSetlist = async (setlist: Setlist) => {
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) throw new Error("No user");
 
-    // 1. Update Setlist Name
-    await updateSetlist(setlist.id, { name: setlist.name });
+    await supabase.from('setlists').update({ 
+        name: setlist.name, 
+        last_updated_by: user.id,
+        updated_at: new Date().toISOString()
+    }).eq('id', setlist.id);
 
-    // 2. Fetch current DB state for Sets
     const { data: dbSets } = await supabase.from('sets').select('id').eq('setlist_id', setlist.id);
-    const dbSetIds = new Set(dbSets?.map(s => s.id) || []);
+    const existingSetIds = new Set(dbSets?.map(s => s.id) || []);
     const incomingSetIds = new Set(setlist.sets.filter(s => !s.id.startsWith('temp-')).map(s => s.id));
-
-    // 3. Delete Removed Sets
-    const setsToDelete = [...dbSetIds].filter(id => !incomingSetIds.has(id));
+    
+    const setsToDelete = [...existingSetIds].filter(id => !incomingSetIds.has(id));
     if (setsToDelete.length > 0) {
-        const { error } = await supabase.from('sets').delete().in('id', setsToDelete);
-        if (error) throw error;
+        await supabase.from('sets').delete().in('id', setsToDelete);
     }
 
-    // 4. Upsert Sets
+    const tempSetIdMap: Record<string, string> = {};
+
     for (const set of setlist.sets) {
         let setId = set.id;
         
-        // Handle Set Creation
         if (setId.startsWith('temp-')) {
             const { data: newSet, error } = await supabase
                 .from('sets')
@@ -334,34 +342,32 @@ export const syncSetlist = async (setlist: Setlist) => {
                     setlist_id: setlist.id, 
                     name: set.name, 
                     position: set.position, 
-                    user_id: user.id 
+                    created_by: user.id,
+                    last_updated_by: user.id
                 })
                 .select('id')
                 .single();
             if (error) throw error;
             setId = newSet.id;
+            tempSetIdMap[set.id] = setId;
         } else {
-            // Handle Set Update
             const { error } = await supabase
                 .from('sets')
-                .update({ name: set.name, position: set.position })
+                .update({ name: set.name, position: set.position, last_updated_by: user.id })
                 .eq('id', setId);
             if (error) throw error;
         }
 
-        // 5. Sync Set Songs (Nested)
         const { data: dbSongs } = await supabase.from('set_songs').select('id').eq('set_id', setId);
         const dbSongIds = new Set(dbSongs?.map(s => s.id) || []);
         const incomingSongIds = new Set(set.songs.filter(s => !s.id.startsWith('temp-')).map(s => s.id));
 
-        // Delete Removed Songs from Set
         const songsToDelete = [...dbSongIds].filter(id => !incomingSongIds.has(id));
         if (songsToDelete.length > 0) {
             const { error } = await supabase.from('set_songs').delete().in('id', songsToDelete);
             if (error) throw error;
         }
 
-        // Prepare Changes
         const songsToInsert: any[] = [];
         const songsToUpdate: any[] = [];
 
@@ -371,26 +377,22 @@ export const syncSetlist = async (setlist: Setlist) => {
                     set_id: setId,
                     song_id: song.songId,
                     position: song.position,
-                    user_id: user.id
+                    created_by: user.id
                 });
             } else {
                 songsToUpdate.push({
                     id: song.id,
-                    set_id: setId, // In case moved from another set
+                    set_id: setId, 
                     position: song.position
                 });
             }
         });
 
-        // Execute Batch Operations
         if (songsToInsert.length > 0) {
             const { error } = await supabase.from('set_songs').insert(songsToInsert);
             if (error) throw error;
         }
 
-        // Updates must be done per row or using upsert if we trust it doesn't violate something.
-        // To be safe against "null id" errors, we iterate or use upsert CAREFULLY.
-        // Since these are existing IDs, Upsert is safe IF we provide ID.
         if (songsToUpdate.length > 0) {
             const { error } = await supabase.from('set_songs').upsert(songsToUpdate);
             if (error) throw error;
@@ -410,7 +412,7 @@ export const cloneSetlist = async (sourceId: string, newName: string, isPersonal
   const { data, error } = await supabase.rpc('clone_setlist', {
     source_setlist_id: sourceId,
     new_name: newName,
-    new_date: new Date().toISOString().split('T')[0], // Dummy
+    new_date: new Date().toISOString().split('T')[0],
     is_personal_copy: isPersonal,
     owner_id: user.id
   });
@@ -424,25 +426,19 @@ export const deleteSetlist = async (id: string) => {
   if (error) throw error;
 };
 
-// --- Set Operations (Legacy / Single Action) ---
-// These are kept for compatibility if needed, but SetlistDetail will mostly use syncSetlist now.
-
 export const createSet = async (setlistId: string, name: string, position: number) => {
-  const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', setlistId);
-  if (gigs && gigs.length > 0) {
-      const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).eq('is_active', true).maybeSingle();
-      if (session) throw new Error("Cannot modify sets during active performance.");
-  }
-
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
 
-  const { data: parent } = await supabase.from('setlists').select('user_id').eq('id', setlistId).single();
-  const ownerId = parent ? parent.user_id : user.id;
-
   const { data, error } = await supabase
     .from('sets')
-    .insert({ setlist_id: setlistId, name, position, user_id: ownerId })
+    .insert({ 
+        setlist_id: setlistId, 
+        name, 
+        position, 
+        created_by: user.id, 
+        last_updated_by: user.id 
+    })
     .select()
     .single();
   if (error) throw error;
@@ -473,26 +469,14 @@ export const deleteSet = async (setId: string, setlistId: string) => {
 };
 
 export const addSongsToSet = async (setId: string, songIds: string[], startPosition: number) => {
-  const { data: set } = await supabase.from('sets').select('setlist_id').eq('id', setId).single();
-  if (set) {
-      const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', set.setlist_id);
-      if (gigs && gigs.length > 0) {
-          const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).eq('is_active', true).maybeSingle();
-          if (session) throw new Error("Cannot add songs during active performance.");
-      }
-  }
-
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("No user");
-
-  const { data: parent } = await supabase.from('sets').select('user_id').eq('id', setId).single();
-  const ownerId = parent ? parent.user_id : user.id;
 
   const rows = songIds.map((songId, index) => ({
     set_id: setId,
     song_id: songId,
     position: startPosition + index,
-    user_id: ownerId
+    created_by: user.id
   }));
 
   const { data, error } = await supabase.from('set_songs').insert(rows).select();
@@ -519,16 +503,12 @@ export const moveSetSongToSet = async (setSongId: string, targetSetId: string, p
 // --- Gig Sessions (Realtime) ---
 
 export const getGigSession = async (gigId: string): Promise<GigSession | null> => {
-    // Return session regardless of is_active status to handle rejoining ended ones if needed, 
-    // but typically we filter for active.
-    // Modified: Check for ANY session. If inactive/ended, the UI/logic handles it.
     const { data, error } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId).maybeSingle();
     if (error && error.code !== 'PGRST116') throw error;
     return data;
 };
 
 export const getAllGigSessions = async () => {
-    // Explicitly select columns to ensure proper relation mapping
     const { data, error } = await supabase
         .from('gig_sessions')
         .select(`
@@ -547,17 +527,13 @@ export const getAllGigSessions = async () => {
 };
 
 export const createGigSession = async (gigId: string, leaderId: string): Promise<GigSession> => {
-    // 1. Check for existing session (Active or Inactive)
-    // Use .select() without maybeSingle to handle potential duplicates cleanly if unique constraint failed previously
     const { data: existing } = await supabase.from('gig_sessions').select('*').eq('gig_id', gigId);
     
     if (existing && existing.length > 0) {
-        // Filter out any that are active
         const active = existing.find(s => s.is_active);
         if (active) {
              throw new Error("Active session already exists");
         } else {
-            // Delete ALL inactive/stale sessions for this gig to clean up
             const idsToDelete = existing.map(s => s.id);
             await supabase.from('gig_sessions').delete().in('id', idsToDelete);
         }
@@ -585,7 +561,6 @@ export const cleanupStaleSessions = async () => {
 };
 
 export const joinGigSession = async (sessionId: string, userId: string) => {
-    // Upsert to handle re-joins
     const { error } = await supabase.from('gig_session_participants')
         .upsert({ session_id: sessionId, user_id: userId, last_seen: new Date().toISOString() }, { onConflict: 'session_id,user_id' });
     if (error) throw error;
@@ -600,13 +575,11 @@ export const leaveGigSession = async (sessionId: string, userId: string) => {
 };
 
 export const sendHeartbeat = async (sessionId: string, userId: string, isLeader: boolean) => {
-    // Update participant
     await supabase.from('gig_session_participants')
         .update({ last_seen: new Date().toISOString() })
         .eq('session_id', sessionId)
         .eq('user_id', userId);
 
-    // If leader, update session heartbeat
     if (isLeader) {
         await supabase.from('gig_sessions')
             .update({ last_heartbeat: new Date().toISOString() })

@@ -45,10 +45,19 @@ serve(async (req) => {
             break;
 
         case 'delete_user_auth':
+            // Changed to SOFT DELETE logic: Ban user instead of deleting.
             if (!userId) throw new Error("User ID is required");
-            const { error: delError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-            if (delError) throw delError;
-            message = `Deleted user ${userId} from Auth`;
+            
+            // 1. Mark profile as inactive
+            await supabaseAdmin.from('profiles').update({ is_active: false }).eq('id', userId);
+            
+            // 2. Ban in Auth (Revoke sessions and block login)
+            const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+                ban_duration: "876000h" // ~100 years
+            });
+            
+            if (banError) throw banError;
+            message = `Deactivated and banned user ${userId}`;
             break;
 
         case 'admin_reset_password':
