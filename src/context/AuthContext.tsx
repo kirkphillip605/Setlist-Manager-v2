@@ -58,22 +58,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const handleSignOut = async () => {
     setAuthLoading(true);
+    
+    // Clean up local state immediately to prevent UI loops
+    queryClient.removeQueries();
+    queryClient.clear();
+    setSession(null);
+    
     try {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
+        await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
     } catch (e) {
-        console.error("Sign out error, forcing cleanup", e);
-    } finally {
-        queryClient.removeQueries();
-        queryClient.clear();
-        
-        try {
-            await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
-        } catch (e) {
-            console.warn("Failed to clear offline cache", e);
-        }
+        console.warn("Failed to clear offline cache", e);
+    }
 
-        setSession(null);
+    // Attempt Supabase SignOut with Timeout
+    // This prevents hanging if offline
+    try {
+        const signOutPromise = supabase.auth.signOut();
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Sign out timed out")), 3000)
+        );
+        
+        await Promise.race([signOutPromise, timeoutPromise]);
+    } catch (e) {
+        console.error("Sign out error or timeout (likely offline), forcing local cleanup", e);
+        // Force clear local storage just in case Supabase client didn't finish
+        localStorage.removeItem('sb-gnrornithoqdrqfxuuhq-auth-token'); 
+    } finally {
         setAuthLoading(false);
     }
   };
@@ -128,6 +138,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [queryClient, checkSession]);
 
+  // Handle Offline Profile Fetching
   const { data: profile, isLoading: profileLoading, refetch } = useQuery({
     queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
@@ -152,6 +163,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     retry: 1,
   });
 
+  // Derived loading state
+  // If we have a session but profile is loading, we are loading
+  // UNLESS profile failed to load (offline), in which case we shouldn't block indefinitely?
+  // But ProtectedRoute handles profile == null check.
   const isLoading = authLoading || (!!session && profileLoading && !profile);
 
   const value = {
