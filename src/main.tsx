@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ImmersiveProvider } from "@/context/ImmersiveContext";
 import "./globals.css";
 import * as Sentry from "@sentry/react";
 
@@ -24,6 +25,8 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 
 createRoot(document.getElementById("root")!).render(
   <ThemeProvider defaultTheme="system" storageKey="bandmate-theme">
-    <App />
+    <ImmersiveProvider>
+      <App />
+    </ImmersiveProvider>
   </ThemeProvider>
 );

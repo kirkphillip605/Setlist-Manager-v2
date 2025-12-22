@@ -18,6 +18,8 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { PendingApprovalNotifier } from "./PendingApprovalNotifier";
 import { MainMenu } from "./MainMenu";
+import { useImmersive } from "@/context/ImmersiveContext";
+import { Capacitor } from "@capacitor/core";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -27,6 +29,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, isAdmin } = useAuth();
+  const { isImmersive } = useImmersive();
+  const isNative = Capacitor.isNativePlatform();
   
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -94,10 +98,19 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       }
   };
 
+  // Logic to determine if we should apply extra padding
+  // If we are native AND immersive, we do NOT want extra safe-area padding.
+  const applySafeArea = !isImmersive || !isNative;
+
   return (
     <div className={cn(
         "min-h-dvh bg-background text-foreground transition-all duration-300",
-        "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0", // Increased bottom padding for floating FAB
+        // Bottom Padding logic:
+        // Standard: 90px (nav) + safe-area
+        // Immersive: 90px (nav) only
+        applySafeArea 
+            ? "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0" 
+            : "pb-[90px] md:pb-0",
         isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64"
     )}>
       {isAdmin && <PendingApprovalNotifier />}
@@ -179,7 +192,14 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </aside>
 
       {/* Mobile Header */}
-      <header className={cn("md:hidden fixed top-0 left-0 right-0 z-40 border-b bg-background/80 backdrop-blur-md px-4 flex items-center justify-between box-border","pt-[env(safe-area-inset-top)]","h-[calc(var(--app-header-h)+env(safe-area-inset-top))]")}>
+      <header className={cn(
+          "md:hidden fixed top-0 left-0 right-0 z-40 border-b bg-background/80 backdrop-blur-md px-4 flex items-center justify-between box-border",
+          // Header Padding Logic
+          applySafeArea ? "pt-[env(safe-area-inset-top)]" : "pt-0",
+          applySafeArea 
+            ? "h-[calc(var(--app-header-h)+env(safe-area-inset-top))]" 
+            : "h-[var(--app-header-h)]"
+      )}>
          <div className="flex items-center gap-2">
             <img src={iconPath} alt="Icon" className="w-6 h-6" />
             <span className="font-bold text-sm">Setlist Manager Pro</span>
@@ -189,7 +209,13 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </header>
 
       {/* Mobile Content Area */}
-      <main className={cn("container mx-auto max-w-5xl p-4 md:p-8 md:pt-8","pt-[calc(var(--app-header-h)+env(safe-area-inset-top)+1rem)]")}>
+      <main className={cn(
+          "container mx-auto max-w-5xl p-4 md:p-8 md:pt-8",
+          // Content Padding Logic
+          applySafeArea 
+            ? "pt-[calc(var(--app-header-h)+env(safe-area-inset-top)+1rem)]"
+            : "pt-[calc(var(--app-header-h)+1rem)]"
+      )}>
         <motion.div
           key={location.pathname}
           initial={{ opacity: 0, y: 10 }}
@@ -202,11 +228,18 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
       {/* Mobile Metronome - Above Nav */}
       <div className="md:hidden">
-        <MetronomeControls variant="mobile" className="bottom-[calc(90px+env(safe-area-inset-bottom))]" />
+        <MetronomeControls variant="mobile" className={cn(
+            applySafeArea 
+                ? "bottom-[calc(90px+env(safe-area-inset-bottom))]"
+                : "bottom-[90px]"
+        )} />
       </div>
 
       {/* Mobile Bottom Navigation (Floating FAB Style) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t z-50 pb-[env(safe-area-inset-bottom)]">
+      <nav className={cn(
+          "md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t z-50",
+          applySafeArea ? "pb-[env(safe-area-inset-bottom)]" : "pb-0"
+      )}>
         <div className="flex items-end justify-between px-2 h-16 relative">
             
             {/* Left Items */}

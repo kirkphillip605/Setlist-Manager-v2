@@ -4,7 +4,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { 
   Menu, Settings, Shield, User, LogOut, Moon, Sun, 
-  Cloud, RefreshCw, CheckCircle2, CloudOff, Radio 
+  Cloud, RefreshCw, CheckCircle2, CloudOff, Radio, Minimize, Maximize
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -19,6 +19,8 @@ import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useImmersive } from "@/context/ImmersiveContext";
+import { Capacitor } from "@capacitor/core";
 
 interface MainMenuProps {
     open?: boolean;
@@ -32,6 +34,8 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
   const { setTheme, theme } = useTheme();
   const { isSyncing, lastSyncedAt, refreshAll } = useSyncStatus();
   const isOnline = useNetworkStatus();
+  const { isImmersive, toggleImmersive } = useImmersive();
+  const isNative = Capacitor.isNativePlatform();
   
   const [internalOpen, setInternalOpen] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -120,6 +124,14 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
                           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                           {theme === 'dark' ? "Light Mode" : "Dark Mode"}
                       </Button>
+                      
+                      {isNative && (
+                          <Button variant="ghost" className="w-full justify-start gap-3" onClick={toggleImmersive}>
+                              {isImmersive ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+                              {isImmersive ? "Exit Fullscreen" : "Fullscreen Mode"}
+                          </Button>
+                      )}
+
                       <Button variant="ghost" className="w-full justify-start gap-3" disabled>
                           <Settings className="h-4 w-4" />
                           Preferences (Coming Soon)
