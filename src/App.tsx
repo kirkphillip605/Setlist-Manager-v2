@@ -37,6 +37,8 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CacheWarmer } from "@/components/CacheWarmer";
 import ScrollToTop from "@/components/ScrollToTop";
 import { ImmersiveModeProvider } from "@/context/ImmersiveModeContext";
+import { useAppStatus } from "@/hooks/useAppStatus";
+import { SystemStatusScreen } from "@/components/SystemStatusScreen";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -172,6 +174,30 @@ const AppContent = () => {
     );
 }
 
+// Wrapper component to handle System Status logic at the top level
+const AppStatusWrapper = () => {
+    const { isMaintenance, isUpdateRequired, statusData, loading } = useAppStatus();
+
+    if (loading) {
+        // Optional: Show splash or nothing while checking status
+        return null;
+    }
+
+    if (isUpdateRequired) {
+        return <SystemStatusScreen status={statusData} mode="update" />;
+    }
+
+    if (isMaintenance) {
+        return <SystemStatusScreen status={statusData} mode="maintenance" />;
+    }
+
+    return (
+        <BrowserRouter>
+            <AppContent />
+        </BrowserRouter>
+    );
+}
+
 const App = () => {
   return (
     <PersistQueryClientProvider 
@@ -186,9 +212,7 @@ const App = () => {
                     <Toaster />
                     <Sonner position="bottom-center" closeButton toastOptions={{ className: "mb-[60px] md:mb-0" }} />
                     <SyncIndicator />
-                    <BrowserRouter>
-                        <AppContent />
-                    </BrowserRouter>
+                    <AppStatusWrapper />
                 </MetronomeProvider>
             </ImmersiveModeProvider>
         </AuthProvider>
