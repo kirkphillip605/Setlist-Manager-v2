@@ -57,7 +57,7 @@ export function useNetworkStatus() {
                 updateStatus(false);
             } else {
                 // Capacitor says connected, check Realtime
-                const state = supabase.realtime.connectionState;
+                const state = supabase.realtime.connectionState();
                 // 'open' means connected. 'connecting' is ambiguous. 'closed' is offline.
                 // We don't want to flap too much, but if it's closed while network is up, assume issues.
                 if (state === 'closed') {
