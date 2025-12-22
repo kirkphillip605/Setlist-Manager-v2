@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, User, Lock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const POSITIONS = [
   "Lead Vocals", "Lead Guitar", "Rhythm Guitar", "Bass Guitar", 
@@ -134,6 +135,7 @@ const OnboardingWizard = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-y-auto">
+      <LoadingDialog open={loading} message={step === 1 ? "Saving profile..." : "Setting password..."} />
       <Card className="w-full max-w-md border-border shadow-lg my-auto">
         
         {step === 1 && (

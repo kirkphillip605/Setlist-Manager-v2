@@ -1,14 +1,13 @@
 import AppLayout from "@/components/AppLayout";
-import { Loader2, CloudOff, Save, Undo, Plus, Star, Clock, MoreVertical, Trash2 } from "lucide-react";
+import { Loader2, CloudOff, Save, Undo, Plus, Star, Clock, Trash2 } from "lucide-react";
 import { syncSetlist } from "@/lib/api";
 import { parseDurationToSeconds, formatDurationRounded } from "@/lib/utils";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useImmer } from "use-immer";
 
@@ -18,13 +17,13 @@ import { AddSongDialog } from "@/components/AddSongDialog";
 import { useSetlistWithSongs, useSyncedSongs } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Setlist, Set as SetType, SetSong } from "@/types";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 // Helper to deep clone setlist for state
 const cloneSetlistData = (data: Setlist): Setlist => JSON.parse(JSON.stringify(data));
 
 const SetlistDetail = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isOnline = useNetworkStatus();
   
@@ -66,10 +65,9 @@ const SetlistDetail = () => {
               const element = document.getElementById(`set-${scrollToSetId}`);
               if (element) {
                   element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  // Highlight effect or focus could go here if needed
               }
               setScrollToSetId(null);
-          }, 100); // Small delay to allow render
+          }, 100); 
           return () => clearTimeout(timer);
       }
   }, [scrollToSetId]);
@@ -355,6 +353,7 @@ const SetlistDetail = () => {
 
   return (
     <AppLayout>
+      <LoadingDialog open={saveMutation.isPending} message="Saving setlist..." />
       <div className="space-y-6 pb-20 relative">
         {!isOnline && (
              <div className="bg-muted px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -402,10 +401,10 @@ const SetlistDetail = () => {
 
                 {isDirty && (
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end animate-in fade-in slide-in-from-right-4">
-                        <Button variant="outline" size="sm" onClick={handleUndo} disabled={history.length === 0}>
+                        <Button variant="outline" size="sm" onClick={handleUndo} disabled={history.length === 0 || saveMutation.isPending}>
                             <Undo className="h-4 w-4 mr-2" /> Undo
                         </Button>
-                        <Button variant="destructive" size="sm" onClick={() => setShowDiscardConfirm(true)}>
+                        <Button variant="destructive" size="sm" onClick={() => setShowDiscardConfirm(true)} disabled={saveMutation.isPending}>
                             <Trash2 className="h-4 w-4 mr-2" /> Discard
                         </Button>
                         <Button 
@@ -522,15 +521,6 @@ const SetlistDetail = () => {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
-
-        {/* Saving Modal */}
-        <Dialog open={saveMutation.isPending} onOpenChange={() => {}}>
-            <DialogContent className="sm:max-w-[300px] flex flex-col items-center justify-center py-10 outline-none" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
-                <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
-                <h3 className="text-lg font-semibold">Saving Changes...</h3>
-                <p className="text-sm text-muted-foreground">Syncing your setlist to the cloud.</p>
-            </DialogContent>
-        </Dialog>
       </div>
     </AppLayout>
   );

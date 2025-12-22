@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { storageAdapter } from "@/lib/storageAdapter";
 import { useTheme } from "@/components/theme-provider";
+import { LoadingDialog } from "@/components/LoadingDialog";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -148,6 +149,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-y-auto">
+      <LoadingDialog open={loading} message="Authenticating..." />
       <Card className="w-full max-w-md border-border shadow-lg my-auto">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-2">
@@ -227,7 +229,6 @@ const Login = () => {
                 </div>
 
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Sign In
                 </Button>
               </form>
@@ -260,7 +261,6 @@ const Login = () => {
                 </div>
 
                 <Button type="submit" className="w-full" disabled={loading}>
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Sign Up
                 </Button>
               </form>
