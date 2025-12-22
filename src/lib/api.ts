@@ -302,102 +302,99 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
   return data;
 };
 
-// Optimized Batch Sync
+// Robust Diff-based Sync
 export const syncSetlist = async (setlist: Setlist) => {
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) throw new Error("No user");
 
-    // 1. Update Metadata
-    await supabase.from('setlists').update({ name: setlist.name }).eq('id', setlist.id);
+    // 1. Update Setlist Name
+    await updateSetlist(setlist.id, { name: setlist.name });
 
-    // 2. Sync Sets
-    // Get existing to determine deletes
+    // 2. Fetch current DB state for Sets
     const { data: dbSets } = await supabase.from('sets').select('id').eq('setlist_id', setlist.id);
-    const existingSetIds = new Set(dbSets?.map(s => s.id) || []);
+    const dbSetIds = new Set(dbSets?.map(s => s.id) || []);
     const incomingSetIds = new Set(setlist.sets.filter(s => !s.id.startsWith('temp-')).map(s => s.id));
-    
-    // Delete Sets
-    const setsToDelete = [...existingSetIds].filter(id => !incomingSetIds.has(id));
+
+    // 3. Delete Removed Sets
+    const setsToDelete = [...dbSetIds].filter(id => !incomingSetIds.has(id));
     if (setsToDelete.length > 0) {
-        await supabase.from('sets').delete().in('id', setsToDelete);
-    }
-
-    // Upsert Sets (Create & Update)
-    // We split into Updates (Upsert by ID) and Inserts (Create and map temp ID to real ID)
-    const setsToUpdate = setlist.sets
-        .filter(s => !s.id.startsWith('temp-'))
-        .map(s => ({
-            id: s.id,
-            name: s.name,
-            position: s.position,
-            setlist_id: setlist.id,
-            user_id: user.id
-        }));
-    
-    if (setsToUpdate.length > 0) {
-        const { error } = await supabase.from('sets').upsert(setsToUpdate);
+        const { error } = await supabase.from('sets').delete().in('id', setsToDelete);
         if (error) throw error;
     }
 
-    // Handle Inserts one by one to capture ID map (needed for songs)
-    const setsToInsert = setlist.sets.filter(s => s.id.startsWith('temp-'));
-    const tempSetIdMap: Record<string, string> = {};
-
-    for (const set of setsToInsert) {
-        const { data, error } = await supabase.from('sets').insert({
-            name: set.name,
-            position: set.position,
-            setlist_id: setlist.id,
-            user_id: user.id
-        }).select('id').single();
+    // 4. Upsert Sets
+    for (const set of setlist.sets) {
+        let setId = set.id;
         
-        if (error) throw error;
-        tempSetIdMap[set.id] = data.id;
-    }
+        // Handle Set Creation
+        if (setId.startsWith('temp-')) {
+            const { data: newSet, error } = await supabase
+                .from('sets')
+                .insert({ 
+                    setlist_id: setlist.id, 
+                    name: set.name, 
+                    position: set.position, 
+                    user_id: user.id 
+                })
+                .select('id')
+                .single();
+            if (error) throw error;
+            setId = newSet.id;
+        } else {
+            // Handle Set Update
+            const { error } = await supabase
+                .from('sets')
+                .update({ name: set.name, position: set.position })
+                .eq('id', setId);
+            if (error) throw error;
+        }
 
-    // 3. Sync Songs
-    // We need to gather ALL valid Set IDs now (Existing + Newly Created)
-    const validSetIds = [
-        ...setsToUpdate.map(s => s.id),
-        ...Object.values(tempSetIdMap)
-    ];
+        // 5. Sync Set Songs (Nested)
+        const { data: dbSongs } = await supabase.from('set_songs').select('id').eq('set_id', setId);
+        const dbSongIds = new Set(dbSongs?.map(s => s.id) || []);
+        const incomingSongIds = new Set(set.songs.filter(s => !s.id.startsWith('temp-')).map(s => s.id));
 
-    // Delete removed songs (Any song in these sets that isn't in our new list)
-    // To do this efficiently, we fetch all set_songs for these sets, then diff
-    const { data: dbSongs } = await supabase.from('set_songs').select('id').in('set_id', validSetIds);
-    const existingSongIds = new Set(dbSongs?.map(s => s.id) || []);
-    
-    const incomingSongIds = new Set();
-    const songsToUpsert: any[] = [];
+        // Delete Removed Songs from Set
+        const songsToDelete = [...dbSongIds].filter(id => !incomingSongIds.has(id));
+        if (songsToDelete.length > 0) {
+            const { error } = await supabase.from('set_songs').delete().in('id', songsToDelete);
+            if (error) throw error;
+        }
 
-    // Build Upsert Payload
-    setlist.sets.forEach(set => {
-        const realSetId = set.id.startsWith('temp-') ? tempSetIdMap[set.id] : set.id;
-        
+        // Prepare Changes
+        const songsToInsert: any[] = [];
+        const songsToUpdate: any[] = [];
+
         set.songs.forEach(song => {
-            if (!song.id.startsWith('temp-')) {
-                incomingSongIds.add(song.id);
+            if (song.id.startsWith('temp-')) {
+                songsToInsert.push({
+                    set_id: setId,
+                    song_id: song.songId,
+                    position: song.position,
+                    user_id: user.id
+                });
+            } else {
+                songsToUpdate.push({
+                    id: song.id,
+                    set_id: setId, // In case moved from another set
+                    position: song.position
+                });
             }
-
-            songsToUpsert.push({
-                // Omit ID if it's temp, so DB generates it
-                id: song.id.startsWith('temp-') ? undefined : song.id, 
-                set_id: realSetId,
-                song_id: song.songId,
-                position: song.position,
-                user_id: user.id
-            });
         });
-    });
 
-    const songsToDelete = [...existingSongIds].filter(id => !incomingSongIds.has(id));
-    if (songsToDelete.length > 0) {
-        await supabase.from('set_songs').delete().in('id', songsToDelete);
-    }
+        // Execute Batch Operations
+        if (songsToInsert.length > 0) {
+            const { error } = await supabase.from('set_songs').insert(songsToInsert);
+            if (error) throw error;
+        }
 
-    if (songsToUpsert.length > 0) {
-        const { error } = await supabase.from('set_songs').upsert(songsToUpsert);
-        if (error) throw error;
+        // Updates must be done per row or using upsert if we trust it doesn't violate something.
+        // To be safe against "null id" errors, we iterate or use upsert CAREFULLY.
+        // Since these are existing IDs, Upsert is safe IF we provide ID.
+        if (songsToUpdate.length > 0) {
+            const { error } = await supabase.from('set_songs').upsert(songsToUpdate);
+            if (error) throw error;
+        }
     }
 };
 
