@@ -35,8 +35,7 @@ export const getSong = async (id: string): Promise<Song | null> => {
 };
 
 export const saveSong = async (song: Partial<Song>) => {
-  // Auth check handled by RLS, but triggers need auth context
-  // created_by is handled by trigger on insert if omitted
+  const { data: { user } } = await supabase.auth.getUser();
   
   const songData = {
     title: song.title,
@@ -49,7 +48,8 @@ export const saveSong = async (song: Partial<Song>) => {
     cover_url: song.cover_url || null,
     spotify_url: song.spotify_url || null,
     is_retired: song.is_retired || false,
-    // updated_at handled by trigger
+    // Explicitly set created_by if new, though trigger handles it
+    ...(song.id ? {} : { created_by: user?.id })
   };
 
   if (song.id) {
@@ -109,6 +109,8 @@ export const getGig = async (id: string): Promise<Gig | null> => {
 };
 
 export const saveGig = async (gig: Partial<Gig>) => {
+    const { data: { user } } = await supabase.auth.getUser();
+
     if (gig.id) {
         const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', gig.id).eq('is_active', true).maybeSingle();
         if (session) throw new Error("Cannot edit gig while a performance session is active.");
@@ -119,12 +121,12 @@ export const saveGig = async (gig: Partial<Gig>) => {
         date: gig.date,
         notes: gig.notes,
         setlist_id: gig.setlist_id,
-        // created_by handled by trigger on insert
         venue_name: gig.venue_name,
         address: gig.address,
         city: gig.city,
         state: gig.state,
-        zip: gig.zip
+        zip: gig.zip,
+        ...(gig.id ? {} : { created_by: user?.id })
     };
 
     if (gig.id) {
@@ -198,6 +200,7 @@ export const getSetlists = async (): Promise<Setlist[]> => {
         id: set.id,
         name: set.name,
         position: set.position,
+        created_by: undefined, // Not needed in UI usually
         songs: set.set_songs
           .sort((a, b) => a.position - b.position)
           .map(ss => ({
@@ -247,6 +250,8 @@ export const getSetlistUsage = async (setlistId: string): Promise<Gig[]> => {
 };
 
 export const createSetlist = async (name: string, isPersonal: boolean = false, isDefault: boolean = false) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
   if (isDefault) {
       await supabase.from('setlists').update({ is_default: false }).eq('is_default', true);
   }
@@ -257,7 +262,7 @@ export const createSetlist = async (name: string, isPersonal: boolean = false, i
         name, 
         date: new Date().toISOString().split('T')[0], 
         is_tbd: false,
-        // created_by handled by trigger
+        created_by: user?.id,
         is_personal: isPersonal,
         is_default: isDefault
     })
@@ -293,6 +298,8 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
 
 // Robust Diff-based Sync
 export const syncSetlist = async (setlist: Setlist) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
     // 1. Update Metadata
     await supabase.from('setlists').update({ name: setlist.name }).eq('id', setlist.id);
 
@@ -307,14 +314,14 @@ export const syncSetlist = async (setlist: Setlist) => {
         await supabase.from('sets').delete().in('id', setsToDelete);
     }
 
-    // Update Existing Sets
+    // Update Existing Sets (Must include setlist_id for upsert safety)
     const setsToUpdate = setlist.sets
         .filter(s => !s.id.startsWith('temp-'))
         .map(s => ({
             id: s.id,
             name: s.name,
             position: s.position,
-            // setlist_id & created_by are immutable or handled
+            setlist_id: setlist.id 
         }));
     
     if (setsToUpdate.length > 0) {
@@ -330,8 +337,8 @@ export const syncSetlist = async (setlist: Setlist) => {
         const { data, error } = await supabase.from('sets').insert({
             name: set.name,
             position: set.position,
-            setlist_id: setlist.id
-            // created_by handled by trigger
+            setlist_id: setlist.id,
+            created_by: user?.id
         }).select('id').single();
         
         if (error) throw error;
@@ -366,8 +373,8 @@ export const syncSetlist = async (setlist: Setlist) => {
                 id: song.id.startsWith('temp-') ? undefined : song.id, 
                 set_id: realSetId,
                 song_id: song.songId,
-                position: song.position
-                // created_by handled by trigger if insert
+                position: song.position,
+                created_by: user?.id // Only used if INSERT
             });
         });
     });
@@ -414,6 +421,8 @@ export const deleteSetlist = async (id: string) => {
 // --- Legacy Set Operations ---
 
 export const createSet = async (setlistId: string, name: string, position: number) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
   const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', setlistId);
   if (gigs && gigs.length > 0) {
       const { data: session } = await supabase.from('gig_sessions').select('id').in('gig_id', gigs.map(g => g.id)).eq('is_active', true).maybeSingle();
@@ -422,7 +431,7 @@ export const createSet = async (setlistId: string, name: string, position: numbe
 
   const { data, error } = await supabase
     .from('sets')
-    .insert({ setlist_id: setlistId, name, position })
+    .insert({ setlist_id: setlistId, name, position, created_by: user?.id })
     .select()
     .single();
   if (error) throw error;
@@ -453,6 +462,8 @@ export const deleteSet = async (setId: string, setlistId: string) => {
 };
 
 export const addSongsToSet = async (setId: string, songIds: string[], startPosition: number) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
   const { data: set } = await supabase.from('sets').select('setlist_id').eq('id', setId).single();
   if (set) {
       const { data: gigs } = await supabase.from('gigs').select('id').eq('setlist_id', set.setlist_id);
@@ -465,7 +476,8 @@ export const addSongsToSet = async (setId: string, songIds: string[], startPosit
   const rows = songIds.map((songId, index) => ({
     set_id: setId,
     song_id: songId,
-    position: startPosition + index
+    position: startPosition + index,
+    created_by: user?.id
   }));
 
   const { data, error } = await supabase.from('set_songs').insert(rows).select();
