@@ -24,5 +24,11 @@ export function formatSecondsToDuration(totalSeconds: number): string {
   if (hours > 0) {
     return `${hours} hr ${minutes} min`;
   }
-  return `${minutes} min ${seconds} sec`;
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+export function formatDurationRounded(totalSeconds: number): string {
+  if (totalSeconds <= 0) return "0m";
+  const minutes = Math.ceil(totalSeconds / 60);
+  return `${minutes}m`;
 }

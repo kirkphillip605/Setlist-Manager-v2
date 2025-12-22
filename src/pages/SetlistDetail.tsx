@@ -1,15 +1,19 @@
 import AppLayout from "@/components/AppLayout";
-import { Loader2, CloudOff, Save, Undo, Plus, Star } from "lucide-react";
+import { Loader2, CloudOff, Save, Undo, Plus, Star, Clock } from "lucide-react";
 import { 
   updateSetlist, syncSetlist
 } from "@/lib/api";
-import { parseDurationToSeconds } from "@/lib/utils";
+import { parseDurationToSeconds, formatDurationRounded } from "@/lib/utils";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useBlocker } from "react-router-dom";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { 
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 import { SetlistHeader } from "@/components/SetlistHeader";
 import { SetCard } from "@/components/SetCard";
@@ -36,6 +40,7 @@ const SetlistDetail = () => {
   const [history, setHistory] = useState<Setlist[]>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [collapsedSets, setCollapsedSets] = useState<Record<string, boolean>>({});
 
   // -- UI State --
   const [isAddSongOpen, setIsAddSongOpen] = useState(false);
@@ -53,8 +58,6 @@ const SetlistDetail = () => {
   }, [fetchedSetlist, initialized]);
 
   // -- Navigation Blocking --
-  // Use a custom blocker if supported, or manual interception for now since v6 blocker can be tricky depending on exact version
-  // We'll use a simple approach: intercept links in sidebar (handled by AppLayout logic if we lifted state, but here we can only block browser back)
   useEffect(() => {
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
           if (isDirty) {
@@ -65,13 +68,6 @@ const SetlistDetail = () => {
       window.addEventListener('beforeunload', handleBeforeUnload);
       return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
-
-  // If user tries to navigate away via React Router (Soft Navigation)
-  // Note: react-router-dom v6 stable `useBlocker` or `usePrompt` availability depends on exact version.
-  // Assuming standard React Router v6 behavior where we might need to rely on the browser's beforeunload for hard navs, 
-  // and handle soft navs by checking isDirty before actions. 
-  // *Implementation Note*: Fully blocking soft navs requires the unstable_useBlocker hook.
-  // I will assume for now we implement the "Back" button in the header manually to check.
 
   // -- State Mutators --
 
@@ -108,12 +104,9 @@ const SetlistDetail = () => {
       let position = sets.length + 1;
       
       // Encore Logic: Ensure Encore is always last
-      // If we are adding a normal set, and Encore exists, insert BEFORE Encore.
-      // If we are adding Encore, insert AT END.
       const encoreIndex = sets.findIndex(s => s.name === "Encore");
       
       if (isEncore) {
-          // If encore exists, don't add another
           if (encoreIndex !== -1) {
               toast.error("Encore set already exists.");
               return;
@@ -131,8 +124,7 @@ const SetlistDetail = () => {
               // Insert before Encore
               sets.splice(encoreIndex, 0, {
                   id: newSetId,
-                  name: `Set ${sets.length}`, // Temp name, position logic below handles renumbering if needed? 
-                  // Better: Name based on count excluding encore
+                  name: `Set ${sets.length}`,
                   position: encoreIndex + 1,
                   songs: []
               });
@@ -146,7 +138,7 @@ const SetlistDetail = () => {
           }
       }
 
-      // Re-normalize positions and default names
+      // Re-normalize
       const updatedSets = sets.map((s, i) => ({
           ...s,
           position: i + 1,
@@ -179,7 +171,7 @@ const SetlistDetail = () => {
           const songData = availableSongs.find(s => s.id === sid);
           return {
               id: `temp-song-${Date.now()}-${idx}`,
-              position: 0, // Calculated below
+              position: 0, 
               songId: sid,
               song: songData
           } as SetSong;
@@ -197,16 +189,11 @@ const SetlistDetail = () => {
   };
 
   const handleCreateSetAndAdd = async (initialSongs: string[], remainingSongs: string[]) => {
-      // This is called from the split dialog. 
-      // 1. Add 'initial' to current set
-      // 2. Create new set
-      // 3. Add 'remaining' to new set
       if (!localSetlist) return;
       pushToHistory();
 
       let sets = [...localSetlist.sets];
       
-      // 1. Add to current
       if (activeSetId && initialSongs.length > 0) {
           const currentSetIdx = sets.findIndex(s => s.id === activeSetId);
           if (currentSetIdx > -1) {
@@ -221,13 +208,12 @@ const SetlistDetail = () => {
           }
       }
 
-      // 2. Create New Set (Logic similar to AddSet regarding Encore)
       const newSetId = `temp-set-split-${Date.now()}`;
       const encoreIndex = sets.findIndex(s => s.name === "Encore");
       
       const newSetObj: SetType = {
           id: newSetId,
-          name: "New Set", // Will be renamed by normalize
+          name: "New Set",
           position: 0,
           songs: remainingSongs.map((sid, i) => ({
               id: `temp-song-split-b-${i}`,
@@ -243,7 +229,6 @@ const SetlistDetail = () => {
           sets.push(newSetObj);
       }
 
-      // Normalize
       const finalSets = sets.map((s, i) => ({
           ...s,
           position: i + 1,
@@ -276,10 +261,7 @@ const SetlistDetail = () => {
               const swapIndex = direction === 'up' ? songIndex - 1 : songIndex + 1;
               if (swapIndex < 0 || swapIndex >= songs.length) return set;
 
-              // Swap
               [songs[songIndex], songs[swapIndex]] = [songs[swapIndex], songs[songIndex]];
-              
-              // Re-index
               return { ...set, songs: songs.map((s, i) => ({ ...s, position: i + 1 })) };
           }
           return set;
@@ -292,10 +274,8 @@ const SetlistDetail = () => {
       if (!localSetlist) return;
       pushToHistory();
 
-      // Find the song
       let songToMove: SetSong | undefined;
       
-      // Remove from source
       let sets = localSetlist.sets.map(set => {
           const found = set.songs.find(s => s.id === setSongId);
           if (found) {
@@ -308,7 +288,6 @@ const SetlistDetail = () => {
           return set;
       });
 
-      // Add to target
       if (songToMove) {
           sets = sets.map(set => {
               if (set.id === targetSetId) {
@@ -324,6 +303,17 @@ const SetlistDetail = () => {
       setLocalSetlist({ ...localSetlist, sets });
   };
 
+  const toggleSetCollapse = (setId: string) => {
+      setCollapsedSets(prev => ({ ...prev, [setId]: !prev[setId] }));
+  };
+
+  // --- Stats Calculation ---
+  const totalDuration = localSetlist?.sets
+    .filter(s => s.name !== "Encore")
+    .reduce((total, set) => {
+        return total + set.songs.reduce((st, s) => st + parseDurationToSeconds(s.song?.duration), 0);
+    }, 0) || 0;
+
   // --- Save / Discard ---
 
   const saveMutation = useMutation({
@@ -337,8 +327,6 @@ const SetlistDetail = () => {
           setIsDirty(false);
           setHistory([]);
           toast.success("Changes saved successfully");
-          
-          // Re-init with new clean state handled by useEffect on fetch update
       },
       onError: (e) => toast.error("Failed to save changes: " + e.message)
   });
@@ -372,7 +360,6 @@ const SetlistDetail = () => {
              </div>
         )}
 
-        {/* Custom Header with Back Interception */}
         <div className="flex flex-col gap-4 sticky top-0 z-10 bg-background/95 backdrop-blur py-4 border-b">
             <SetlistHeader 
                 name={localSetlist.name}
@@ -382,8 +369,8 @@ const SetlistDetail = () => {
             />
             
             {/* Toolbar Row */}
-            <div className="flex items-center justify-between gap-2 px-1">
-                <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1">
+                <div className="flex items-center gap-4 w-full sm:w-auto">
                     <Button 
                         variant="outline" 
                         size="sm" 
@@ -392,26 +379,39 @@ const SetlistDetail = () => {
                     >
                         &larr; Back
                     </Button>
-                    {isDirty && (
-                        <Button variant="ghost" size="sm" onClick={handleUndo} disabled={history.length === 0}>
-                            <Undo className="h-4 w-4 mr-2" /> Undo
-                        </Button>
-                    )}
+                    <div className="flex items-center gap-2 text-sm font-medium bg-secondary/50 px-3 py-1.5 rounded-md">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span>{formatDurationRounded(totalDuration)}</span>
+                    </div>
                 </div>
 
-                <div className="flex gap-2">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => handleAddSet(true)} 
-                        className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-950"
-                        title="Add Encore Set at end"
-                    >
-                        <Star className="h-3 w-3 mr-1" /> Encore
-                    </Button>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {/* Add Buttons Group */}
+                    <div className="flex items-center rounded-md border bg-background shadow-sm">
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleAddSet(false)} 
+                            className="h-8 rounded-r-none border-r px-3"
+                        >
+                            <Plus className="mr-1.5 h-3.5 w-3.5" /> Set
+                        </Button>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleAddSet(true)} 
+                            className="h-8 rounded-l-none px-3 text-amber-600 hover:text-amber-700 dark:text-amber-500"
+                        >
+                            <Star className="mr-1.5 h-3.5 w-3.5" /> Encore
+                        </Button>
+                    </div>
 
                     {isDirty && (
                         <>
+                            <div className="h-6 w-px bg-border mx-1" />
+                            <Button variant="ghost" size="sm" onClick={handleUndo} disabled={history.length === 0} title="Undo">
+                                <Undo className="h-4 w-4" />
+                            </Button>
                             <Button variant="destructive" size="sm" onClick={() => setShowDiscardConfirm(true)}>
                                 Discard
                             </Button>
@@ -419,10 +419,9 @@ const SetlistDetail = () => {
                                 size="sm" 
                                 onClick={() => saveMutation.mutate()} 
                                 disabled={saveMutation.isPending}
-                                className="bg-green-600 hover:bg-green-700"
+                                className="bg-green-600 hover:bg-green-700 text-white min-w-[80px]"
                             >
-                                {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                                Save Changes
+                                Save
                             </Button>
                         </>
                     )}
@@ -443,6 +442,8 @@ const SetlistDetail = () => {
                    set={set}
                    setlist={localSetlist}
                    setDuration={set.songs.reduce((acc, s) => acc + parseDurationToSeconds(s.song?.duration), 0)}
+                   isCollapsed={!!collapsedSets[set.id]}
+                   onToggleCollapse={() => toggleSetCollapse(set.id)}
                    onAddSong={(setId) => { setActiveSetId(setId); setIsAddSongOpen(true); }}
                    onDeleteSet={(setId) => setSetToDelete(setId)}
                    onRemoveSong={(songId) => setSongToRemove(songId)}
@@ -505,6 +506,15 @@ const SetlistDetail = () => {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        {/* Saving Modal */}
+        <Dialog open={saveMutation.isPending} onOpenChange={() => {}}>
+            <DialogContent className="sm:max-w-[300px] flex flex-col items-center justify-center py-10 outline-none" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+                <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
+                <h3 className="text-lg font-semibold">Saving Changes...</h3>
+                <p className="text-sm text-muted-foreground">Syncing your setlist to the cloud.</p>
+            </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );
