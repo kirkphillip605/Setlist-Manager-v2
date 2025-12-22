@@ -15,6 +15,7 @@ import { ChevronLeft, Save, Search, Music, Loader2, ArrowRight, CloudOff } from 
 import { useSongFromCache } from "@/hooks/useData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { AlbumArtwork } from "@/components/AlbumArtwork";
 
 const SongEdit = () => {
   const { id } = useParams();
@@ -172,13 +173,13 @@ const SongEdit = () => {
           >
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {result.coverUrl ? (
-                  <img src={result.coverUrl} alt="Album Art" className="w-12 h-12 rounded object-cover shadow-sm" />
-                ) : (
-                  <div className="bg-[#1DB954]/10 w-12 h-12 flex items-center justify-center rounded-full">
-                    <Music className="h-6 w-6 text-[#1DB954]" />
-                  </div>
-                )}
+                <div className="w-12 h-12 shrink-0">
+                    <AlbumArtwork 
+                        src={result.coverUrl} 
+                        alt="Album Art" 
+                        containerClassName="w-full h-full rounded shadow-sm"
+                    />
+                </div>
                 <div>
                   <p className="font-medium">{result.title}</p>
                   <p className="text-sm text-muted-foreground">{result.artist}</p>
@@ -231,7 +232,13 @@ const SongEdit = () => {
             {/* Album Art Preview in Edit Mode */}
             {coverUrl && (
               <div className="flex items-center gap-4 p-4 border rounded-lg bg-secondary/10">
-                <img src={coverUrl} alt="Album Art" className="w-16 h-16 rounded shadow-sm object-cover" />
+                <div className="w-16 h-16 shrink-0">
+                    <AlbumArtwork 
+                        src={coverUrl} 
+                        alt="Album Art" 
+                        containerClassName="w-full h-full rounded shadow-sm"
+                    />
+                </div>
                 <div>
                   <p className="text-sm font-medium">Album Artwork</p>
                   <p className="text-xs text-muted-foreground">Automatically imported from Spotify</p>

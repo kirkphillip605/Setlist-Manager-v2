@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSyncedSongs } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { AlbumArtwork } from "@/components/AlbumArtwork";
 
 const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDeleteRequest: (song: Song) => void; isOnline: boolean }) => {
   const navigate = useNavigate();
@@ -31,8 +32,7 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
     const offset = info.offset.x;
     const velocity = info.velocity.x;
 
-    // Swipe actions only when online? (Optional, but safer to allow edits offline if we sync later)
-    // For "Read Only Offline" requirement, we might block this.
+    // Swipe actions only when online
     if (!isOnline) {
          controls.start({ x: 0 });
          return;
@@ -73,24 +73,22 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
         style={{ x: 0 }}
       >
         <Link to={`/songs/${song.id}`} className="flex items-center p-3 gap-4">
-          {/* Offline Mode: Text Only / No Image */}
+          {/* Offline Mode: Text Only / No Image (or use placeholder if cached, but for now stick to simple icon if totally offline to save space/bandwidth?) 
+              Actually, let's use AlbumArtwork everywhere. The browser cache will handle offline if available.
+          */}
           {isOnline ? (
-              <div className="shrink-0 rounded-md overflow-hidden bg-secondary w-14 h-14 shadow-inner relative grayscale-[0.2]">
-                {song.cover_url ? (
-                  <img 
+              <div className="shrink-0 w-14 h-14 relative">
+                <AlbumArtwork 
                     src={song.cover_url} 
                     alt={song.title} 
-                    className={`w-full h-full object-cover ${song.is_retired ? 'grayscale' : ''}`}
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full h-full text-muted-foreground/30">
-                    <Music className="w-6 h-6" />
-                  </div>
-                )}
+                    className={`rounded-md shadow-inner ${song.is_retired ? 'grayscale' : ''}`}
+                    containerClassName="w-full h-full rounded-md"
+                />
               </div>
           ) : (
-              // Compact Icon for Offline
+              // Compact Icon for Offline explicitly if we want to differentiate, 
+              // otherwise we could just use AlbumArtwork and let it show placeholder.
+              // Keeping existing logic for explicit offline mode visual distinction.
               <div className="shrink-0 w-8 h-8 flex items-center justify-center bg-muted rounded-full">
                   <Music className="w-4 h-4 text-muted-foreground" />
               </div>

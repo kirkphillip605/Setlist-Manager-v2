@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Music, ListMusic, CalendarDays, ArrowRight, Eye, Play } from "lucide-react";
 import { useSyncedSongs, useSyncedSetlists, useSyncedGigs } from "@/hooks/useSyncedData";
 import { Badge } from "@/components/ui/badge";
+import { AlbumArtwork } from "@/components/AlbumArtwork";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -30,8 +31,6 @@ const Index = () => {
   const nextGigs = upcomingGigs.filter(g => g.date !== todayStr).slice(0, 2);
 
   // Recent Songs (Last 3 created)
-  // Assuming 'created_at' exists, otherwise fallback to index.
-  // We need to sort by date descending if available, else just take last 3 of array reversed
   const recentSongs = [...songs]
     .sort((a: any, b: any) => (b.created_at || "").localeCompare(a.created_at || ""))
     .slice(0, 3);
@@ -120,12 +119,12 @@ const Index = () => {
                                     className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer group"
                                     onClick={() => navigate(`/songs/${song.id}`)}
                                 >
-                                    <div className="bg-secondary h-10 w-10 rounded flex items-center justify-center shrink-0">
-                                        {song.cover_url ? (
-                                            <img src={song.cover_url} className="h-full w-full object-cover rounded" />
-                                        ) : (
-                                            <Music className="h-5 w-5 text-muted-foreground" />
-                                        )}
+                                    <div className="bg-secondary h-10 w-10 rounded shrink-0">
+                                        <AlbumArtwork 
+                                            src={song.cover_url} 
+                                            alt={song.title} 
+                                            containerClassName="w-full h-full rounded"
+                                        />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="font-medium truncate text-sm">{song.title}</div>

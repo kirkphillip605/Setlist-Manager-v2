@@ -49,6 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useSongFromCache } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { AlbumArtwork } from "@/components/AlbumArtwork";
 
 const SongDetail = () => {
   const { id } = useParams();
@@ -277,13 +278,16 @@ const SongDetail = () => {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1, duration: 0.3 }}
           >
-             {/* Hide Image if Offline */}
-             {isOnline && song.cover_url ? (
-               <img 
-                 src={song.cover_url} 
-                 alt={song.title} 
-                 className="w-48 h-48 rounded-lg shadow-md object-cover"
-               />
+             {/* Improved Artwork Handling */}
+             {isOnline ? (
+               <div className="w-48 h-48 relative">
+                 <AlbumArtwork 
+                    src={song.cover_url} 
+                    alt={song.title} 
+                    className="rounded-lg shadow-md"
+                    containerClassName="w-full h-full rounded-lg shadow-md"
+                 />
+               </div>
              ) : (
                <div className="w-48 h-48 rounded-lg shadow-md bg-secondary flex items-center justify-center">
                  <Music className="w-16 h-16 text-muted-foreground opacity-50" />
@@ -438,7 +442,13 @@ const SongDetail = () => {
                             className="flex items-center gap-3 p-2 hover:bg-accent rounded cursor-pointer"
                             onClick={() => confirmMatch(result)}
                         >
-                             <img src={result.coverUrl} className="w-10 h-10 rounded" />
+                             <div className="w-10 h-10 shrink-0">
+                                <AlbumArtwork 
+                                    src={result.coverUrl} 
+                                    alt={result.title} 
+                                    containerClassName="w-full h-full rounded"
+                                />
+                             </div>
                              <div className="overflow-hidden">
                                  <p className="font-medium truncate">{result.title}</p>
                                  <p className="text-xs text-muted-foreground truncate">{result.artist}</p>
