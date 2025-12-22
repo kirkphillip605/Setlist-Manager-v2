@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { saveGig, deleteGig } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff } from "lucide-react";
+import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, MoreVertical } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +17,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
-import { useNavigate, Link } from "react-router-dom";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { useNavigate } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
@@ -90,7 +93,7 @@ const Gigs = () => {
             {list.map(gig => (
                 <Card 
                     key={gig.id} 
-                    className="hover:bg-accent/40 transition-colors border shadow-sm relative group cursor-pointer"
+                    className="hover:bg-accent/40 transition-colors border shadow-sm relative cursor-pointer"
                     onClick={() => navigate(`/gigs/${gig.id}`)}
                 >
                     <CardHeader className="flex flex-row items-start justify-between pb-2">
@@ -102,14 +105,23 @@ const Gigs = () => {
                             </div>
                         </div>
                         {isOnline && (
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteRequest(gig.id); }}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
+                                            <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem 
+                                            className="text-destructive focus:text-destructive"
+                                            onClick={() => handleDeleteRequest(gig.id)}
+                                        >
+                                            <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                         )}
                     </CardHeader>
                     <CardContent className="space-y-3">
@@ -242,7 +254,7 @@ const Gigs = () => {
                             <DialogFooter>
                                 <Button 
                                     onClick={() => saveMutation.mutate(newGig as Gig)} 
-                                    disabled={!newGig.name || !newGig.date || saveMutation.isPending}
+                                    disabled={!newGig.name || !newGig.date || saveMutation.isPending || !isOnline}
                                 >
                                     {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Save Gig

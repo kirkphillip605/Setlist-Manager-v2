@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Music } from "lucide-react";
+import { CachedImage } from "@/components/CachedImage";
 
-interface AlbumArtworkProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+interface AlbumArtworkProps extends React.HTMLAttributes<HTMLDivElement> {
   src?: string | null;
+  alt?: string;
   fallbackSrc?: string;
   containerClassName?: string;
 }
@@ -16,48 +17,20 @@ export const AlbumArtwork = ({
   fallbackSrc = "/no-album-artwork.png", 
   ...props 
 }: AlbumArtworkProps) => {
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
-
-  useEffect(() => {
-    if (!src) {
-      setStatus('error');
-    } else {
-      setStatus('loading');
-    }
-  }, [src]);
-
+  
   return (
-    <div className={cn("relative overflow-hidden bg-secondary", containerClassName || className)}>
-        {/* Placeholder / Fallback */}
-        {/* We show this if: 
-            1. We are loading
-            2. We had an error
-            3. No source was provided
-        */}
-        {(status === 'loading' || status === 'error' || !src) && (
-            <div className="w-full h-full flex items-center justify-center bg-secondary">
-                <img 
-                    src={fallbackSrc} 
-                    alt="No Artwork" 
-                    className="w-full h-full object-cover opacity-80" 
-                />
-            </div>
-        )}
-        
-        {/* Actual Image */}
-        {src && (
-            <img
+    <div className={cn("relative overflow-hidden bg-secondary flex items-center justify-center", containerClassName || className)} {...props}>
+        {src ? (
+            <CachedImage
                 src={src}
-                alt={alt}
-                className={cn(
-                    "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-                    status === 'loaded' ? "opacity-100" : "opacity-0",
-                    className // Pass className to the img for specific styling if needed, though container handles size usually
-                )}
-                onLoad={() => setStatus('loaded')}
-                onError={() => setStatus('error')}
-                {...props}
+                alt={alt || "Album Artwork"}
+                fallbackSrc={fallbackSrc}
+                className={cn("absolute inset-0 w-full h-full object-cover", className)}
             />
+        ) : (
+            <div className="w-full h-full flex items-center justify-center bg-secondary text-muted-foreground/20">
+                <Music className="w-1/3 h-1/3" />
+            </div>
         )}
     </div>
   );

@@ -105,11 +105,13 @@ const SetlistDetail = () => {
   // --- Actions ---
 
   const handleUpdateName = (newName: string) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => { if (draft) draft.name = newName; });
   };
 
   const handleAddSet = (isEncore = false) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       if (!localSetlist) return;
       pushHistory();
 
@@ -161,6 +163,7 @@ const SetlistDetail = () => {
   };
 
   const handleDeleteSet = (setId: string) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -178,6 +181,7 @@ const SetlistDetail = () => {
   };
 
   const handleAddSongs = async (targetSetId: string, songIds: string[]) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -199,6 +203,7 @@ const SetlistDetail = () => {
   };
 
   const handleCreateSetAndAdd = async (initialSongs: string[], remainingSongs: string[]) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -248,6 +253,7 @@ const SetlistDetail = () => {
   };
 
   const handleRemoveSong = (songId: string) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -263,6 +269,7 @@ const SetlistDetail = () => {
   };
 
   const handleMoveOrder = (setId: string, songIndex: number, direction: 'up' | 'down') => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -278,6 +285,7 @@ const SetlistDetail = () => {
   };
 
   const handleMoveToSet = (setSongId: string, targetSetId: string) => {
+      if (!isOnline) { toast.error("Cannot edit while offline"); return; }
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -357,7 +365,7 @@ const SetlistDetail = () => {
       <div className="space-y-6 pb-20 relative">
         {!isOnline && (
              <div className="bg-muted px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                 <CloudOff className="h-4 w-4" /> Offline Mode: Edits queued
+                 <CloudOff className="h-4 w-4" /> Offline Mode: Read Only
              </div>
         )}
 
@@ -368,26 +376,28 @@ const SetlistDetail = () => {
                 onUpdateName={handleUpdateName}
             >
                 {/* Desktop Buttons */}
-                <div className="hidden md:flex items-center gap-2">
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleAddSet(false)} 
-                        className="h-9 px-3 border border-dashed"
-                    >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Set
-                    </Button>
-                    {!hasEncore && (
+                {isOnline && (
+                    <div className="hidden md:flex items-center gap-2">
                         <Button 
                             variant="ghost" 
                             size="sm" 
-                            onClick={() => handleAddSet(true)} 
-                            className="h-9 px-3 border border-dashed text-amber-600 hover:text-amber-700 dark:text-amber-500"
+                            onClick={() => handleAddSet(false)} 
+                            className="h-9 px-3 border border-dashed"
                         >
-                            <Star className="mr-1.5 h-3.5 w-3.5" /> Add Encore
+                            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Set
                         </Button>
-                    )}
-                </div>
+                        {!hasEncore && (
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleAddSet(true)} 
+                                className="h-9 px-3 border border-dashed text-amber-600 hover:text-amber-700 dark:text-amber-500"
+                            >
+                                <Star className="mr-1.5 h-3.5 w-3.5" /> Add Encore
+                            </Button>
+                        )}
+                    </div>
+                )}
             </SetlistHeader>
             
             {/* Toolbar Row */}
@@ -399,7 +409,7 @@ const SetlistDetail = () => {
                     </div>
                 </div>
 
-                {isDirty && (
+                {isDirty && isOnline && (
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end animate-in fade-in slide-in-from-right-4">
                         <Button variant="outline" size="sm" onClick={handleUndo} disabled={history.length === 0 || saveMutation.isPending}>
                             <Undo className="h-4 w-4 mr-2" /> Undo
@@ -425,51 +435,54 @@ const SetlistDetail = () => {
           {localSetlist.sets.length === 0 ? (
              <div className="text-center py-20 border-2 border-dashed rounded-lg bg-muted/10">
                 <p className="text-muted-foreground mb-4">No sets added yet.</p>
-                <Button onClick={() => handleAddSet(false)}>Create First Set</Button>
+                <Button onClick={() => handleAddSet(false)} disabled={!isOnline}>Create First Set</Button>
              </div>
           ) : (
             localSetlist.sets.map((set) => (
-               <SetCard 
-                   key={set.id}
-                   set={set}
-                   setlist={localSetlist}
-                   setDuration={set.songs.reduce((acc, s) => acc + parseDurationToSeconds(s.song?.duration), 0)}
-                   isCollapsed={!!collapsedSets[set.id]}
-                   onToggleCollapse={() => toggleSetCollapse(set.id)}
-                   onAddSong={(setId) => { setActiveSetId(setId); setIsAddSongOpen(true); }}
-                   onDeleteSet={(setId) => setSetToDelete(setId)}
-                   onRemoveSong={(songId) => setSongToRemove(songId)}
-                   onMoveOrder={handleMoveOrder}
-                   onMoveToSet={handleMoveToSet}
-               />
+                <div key={set.id} className={!isOnline ? "pointer-events-none" : ""}>
+                   <SetCard 
+                       set={set}
+                       setlist={localSetlist}
+                       setDuration={set.songs.reduce((acc, s) => acc + parseDurationToSeconds(s.song?.duration), 0)}
+                       isCollapsed={!!collapsedSets[set.id]}
+                       onToggleCollapse={() => toggleSetCollapse(set.id)}
+                       onAddSong={(setId) => { if(isOnline) { setActiveSetId(setId); setIsAddSongOpen(true); }}}
+                       onDeleteSet={(setId) => { if(isOnline) setSetToDelete(setId); }}
+                       onRemoveSong={(songId) => { if(isOnline) setSongToRemove(songId); }}
+                       onMoveOrder={handleMoveOrder}
+                       onMoveToSet={handleMoveToSet}
+                   />
+               </div>
             ))
           )}
         </div>
 
         {/* Mobile FAB */}
-        <div className="md:hidden fixed bottom-24 right-4 z-40">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button 
-                        className="rounded-full shadow-xl h-14 w-14 p-0 bg-primary hover:bg-primary/90 text-primary-foreground"
-                    >
-                        <Plus className="h-8 w-8" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top" className="w-48 mb-2">
-                    <DropdownMenuItem onClick={() => handleAddSet(false)} className="py-3 text-base">
-                        <Plus className="mr-2 h-4 w-4" /> Create New Set
-                    </DropdownMenuItem>
-                    {!hasEncore && (
-                        <DropdownMenuItem onClick={() => handleAddSet(true)} className="py-3 text-base text-amber-600 focus:text-amber-700">
-                            <Star className="mr-2 h-4 w-4" /> Create Encore Set
+        {isOnline && (
+            <div className="md:hidden fixed bottom-24 right-4 z-40">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button 
+                            className="rounded-full shadow-xl h-14 w-14 p-0 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        >
+                            <Plus className="h-8 w-8" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="top" className="w-48 mb-2">
+                        <DropdownMenuItem onClick={() => handleAddSet(false)} className="py-3 text-base">
+                            <Plus className="mr-2 h-4 w-4" /> Create New Set
                         </DropdownMenuItem>
-                    )}
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
+                        {!hasEncore && (
+                            <DropdownMenuItem onClick={() => handleAddSet(true)} className="py-3 text-base text-amber-600 focus:text-amber-700">
+                                <Star className="mr-2 h-4 w-4" /> Create Encore Set
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+        )}
 
-        {isAddSongOpen && (
+        {isAddSongOpen && isOnline && (
             <AddSongDialog 
                 open={isAddSongOpen}
                 setlist={localSetlist}

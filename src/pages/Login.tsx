@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { Capacitor } from "@capacitor/core";
 import { storageAdapter } from "@/lib/storageAdapter";
 import { useTheme } from "@/components/theme-provider";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { CachedImage } from "@/components/CachedImage";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -152,8 +153,13 @@ const Login = () => {
       <LoadingDialog open={loading} message="Authenticating..." />
       <Card className="w-full max-w-md border-border shadow-lg my-auto">
         <CardHeader className="text-center pb-2">
-          <div className="flex justify-center mb-2">
-             <img src={logoSrc} alt="Setlist Manager Pro" className="h-16 object-contain" />
+          <div className="flex justify-center mb-2 h-16">
+             <CachedImage 
+                src={logoSrc} 
+                alt="Setlist Manager Pro" 
+                className="h-16 object-contain" 
+                fallbackSrc="/setlist-icon.png"
+             />
           </div>
         </CardHeader>
         <CardContent>
