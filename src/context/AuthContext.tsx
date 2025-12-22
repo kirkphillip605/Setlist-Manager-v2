@@ -3,17 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { storageAdapter } from "@/lib/storageAdapter";
-
-interface Profile {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  position: string | null;
-  role: string;
-  is_approved: boolean;
-  is_active: boolean;
-  has_password: boolean;
-}
+import { Profile } from "@/types";
 
 interface AuthContextType {
   session: Session | null;
@@ -42,7 +32,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [authLoading, setAuthLoading] = useState(true);
   const queryClient = useQueryClient();
 
-  // Helper to force check session validity
   const checkSession = useCallback(async () => {
     try {
         const { data: { session: currentSession }, error } = await supabase.auth.getSession();
@@ -70,34 +59,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const handleSignOut = async () => {
     setAuthLoading(true);
     try {
-        // 1. Attempt Supabase SignOut
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
     } catch (e) {
         console.error("Sign out error, forcing cleanup", e);
     } finally {
-        // 2. Clear React Query Cache (Memory)
         queryClient.removeQueries();
         queryClient.clear();
         
-        // 3. Clear Persisted Cache (Disk)
         try {
             await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
         } catch (e) {
             console.warn("Failed to clear offline cache", e);
         }
 
-        // 4. Reset State
         setSession(null);
         setAuthLoading(false);
     }
   };
 
-  // 1. Initial Load & Visibility Listener
   useEffect(() => {
     let mounted = true;
 
-    // A. Initial Fetch
     const init = async () => {
         try {
             const { data: { session: initialSession } } = await supabase.auth.getSession();
@@ -112,7 +95,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
     init();
 
-    // B. Auth State Change Listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (mounted) {
         if (event === 'SIGNED_OUT') {
@@ -125,7 +107,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    // C. Window Focus / Visibility Listener
     const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
             checkSession();
@@ -147,7 +128,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [queryClient, checkSession]);
 
-  // 2. Cached Profile Fetch
   const { data: profile, isLoading: profileLoading, refetch } = useQuery({
     queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
