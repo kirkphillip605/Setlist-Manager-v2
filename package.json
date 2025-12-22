@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run set-version",
-    "set-version": "capacitor-set-version -b ${BUILD_NUMBER:-1}",
+    "set-version": "capacitor-set-version . -v $npm_package_version -b $BUILD_NUMBER",
     "preview": "vite preview",
     "start": "serve -s dist -l 8080",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
