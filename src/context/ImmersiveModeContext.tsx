@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar } from '@capacitor/status-bar';
-import { NavigationBar } from '@capacitor/navigation-bar';
 import { storageAdapter } from '@/lib/storageAdapter';
 
 interface ImmersiveModeContextType {
@@ -22,7 +21,7 @@ export const ImmersiveModeProvider = ({ children }: { children: React.ReactNode 
         setIsNativeAndroid(true);
         // Load preference
         const savedState = await storageAdapter.getItem('immersive_mode');
-        // Default to true for Android if not set
+        // Default to true for Android if not set (matches MainActivity defaults)
         const shouldBeImmersive = savedState === null ? true : savedState === 'true';
         
         setIsImmersive(shouldBeImmersive);
@@ -38,10 +37,11 @@ export const ImmersiveModeProvider = ({ children }: { children: React.ReactNode 
     try {
       if (active) {
         await StatusBar.hide();
-        await NavigationBar.hide();
+        // Without NavigationBar plugin, we can't explicitly hide the nav bar from JS 
+        // if it reappears, but MainActivity.java hides it on launch.
+        // We can still toggle the CSS padding state though.
       } else {
         await StatusBar.show();
-        await NavigationBar.show();
       }
     } catch (e) {
       console.warn("Immersive mode toggle failed", e);
