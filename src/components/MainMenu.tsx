@@ -175,7 +175,7 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
           
           {/* Footer info */}
           <div className="p-4 text-center text-xs text-muted-foreground border-t bg-muted/10">
-              Setlist Manager Pro v1.0
+              Setlist Manager Pro v3.0
           </div>
 
         </SheetContent>
