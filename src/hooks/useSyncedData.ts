@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { getSongs, getSetlists, getGigs, getAllSkippedSongs } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -173,7 +173,7 @@ export const useSyncStatus = () => {
     
     const queryClient = useQueryClient();
 
-    const refreshAll = async () => {
+    const refreshAll = useCallback(async () => {
         console.log("Manual Sync Triggered");
         await Promise.all([
             queryClient.invalidateQueries({ queryKey: ['songs'] }),
@@ -189,7 +189,7 @@ export const useSyncStatus = () => {
             queryClient.refetchQueries({ queryKey: ['skipped_songs_all'] }),
              queryClient.refetchQueries({ queryKey: ['profile'] })
         ]);
-    };
+    }, [queryClient]);
 
     return { isSyncing, lastSyncedAt, refreshAll };
 };
