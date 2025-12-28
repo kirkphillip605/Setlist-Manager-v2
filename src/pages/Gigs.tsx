@@ -46,11 +46,11 @@ const Gigs = () => {
 
     const saveMutation = useMutation({
         mutationFn: saveGig,
-        onSuccess:  () => {
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gigs'] });
             setIsCreateOpen(false);
             setNewGig({ name: "", start_time: "", end_time:  "", notes: "", setlist_id: null });
-            toast. success("Gig saved successfully");
+            toast.success("Gig saved successfully");
         },
         onError:  (e:  any) => toast.error("Failed to save gig:  " + (e. message || "Unknown error"))
     });
@@ -68,8 +68,8 @@ const Gigs = () => {
     const groupedGigs = useMemo(() => {
         // Use local comparison for sorting since we want literal time ordering
         const now = new Date().toISOString(); 
-        const upcoming = gigs.filter(g => g.start_time >= now).sort((a, b) => a.start_time.localeCompare(b.start_time));
-        const past = gigs.filter(g => g. start_time < now).sort((a, b) => b.start_time.localeCompare(a.start_time));
+        const upcoming = gigs. filter(g => g.start_time >= now).sort((a, b) => a.start_time. localeCompare(b.start_time));
+        const past = gigs.filter(g => g.start_time < now).sort((a, b) => b.start_time.localeCompare(a.start_time));
         return { upcoming, past };
     }, [gigs]);
 
@@ -78,12 +78,12 @@ const Gigs = () => {
             toast.error("Offline: Cannot create gigs");
             return;
         }
-        setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id:  null });
+        setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
         setIsCreateOpen(true);
     };
 
     const handleDeleteRequest = (id: string) => {
-        if (! isOnline) {
+        if (!isOnline) {
             toast.error("Offline: Cannot delete gigs");
             return;
         }
@@ -91,19 +91,19 @@ const Gigs = () => {
     };
 
     const handleStartTimeChange = (val: string) => {
-        // Val is YYYY-MM-DDTHH:mm
+        // Val is YYYY-MM-DDTHH: mm
         if (val) {
             // Calculate 4 hours later simply by parsing ISO components to avoid timezone math complexity
-            // We want literal 4 hours later. 
+            // We want literal 4 hours later
             const date = new Date(val);
             // Add 4 hours
             date.setHours(date.getHours() + 4);
             
             // Re-format to YYYY-MM-DDTHH:mm
-            // We use a trick:  getISOString uses UTC. We want to preserve local numbers.
-            // So we subtract timezone offset before printing ISO. 
+            // We use a trick: getISOString uses UTC.  We want to preserve local numbers.
+            // So we subtract timezone offset before printing ISO
             const offset = date.getTimezoneOffset() * 60000;
-            const endString = new Date(date. getTime() - offset).toISOString().slice(0, 16);
+            const endString = new Date(date.getTime() - offset).toISOString().slice(0, 16);
             
             setNewGig(prev => ({ 
                 ...prev, 
@@ -117,12 +117,12 @@ const Gigs = () => {
 
     const GigList = ({ list }: { list: Gig[] }) => (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {list. map(gig => (
-                <Link key={gig.id} to={`/gigs/${gig.id}`} className="block h-full group relative">
-                    <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full">
-                        <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
+            {list.map(gig => (
+                <Link key={gig.id} to={`/gigs/${gig.id}`}>
+                    <Card className="hover:bg-accent/40 hover:border-primary/50 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group">
+                        <CardHeader className="flex flex-row items-start justify-between pb-2 pr-14">
                             <div className="space-y-1">
-                                <CardTitle className="text-lg font-bold">{gig. name}</CardTitle>
+                                <CardTitle className="text-lg font-bold truncate">{gig.name}</CardTitle>
                                 <div className="flex flex-col text-sm text-muted-foreground gap-1">
                                     <div className="flex items-center">
                                         <Calendar className="mr-1 h-3 w-3" />
@@ -130,7 +130,7 @@ const Gigs = () => {
                                     </div>
                                     <div className="flex items-center">
                                         <Clock className="mr-1 h-3 w-3" />
-                                        {format(parseISO(gig.start_time), "h:mm a")} 
+                                        {format(parseISO(gig. start_time), "h:mm a")} 
                                         {gig.end_time && ` - ${format(parseISO(gig.end_time), "h:mm a")}`}
                                     </div>
                                 </div>
@@ -146,7 +146,7 @@ const Gigs = () => {
                             {gig.setlist ?  (
                                 <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded">
                                     <ListMusic className="h-4 w-4" />
-                                    Setlist: {gig.setlist.name}
+                                    Setlist:  {gig.setlist.name}
                                 </div>
                             ) : (
                                 <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded">
@@ -154,31 +154,19 @@ const Gigs = () => {
                                 </div>
                             )}
                         </CardContent>
-
-                        {/* Delete Button - Now Inside Card/Link, but prevented from triggering navigation */}
+                        
+                        {/* Actions only visible if online */}
                         {isOnline && (
-                            <div className="absolute top-4 right-3 z-10">
+                            <div className="absolute top-2 right-2">
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-8 w-8 text-muted-foreground hover:bg-muted"
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                        >
-                                            <MoreVertical className="h-4 w-4" />
+                                        <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-muted" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                            <MoreVertical className="h-5 w-5 text-muted-foreground" />
                                         </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem 
-                                            className="text-destructive focus:text-destructive"
-                                            onClick={(e) => { 
-                                                e.preventDefault(); 
-                                                e.stopPropagation(); 
-                                                handleDeleteRequest(gig.id); 
-                                            }}
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
+                                    <DropdownMenuContent align="end" className="w-56">
+                                        <DropdownMenuItem className="text-destructive py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(gig.id); }}>
+                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
@@ -199,10 +187,10 @@ const Gigs = () => {
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
                             Gigs
-                            {!isOnline && <CloudOff className="h-5 w-5 text-muted-foreground" />}
+                            {! isOnline && <CloudOff className="h-5 w-5 text-muted-foreground" />}
                         </h1>
                         <p className="text-muted-foreground text-sm">
-                            {isOnline ? "Upcoming shows and events." : "Offline Mode:  Read Only"}
+                            {isOnline ?  "Upcoming shows and events." : "Offline Mode:  Read Only"}
                         </p>
                     </div>
                     {/* Desktop Button */}
@@ -211,7 +199,7 @@ const Gigs = () => {
                     </Button>
                 </div>
 
-                {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
+                {isLoading ?  <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
                     <>
                         <section>
                             {groupedGigs.upcoming.length === 0 ? (
@@ -239,7 +227,7 @@ const Gigs = () => {
                 <Button
                     onClick={openCreate}
                     size="icon"
-                    className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    className="md: hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
                     disabled={!isOnline}
                 >
                     <Plus className="h-8 w-8" />
@@ -250,7 +238,7 @@ const Gigs = () => {
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>New Gig</DialogTitle>
-                            <DialogDescription>Enter the details for the new gig.</DialogDescription>
+                            <DialogDescription>Enter the details for the new gig. </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
@@ -274,7 +262,7 @@ const Gigs = () => {
                                     <Label>End</Label>
                                     <Input 
                                         type="datetime-local" 
-                                        value={newGig. end_time || ""} 
+                                        value={newGig.end_time || ""} 
                                         onChange={e => setNewGig(prev => ({ ... prev, end_time: e. target.value }))} 
                                     />
                                 </div>
@@ -291,7 +279,7 @@ const Gigs = () => {
                                     <SelectContent>
                                         <SelectItem value="none">-- No Setlist --</SelectItem>
                                         {bandSetlists.map(s => (
-                                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                            <SelectItem key={s.id} value={s.id}>{s. name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -307,7 +295,7 @@ const Gigs = () => {
                             <DialogFooter>
                                 <Button 
                                     onClick={() => saveMutation.mutate(newGig as Gig)} 
-                                    disabled={! newGig.name || !newGig.start_time || saveMutation.isPending || !isOnline}
+                                    disabled={! newGig.name || !newGig.start_time || saveMutation.isPending || ! isOnline}
                                 >
                                     {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Save Gig
@@ -317,7 +305,7 @@ const Gigs = () => {
                     </DialogContent>
                 </Dialog>
 
-                <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+                <AlertDialog open={!! deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
                             <AlertDialogTitle>Delete Gig? </AlertDialogTitle>
