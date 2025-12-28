@@ -33,6 +33,7 @@ import { useGigSession } from "@/hooks/useGigSession";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { TempoBlinker } from "@/components/TempoBlinker";
+import { useAuth } from "@/context/AuthContext";
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
@@ -40,11 +41,17 @@ const PerformanceMode = () => {
   const gigId = searchParams.get('gigId');
   const initialStandalone = searchParams.get('standalone') === 'true';
   const isOnline = useNetworkStatus();
+  const { profile } = useAuth();
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome } = useMetronome();
   
+  // -- Preferences --
+  const blinkerEnabled = profile?.preferences?.tempo_blinker_enabled !== false;
+  const blinkerColor = profile?.preferences?.tempo_blinker_color || 'amber';
+  const viewMode = profile?.preferences?.performance_view || 'full';
+
   // -- Failover State --
   const [isForcedStandalone, setIsForcedStandalone] = useState(initialStandalone);
   const [offlineCountdown, setOfflineCountdown] = useState<number | null>(null);
@@ -56,12 +63,12 @@ const PerformanceMode = () => {
   // -- Zoom State --
   const [fontSize, setFontSize] = useState(() => {
       const saved = localStorage.getItem("lyrics_font_size");
-      return saved ? parseInt(saved) : 20; // Default 20px
+      return saved ? parseInt(saved) : 24; // Default bumped to 24px
   });
 
   const handleZoom = (delta: number) => {
       setFontSize(prev => {
-          const newState = Math.min(Math.max(prev + delta, 12), 64);
+          const newState = Math.min(Math.max(prev + delta, 12), 120);
           localStorage.setItem("lyrics_font_size", newState.toString());
           return newState;
       });
@@ -459,7 +466,6 @@ const PerformanceMode = () => {
     return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
-  // Session Ended Screen
   if (isGigMode && sessionEndedInfo && !isForcedStandalone) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
@@ -476,10 +482,76 @@ const PerformanceMode = () => {
       );
   }
 
+  // --- SIMPLE VIEW RENDERER ---
+  const renderSimpleView = () => (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-12">
+          {activeSong ? (
+              <>
+                  <div className="space-y-4">
+                      <h2 className="text-5xl md:text-7xl font-bold leading-tight tracking-tight">{activeSong.title}</h2>
+                      <p className="text-3xl md:text-4xl text-muted-foreground">{activeSong.artist}</p>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-8 justify-center">
+                      <div className="bg-secondary/30 p-6 rounded-2xl min-w-[160px] border border-border/50">
+                          <div className="text-xl text-muted-foreground uppercase font-semibold mb-2">Key</div>
+                          <div className="text-5xl font-bold">{activeSong.key || "-"}</div>
+                      </div>
+                      <div className="bg-secondary/30 p-6 rounded-2xl min-w-[160px] border border-border/50">
+                          <div className="text-xl text-muted-foreground uppercase font-semibold mb-2">Tempo</div>
+                          <div className="text-5xl font-bold">{activeSong.tempo ? `${activeSong.tempo}` : "-"}</div>
+                      </div>
+                  </div>
+
+                  {activeSong.note && (
+                      <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-8 py-4 rounded-xl text-2xl font-medium max-w-2xl">
+                          {activeSong.note}
+                      </div>
+                  )}
+              </>
+          ) : (
+              <div className="text-muted-foreground text-2xl">Waiting for song...</div>
+          )}
+      </div>
+  );
+
+  // --- FULL VIEW RENDERER (Original) ---
+  const renderFullView = () => (
+      <div className="p-4 md:p-8 max-w-4xl mx-auto min-h-full pb-32">
+        {activeSong ? (
+          <div className="space-y-6">
+            {/* Mobile Header hidden in simple mode? No, this is Full view */}
+            <div className="md:hidden text-center border-b pb-4 mb-4">
+                <h2 className="text-2xl font-bold leading-tight">{activeSong.title}</h2>
+                <p className="text-muted-foreground">{activeSong.artist}</p>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-6">
+                {activeSong.key && <Badge variant="secondary" className="text-sm">Key: {activeSong.key}</Badge>}
+                {activeSong.tempo && <Badge variant="secondary" className="text-sm">{activeSong.tempo} BPM</Badge>}
+                {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-1 rounded text-sm">{activeSong.note}</div>}
+            </div>
+
+            <div 
+                className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200"
+                style={{ fontSize: `${fontSize}px` }}
+            >
+              {activeSong.lyrics || <span className="text-muted-foreground italic text-base">No lyrics available.</span>}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
+            <Music className="h-16 w-16 mb-4 opacity-20" />
+            <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
+          </div>
+        )}
+      </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
       
-      {/* Offline Failover Alert */}
+      {/* Alerts ... (same as before) */}
       <AlertDialog open={offlineCountdown !== null}>
           <AlertDialogContent>
               <AlertDialogHeader>
@@ -496,7 +568,6 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
-      {/* Online Recovery Alert */}
       <AlertDialog open={!!recoveryData}>
           <AlertDialogContent>
               <AlertDialogHeader>
@@ -521,7 +592,6 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
-      {/* Orphaned Session Dialog */}
       <AlertDialog open={isOrphaned && !isForcedStandalone}>
           <AlertDialogContent>
               <AlertDialogHeader>
@@ -549,7 +619,7 @@ const PerformanceMode = () => {
       </AlertDialog>
 
       {/* --- Top Bar --- */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-card shadow-sm shrink-0 h-14 gap-2">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-card shadow-sm shrink-0 h-14 gap-2 relative">
         <div className="flex-1 max-w-[200px] shrink-0 flex items-center gap-2">
           {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
           {isLeader || !isGigMode ? (
@@ -566,17 +636,23 @@ const PerformanceMode = () => {
           )}
         </div>
         
-        <div className="flex-1 text-center hidden md:flex items-center justify-center min-w-0 px-2">
-            {/* Visual Metronome (Gig Mode Only) */}
-            {isGigMode && activeSong?.tempo && (
-                <TempoBlinker bpm={parseInt(activeSong.tempo)} className="w-4 h-4 mr-3 shrink-0" />
-            )}
-            <span className="font-bold text-lg truncate">{activeSong?.title}</span>
+        {/* CENTERED TEXT */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center hidden md:flex items-center justify-center pointer-events-none">
+            <span className="font-bold text-lg truncate max-w-[300px]">{activeSong?.title}</span>
             <span className="text-muted-foreground ml-2 text-sm truncate max-w-[150px]">{activeSong?.artist}</span>
         </div>
 
         <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
-            {/* Skip Button - Only for Leader in Session Mode */}
+            {/* Right Aligned Blinker (Configurable) */}
+            {isGigMode && activeSong?.tempo && blinkerEnabled && (
+                <TempoBlinker 
+                    bpm={parseInt(activeSong.tempo)} 
+                    color={blinkerColor}
+                    className="w-5 h-5 mr-2 shrink-0" 
+                />
+            )}
+
+            {/* Skip Button */}
             {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
                  <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-9" onClick={handleSkipSong}>
                      <Forward className="w-4 h-4 mr-2" /> Skip
@@ -599,61 +675,20 @@ const PerformanceMode = () => {
       {/* --- Main Content --- */}
       <div className="flex-1 overflow-hidden relative bg-background">
         <ScrollArea className="h-full w-full">
-          <div className="p-4 md:p-8 max-w-4xl mx-auto min-h-full pb-32">
-            {activeSong ? (
-              <div className="space-y-6">
-                <div className="md:hidden text-center border-b pb-4 mb-4">
-                    <div className="flex items-center justify-center gap-3 mb-2">
-                        {/* Mobile Visual Metronome */}
-                        {isGigMode && activeSong.tempo && (
-                            <TempoBlinker bpm={parseInt(activeSong.tempo)} className="w-4 h-4" />
-                        )}
-                        <h2 className="text-2xl font-bold leading-tight">{activeSong.title}</h2>
-                    </div>
-                    <p className="text-muted-foreground">{activeSong.artist}</p>
-                </div>
-                
-                <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-6">
-                    {activeSong.key && <Badge variant="secondary" className="text-sm">Key: {activeSong.key}</Badge>}
-                    {activeSong.tempo && <Badge variant="secondary" className="text-sm">{activeSong.tempo} BPM</Badge>}
-                    {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-1 rounded text-sm">{activeSong.note}</div>}
-                </div>
-
-                <div 
-                    className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200"
-                    style={{ fontSize: `${fontSize}px` }}
-                >
-                  {activeSong.lyrics || <span className="text-muted-foreground italic text-base">No lyrics available.</span>}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
-                <Music className="h-16 w-16 mb-4 opacity-20" />
-                <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
-              </div>
-            )}
-          </div>
+            {viewMode === 'simple' ? renderSimpleView() : renderFullView()}
         </ScrollArea>
         
-        {/* Floating Zoom Controls */}
-        <div className="absolute bottom-20 right-4 flex flex-col gap-2 z-30">
-            <Button 
-                variant="secondary" 
-                size="icon" 
-                className="h-10 w-10 shadow-lg rounded-full opacity-50 hover:opacity-100 transition-opacity" 
-                onClick={() => handleZoom(2)}
-            >
-                <ZoomIn className="h-5 w-5" />
-            </Button>
-            <Button 
-                variant="secondary" 
-                size="icon" 
-                className="h-10 w-10 shadow-lg rounded-full opacity-50 hover:opacity-100 transition-opacity" 
-                onClick={() => handleZoom(-2)}
-            >
-                <ZoomOut className="h-5 w-5" />
-            </Button>
-        </div>
+        {/* Floating Zoom Controls (Only in Full View) */}
+        {viewMode === 'full' && (
+            <div className="absolute bottom-20 right-4 flex flex-col gap-2 z-30">
+                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full opacity-50 hover:opacity-100 transition-opacity" onClick={() => handleZoom(2)}>
+                    <ZoomIn className="h-5 w-5" />
+                </Button>
+                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full opacity-50 hover:opacity-100 transition-opacity" onClick={() => handleZoom(-2)}>
+                    <ZoomOut className="h-5 w-5" />
+                </Button>
+            </div>
+        )}
 
         {tempSong && <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">Ad-Hoc</div>}
         
@@ -668,7 +703,6 @@ const PerformanceMode = () => {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-5 w-5" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-48 mb-2">
-                        {/* Metronome Menu Item: Only if NOT gig mode */}
                         {showMetronome && (
                             <DropdownMenuItem onClick={() => isMetronomeOpen ? closeMetronome() : openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120)} className="py-3">
                                 <Timer className="mr-2 h-4 w-4" /> Metronome
@@ -677,7 +711,6 @@ const PerformanceMode = () => {
                         
                         <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3"><Search className="mr-2 h-4 w-4" /> Quick Find</DropdownMenuItem>
                         
-                        {/* Skipped Songs Menu Item: Only for Leader in Gig Mode, if skipped songs exist */}
                         {isGigMode && isLeader && skippedSongs.length > 0 && (
                             <>
                                 <DropdownMenuSeparator />
@@ -716,7 +749,6 @@ const PerformanceMode = () => {
       </div>
 
       {/* --- Dialogs --- */}
-      
       {/* Search */}
       <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
         <DialogContent className="max-w-md h-[80vh] flex flex-col p-0 gap-0">

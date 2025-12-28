@@ -88,6 +88,12 @@ export interface GigSessionParticipant {
 
 export type UserRole = 'admin' | 'manager' | 'standard';
 
+export interface UserPreferences {
+  tempo_blinker_enabled?: boolean;
+  tempo_blinker_color?: string; // 'red', 'green', 'blue', 'amber'
+  performance_view?: 'full' | 'simple';
+}
+
 export interface Profile {
   id: string;
   first_name: string | null;
@@ -98,4 +104,5 @@ export interface Profile {
   is_active: boolean;
   has_password: boolean;
   avatar_url?: string;
+  preferences?: UserPreferences;
 }

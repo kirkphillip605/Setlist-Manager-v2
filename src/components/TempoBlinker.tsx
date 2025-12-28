@@ -3,13 +3,26 @@ import { cn } from "@/lib/utils";
 
 interface TempoBlinkerProps {
   bpm: number | null;
+  color?: string; // 'red', 'green', 'blue', 'amber', 'purple'
   className?: string;
 }
 
-export const TempoBlinker = ({ bpm, className }: TempoBlinkerProps) => {
+export const TempoBlinker = ({ bpm, color = 'amber', className }: TempoBlinkerProps) => {
   const [active, setActive] = useState(false);
   const requestRef = useRef<number>();
   const lastTimeRef = useRef<number>(0);
+
+  // Map color names to Tailwind classes
+  const colorMap: Record<string, string> = {
+    red: "bg-red-500 shadow-[0_0_15px_3px_rgba(239,68,68,0.6)]",
+    green: "bg-green-500 shadow-[0_0_15px_3px_rgba(34,197,94,0.6)]",
+    blue: "bg-blue-500 shadow-[0_0_15px_3px_rgba(59,130,246,0.6)]",
+    amber: "bg-amber-500 shadow-[0_0_15px_3px_rgba(245,158,11,0.6)]",
+    purple: "bg-purple-500 shadow-[0_0_15px_3px_rgba(168,85,247,0.6)]",
+    white: "bg-white shadow-[0_0_15px_3px_rgba(255,255,255,0.6)]",
+  };
+
+  const activeClass = colorMap[color] || colorMap['amber'];
 
   useEffect(() => {
     if (!bpm || bpm <= 0) {
@@ -43,7 +56,7 @@ export const TempoBlinker = ({ bpm, className }: TempoBlinkerProps) => {
       className={cn(
         "rounded-full transition-all duration-75", 
         active 
-            ? "bg-primary shadow-[0_0_15px_3px_hsl(var(--primary))]" 
+            ? activeClass
             : "bg-muted-foreground/20",
         className
       )} 
