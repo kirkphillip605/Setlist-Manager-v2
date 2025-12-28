@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { storageAdapter } from "@/lib/storageAdapter";
 import { Profile } from "@/types";
+import { clear as clearIdb } from "idb-keyval";
 
 interface AuthContextType {
   session: Session | null;
@@ -59,19 +60,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const handleSignOut = async () => {
     setAuthLoading(true);
     
-    // Clean up local state immediately to prevent UI loops
-    queryClient.removeQueries();
-    queryClient.clear();
-    setSession(null);
-    
     try {
+        // 1. Clear React Query Cache (In-Memory)
+        queryClient.removeQueries();
+        queryClient.clear();
+        
+        // 2. Clear Session State
+        setSession(null);
+        
+        // 3. Clear Persisted Query Cache (Disk/LocalStorage)
         await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
+        
+        // 4. Clear IndexedDB (Images/Assets)
+        await clearIdb();
+
+        // 5. Clear any other app specific keys if necessary
+        // (keeping login_email for convenience if implemented)
+
     } catch (e) {
-        console.warn("Failed to clear offline cache", e);
+        console.warn("Failed to clear local cache during signout", e);
     }
 
     // Attempt Supabase SignOut with Timeout
-    // This prevents hanging if offline
     try {
         const signOutPromise = supabase.auth.signOut();
         const timeoutPromise = new Promise((_, reject) => 
@@ -163,10 +173,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     retry: 1,
   });
 
-  // Derived loading state
-  // If we have a session but profile is loading, we are loading
-  // UNLESS profile failed to load (offline), in which case we shouldn't block indefinitely?
-  // But ProtectedRoute handles profile == null check.
   const isLoading = authLoading || (!!session && profileLoading && !profile);
 
   const value = {

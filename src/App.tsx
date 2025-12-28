@@ -34,7 +34,7 @@ import ReactivateAccount from "./pages/ReactivateAccount";
 import { queryClient, persister } from "@/lib/queryClient";
 import { SyncIndicator } from "@/components/SyncIndicator";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
-import { CacheWarmer } from "@/components/CacheWarmer";
+import { DataHydration } from "@/components/DataHydration";
 import ScrollToTop from "@/components/ScrollToTop";
 import { ImmersiveModeProvider } from "@/context/ImmersiveModeContext";
 import { useAppStatus } from "@/hooks/useAppStatus";
@@ -91,7 +91,12 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   if (location.pathname === '/reactivate' && profile?.is_active) return <Navigate to="/" replace />;
   if (location.pathname === '/onboarding' && isProfileComplete && hasPassword) return <Navigate to="/" replace />;
 
-  return children;
+  // Enforce Data Hydration for authenticated users
+  return (
+    <DataHydration>
+      {children}
+    </DataHydration>
+  );
 };
 
 const PublicOnlyRoute = ({ children }: { children: JSX.Element }) => {
@@ -141,7 +146,6 @@ const AppContent = () => {
     return (
         <>
             <ScrollToTop />
-            <CacheWarmer />
             <Routes>
                 <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
