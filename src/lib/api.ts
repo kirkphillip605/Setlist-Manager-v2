@@ -158,6 +158,15 @@ export const deleteGig = async (id: string) => {
     if (error) throw error;
 };
 
+export const searchVenues = async (query: string) => {
+    const { data, error } = await supabase.functions.invoke('search-venue', {
+        body: { query }
+    });
+    
+    if (error) throw error;
+    return data?.items || [];
+};
+
 export const addSkippedSong = async (gigId: string, songId: string) => {
     const { error } = await supabase.from('gig_skipped_songs').insert({ gig_id: gigId, song_id: songId });
     if (error) throw error;

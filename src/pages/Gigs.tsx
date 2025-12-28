@@ -1,50 +1,52 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { saveGig } from "@/lib/api";
-import { Plus, Calendar, Loader2, MapPin, ListMusic, CloudOff, Clock, ChevronRight } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { deleteGig } from "@/lib/api";
+import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, MoreVertical, Clock, ChevronRight } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Gig } from "@/types";
-import { Link } from "react-router-dom";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { Link, useNavigate } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
 import { format, parseISO } from "date-fns";
+import { GigCreateWizard } from "@/components/GigCreateWizard";
 
 const Gigs = () => {
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const isOnline = useNetworkStatus();
     
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [showPast, setShowPast] = useState(false);
-
-    // Form State
-    const [newGig, setNewGig] = useState<Partial<Gig>>({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
     // Use Master Cache
     const { data: gigs = [], isLoading } = useSyncedGigs();
     const { data: setlists = [] } = useSyncedSetlists();
 
-    // Filter band setlists for dropdown
+    // Filter band setlists for wizard (only public/band lists)
     const bandSetlists = useMemo(() => setlists.filter(s => !s.is_personal), [setlists]);
 
-    const saveMutation = useMutation({
-        mutationFn: saveGig,
+    const deleteMutation = useMutation({
+        mutationFn: deleteGig,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gigs'] });
-            setIsCreateOpen(false);
-            setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
-            toast.success("Gig saved successfully");
+            setDeleteId(null);
+            toast.success("Gig deleted");
         },
-        onError: (e) => toast.error("Failed to save gig: " + e.message)
+        onError: (e: any) => toast.error("Failed to delete gig: " + (e.message || "Unknown error"))
     });
 
     const groupedGigs = useMemo(() => {
@@ -59,78 +61,70 @@ const Gigs = () => {
             toast.error("Offline: Cannot create gigs");
             return;
         }
-        setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
         setIsCreateOpen(true);
     };
 
-    const handleStartTimeChange = (val: string) => {
-        if (val) {
-            const startDate = new Date(val);
-            const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
-            const offset = date => date.getTime() - (date.getTimezoneOffset() * 60000);
-            const endString = new Date(offset(endDate)).toISOString().slice(0, 16);
-            
-            setNewGig(prev => ({ 
-                ...prev, 
-                start_time: val,
-                end_time: endString 
-            }));
-        } else {
-            setNewGig(prev => ({ ...prev, start_time: val }));
+    const handleDeleteRequest = (id: string) => {
+        if (!isOnline) {
+            toast.error("Offline: Cannot delete gigs");
+            return;
         }
+        setDeleteId(id);
     };
 
     const GigList = ({ list }: { list: Gig[] }) => (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {list.map(gig => (
-                <Link key={gig.id} to={`/gigs/${gig.id}`} className="block group">
-                    <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <CardHeader className="flex flex-row items-start justify-between pb-2 pr-10">
-                            <div className="space-y-1">
-                                <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
-                                <div className="flex flex-col text-sm text-muted-foreground gap-1">
-                                    <div className="flex items-center">
-                                        <Calendar className="mr-1.5 h-3.5 w-3.5" />
-                                        {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
-                                    </div>
-                                    <div className="flex items-center">
-                                        <Clock className="mr-1.5 h-3.5 w-3.5" />
-                                        {format(parseISO(gig.start_time), "h:mm a")} 
-                                    </div>
-                                </div>
+                <div key={gig.id} className="relative group">
+                    <Link to={`/gigs/${gig.id}`} className="block">
+                        <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ChevronRight className="h-5 w-5 text-muted-foreground" />
                             </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {gig.venue_name && (
-                                <div className="text-sm text-muted-foreground flex items-center gap-1.5">
-                                    <MapPin className="h-3.5 w-3.5" /> 
-                                    <span className="truncate">{gig.venue_name}</span>
+                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-10">
+                                <div className="space-y-1">
+                                    <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
+                                    <div className="flex flex-col text-sm text-muted-foreground gap-1">
+                                        <div className="flex items-center">
+                                            <Calendar className="mr-1.5 h-3.5 w-3.5" />
+                                            {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
+                                        </div>
+                                        <div className="flex items-center">
+                                            <Clock className="mr-1.5 h-3.5 w-3.5" />
+                                            {format(parseISO(gig.start_time), "h:mm a")} 
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {gig.venue_name && (
+                                    <div className="text-sm text-muted-foreground flex items-center gap-1.5">
+                                        <MapPin className="h-3.5 w-3.5" /> 
+                                        <span className="truncate">{gig.venue_name}</span>
+                                    </div>
+                                )}
 
-                            {gig.setlist ? (
-                                <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded border border-primary/10">
-                                    <ListMusic className="h-4 w-4" />
-                                    <span className="truncate">{gig.setlist.name}</span>
-                                </div>
-                            ) : (
-                                <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-transparent">
-                                    No setlist attached
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </Link>
+                                {gig.setlist ? (
+                                    <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded border border-primary/10">
+                                        <ListMusic className="h-4 w-4" />
+                                        <span className="truncate">{gig.setlist.name}</span>
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-transparent">
+                                        No setlist attached
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </Link>
+                </div>
             ))}
         </div>
     );
 
     return (
         <AppLayout>
-             <LoadingDialog open={saveMutation.isPending} />
+             <LoadingDialog open={deleteMutation.isPending} />
 
              <div className="space-y-6 pb-20">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
@@ -183,78 +177,25 @@ const Gigs = () => {
                     <Plus className="h-8 w-8" />
                 </Button>
 
-                {/* Create Dialog Only */}
-                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>New Gig</DialogTitle>
-                            <DialogDescription>Enter the details for the new gig.</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <Label>Gig Name (Venue/Event)</Label>
-                                <Input 
-                                    value={newGig.name || ""} 
-                                    onChange={e => setNewGig(prev => ({ ...prev, name: e.target.value }))} 
-                                    placeholder="e.g. The Blue Note" 
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Start</Label>
-                                    <Input 
-                                        type="datetime-local" 
-                                        value={newGig.start_time || ""} 
-                                        min={new Date().toISOString().slice(0, 16)}
-                                        onChange={e => handleStartTimeChange(e.target.value)} 
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>End</Label>
-                                    <Input 
-                                        type="datetime-local" 
-                                        value={newGig.end_time || ""} 
-                                        onChange={e => setNewGig(prev => ({ ...prev, end_time: e.target.value }))} 
-                                    />
-                                </div>
-                            </div>
-                             <div className="space-y-2">
-                                <Label>Setlist</Label>
-                                <Select 
-                                    value={newGig.setlist_id || "none"} 
-                                    onValueChange={val => setNewGig(prev => ({ ...prev, setlist_id: val === "none" ? null : val }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select a setlist..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">-- No Setlist --</SelectItem>
-                                        {bandSetlists.map(s => (
-                                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Notes</Label>
-                                <Textarea 
-                                    value={newGig.notes || ""} 
-                                    onChange={e => setNewGig(prev => ({ ...prev, notes: e.target.value }))} 
-                                    placeholder="Load in time, parking info, etc." 
-                                />
-                            </div>
-                            <DialogFooter>
-                                <Button 
-                                    onClick={() => saveMutation.mutate(newGig as Gig)} 
-                                    disabled={!newGig.name || !newGig.start_time || saveMutation.isPending || !isOnline}
-                                >
-                                    {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Save Gig
-                                </Button>
-                            </DialogFooter>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                {/* New Wizard Component */}
+                <GigCreateWizard 
+                    open={isCreateOpen}
+                    onClose={() => setIsCreateOpen(false)}
+                    setlists={bandSetlists}
+                />
+
+                <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Gig?</AlertDialogTitle>
+                            <AlertDialogDescription>This will permanently delete the gig and its details.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive" disabled={deleteMutation.isPending}>Delete</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </AppLayout>
     );
