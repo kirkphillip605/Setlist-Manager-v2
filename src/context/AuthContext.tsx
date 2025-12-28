@@ -3,7 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { storageAdapter } from "@/lib/storageAdapter";
-import { Profile } from "@/types";
+import { Profile, Setlist } from "@/types";
 import { clear as clearIdb } from "idb-keyval";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
@@ -14,6 +14,9 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
+  isManager: boolean;
+  canManageGigs: boolean;
+  canEditSetlist: (setlist: Setlist) => boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => void;
   checkSession: () => Promise<void>;
@@ -25,6 +28,9 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   isAdmin: false,
+  isManager: false,
+  canManageGigs: false,
+  canEditSetlist: () => false,
   signOut: async () => {},
   refreshProfile: () => {},
   checkSession: async () => {},
@@ -41,7 +47,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         if (error) {
             console.error("Session check error:", error);
-            // If refresh token is missing/invalid, force logout
             if (error.message.includes("refresh_token_not_found") || error.status === 400) {
                await handleSignOut();
                return;
@@ -53,7 +58,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(currentSession);
             }
         } else if (session) {
-            // If local state has session but Supabase doesn't, sync it
             setSession(null);
         }
     } catch (e) {
@@ -65,43 +69,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setAuthLoading(true);
     
     try {
-        // 1. Supabase SignOut
         await supabase.auth.signOut();
     } catch (e) {
         console.error("Supabase signOut failed (likely offline):", e);
     }
 
     try {
-        // 2. Clear React Query Cache (In-Memory)
         queryClient.removeQueries();
         queryClient.clear();
-        
-        // 3. Clear Persisted Query Cache
         await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
-        
-        // 4. Clear IndexedDB (Images/Assets)
         await clearIdb();
 
-        // 5. Aggressively clear Auth Tokens
         if (Capacitor.isNativePlatform()) {
-            await Preferences.clear(); // Clears everything in Preferences
-            // Restore 'login_email' if it existed, as that's a user preference, not session data
-            // (handled by Login page reading before this, but if we want to keep it across logout we should save/restore)
-            // Ideally we only delete keys starting with 'sb-' but Preferences doesn't support 'keys()' well on all platforms.
-            // For now, full clear is safest to ensure tokens are gone.
+            await Preferences.clear(); 
         } else {
-            localStorage.clear(); // Clears everything on web
+            localStorage.clear(); 
         }
 
-        // 6. Update State
         setSession(null);
-        
     } catch (e) {
         console.warn("Failed to clear local cache during signout", e);
     } finally {
         setAuthLoading(false);
-        // Force reload to ensure clean state if needed, or just let Router handle it
-        // window.location.href = '/login'; 
     }
   };
 
@@ -124,7 +113,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (mounted) {
-        console.log("Auth State Change:", event);
         if (event === 'SIGNED_OUT') {
             queryClient.clear();
             setSession(null);
@@ -156,13 +144,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [queryClient, checkSession]);
 
-  // Handle Offline Profile Fetching
   const { data: profile, isLoading: profileLoading, refetch } = useQuery({
     queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
         if (!session?.user?.id) return null;
         
-        // Ensure profile exists in local cache or fetch
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
@@ -171,11 +157,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         if (error) {
             console.error("Profile fetch error:", error);
-            // If 406 Not Acceptable or similar auth issue
             if (error.code === 'PGRST301' || error.message.includes("JWT")) { 
                 checkSession();
             }
-            return null; // Return null to allow retry or graceful degrade
+            return null;
         }
         return data as Profile;
     },
@@ -186,13 +171,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   });
 
   const isLoading = authLoading || (!!session && profileLoading && !profile);
+  
+  // -- Permission Helpers --
+  const isAdmin = profile?.role === 'admin';
+  const isManager = profile?.role === 'manager' || isAdmin;
+  const canManageGigs = isManager;
+
+  const canEditSetlist = (setlist: Setlist) => {
+      if (isAdmin) return true;
+      if (setlist.created_by === session?.user?.id) return true;
+      // Managers can edit any band setlist (not personal)
+      if (isManager && !setlist.is_personal) return true;
+      return false;
+  };
 
   const value = {
     session,
     user: session?.user || null,
     profile: profile || null,
     loading: isLoading,
-    isAdmin: profile?.role === 'admin',
+    isAdmin,
+    isManager,
+    canManageGigs,
+    canEditSetlist,
     signOut: handleSignOut,
     refreshProfile: refetch,
     checkSession

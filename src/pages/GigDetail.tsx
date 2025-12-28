@@ -26,7 +26,7 @@ import {
 const GigDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { isAdmin, user } = useAuth();
+    const { canManageGigs } = useAuth();
     const queryClient = useQueryClient();
     const isOnline = useNetworkStatus();
     
@@ -133,7 +133,7 @@ const GigDetail = () => {
     );
 
     const isPast = new Date(gig.end_time || gig.start_time) < new Date();
-    const canEdit = (!isPast || isAdmin) && isOnline;
+    const canEdit = canManageGigs && !isPast && isOnline;
     
     // Duration calc
     let durationStr = "";

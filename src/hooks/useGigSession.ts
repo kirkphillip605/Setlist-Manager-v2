@@ -33,7 +33,8 @@ export const useGigSession = (gigId: string | null) => {
                 const { data: parts } = await supabase
                     .from('gig_session_participants')
                     .select('*, profile:profiles(first_name, last_name, position)')
-                    .eq('session_id', data.id);
+                    .eq('session_id', data.id)
+                    .order('joined_at', { ascending: true }); // Stabilize order
                 if (parts) {
                     setParticipants(parts);
                     participantsRef.current = parts;
@@ -80,13 +81,13 @@ export const useGigSession = (gigId: string | null) => {
                          const { data: parts } = await supabase
                             .from('gig_session_participants')
                             .select('*, profile:profiles(first_name, last_name, position)')
-                            .eq('session_id', sessionDataRef.current.id);
+                            .eq('session_id', sessionDataRef.current.id)
+                            .order('joined_at', { ascending: true }); // Stabilize order
                         
                         if (parts) {
                             // Detect Changes for Toasts
                             const prevIds = new Set(participantsRef.current.map(p => p.user_id));
-                            const currIds = new Set(parts.map(p => p.user_id));
-
+                            
                             // Joined?
                             parts.forEach(p => {
                                 if (!prevIds.has(p.user_id) && p.user_id !== authSession.user.id) {
@@ -95,8 +96,6 @@ export const useGigSession = (gigId: string | null) => {
                             });
 
                             // Left? (Only if not just a heartbeat update which wouldn't change IDs)
-                            // Note: We don't really detect "leaves" via realtime DELETE usually unless explicit. 
-                            // But if we did, we could compare here.
                             
                             setParticipants(parts);
                             participantsRef.current = parts;

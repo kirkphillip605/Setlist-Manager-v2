@@ -29,10 +29,12 @@ import { Gig, Setlist } from "@/types";
 import { useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { useAuth } from "@/context/AuthContext";
 
 const Setlists = () => {
   const navigate = useNavigate();
   const isOnline = useNetworkStatus();
+  const { canEditSetlist } = useAuth();
   const [activeTab, setActiveTab] = useState("public");
   const [sortBy, setSortBy] = useState<"name" | "created" | "updated">("name");
   
@@ -214,57 +216,65 @@ const Setlists = () => {
 
         {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredSetlists.map(list => (
-                    <Link key={list.id} to={`/setlists/${list.id}`}>
-                        <Card className={`hover:bg-accent/40 hover:border-primary/50 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
-                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-14">
-                                <div className="space-y-1">
-                                    <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
-                                    {list.is_default && <Badge variant="default" className="text-[10px] h-5">Default</Badge>}
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-sm text-muted-foreground">
-                                {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
-                                </div>
-                            </CardContent>
-                            
-                            {/* Actions only visible if online */}
-                            {isOnline && (
-                                <div className="absolute top-2 right-2">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-muted" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-                                                <MoreVertical className="h-5 w-5 text-muted-foreground" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-56">
-                                            <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
-                                                <Copy className="mr-2 h-4 w-4" /> Clone...
-                                            </DropdownMenuItem>
-                                            
-                                            {list.is_personal && (
-                                                <>
-                                                    <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCloneAsBand(list); }}>
-                                                        <Globe className="mr-2 h-4 w-4" /> Clone to Band
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvertId(list.id); }}>
-                                                        <RefreshCw className="mr-2 h-4 w-4" /> Convert to Band...
-                                                    </DropdownMenuItem>
-                                                </>
-                                            )}
+                {filteredSetlists.map(list => {
+                    const canEdit = canEditSetlist(list);
+                    return (
+                        <Link key={list.id} to={`/setlists/${list.id}`}>
+                            <Card className={`hover:bg-accent/40 hover:border-primary/50 transition-all cursor-pointer h-full border rounded-xl shadow-sm hover:shadow-md relative group ${list.is_default ? 'border-primary/50 bg-primary/5' : ''}`}>
+                                <CardHeader className="flex flex-row items-start justify-between pb-2 pr-14">
+                                    <div className="space-y-1">
+                                        <CardTitle className="text-lg font-bold truncate">{list.name}</CardTitle>
+                                        {list.is_default && <Badge variant="default" className="text-[10px] h-5">Default</Badge>}
+                                        {!canEdit && <Badge variant="outline" className="text-[10px] h-5 ml-2">Read Only</Badge>}
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-sm text-muted-foreground">
+                                    {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
+                                    </div>
+                                </CardContent>
+                                
+                                {/* Actions only visible if online */}
+                                {isOnline && (
+                                    <div className="absolute top-2 right-2">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-muted" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                                    <MoreVertical className="h-5 w-5 text-muted-foreground" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-56">
+                                                <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCreateModal("clone", list.id); }}>
+                                                    <Copy className="mr-2 h-4 w-4" /> Clone...
+                                                </DropdownMenuItem>
+                                                
+                                                {list.is_personal && (
+                                                    <>
+                                                        <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCloneAsBand(list); }}>
+                                                            <Globe className="mr-2 h-4 w-4" /> Clone to Band
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem className="py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvertId(list.id); }}>
+                                                            <RefreshCw className="mr-2 h-4 w-4" /> Convert to Band...
+                                                        </DropdownMenuItem>
+                                                    </>
+                                                )}
 
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem className="text-destructive py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
-                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </div>
-                            )}
-                        </Card>
-                    </Link>
-                ))}
+                                                {canEdit && (
+                                                    <>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem className="text-destructive py-3" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteRequest(list.id); }}>
+                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                                        </DropdownMenuItem>
+                                                    </>
+                                                )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                )}
+                            </Card>
+                        </Link>
+                    );
+                })}
             </div>
         )}
 

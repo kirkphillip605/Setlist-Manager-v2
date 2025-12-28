@@ -17,6 +17,7 @@ interface SetCardProps {
     setlist: Setlist;
     setDuration: number;
     isCollapsed: boolean;
+    readOnly?: boolean;
     onToggleCollapse: () => void;
     onAddSong: (setId: string) => void;
     onDeleteSet: (setId: string) => void;
@@ -30,6 +31,7 @@ export const SetCard = ({
     setlist,
     setDuration,
     isCollapsed,
+    readOnly = false,
     onToggleCollapse,
     onAddSong,
     onDeleteSet,
@@ -78,20 +80,22 @@ export const SetCard = ({
                         <span className="truncate">{formatDurationRounded(setDuration)}</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm" onClick={() => onAddSong(set.id)} className="h-9 px-2 sm:px-3">
-                        <Plus className="sm:mr-1 h-4 w-4" /> 
-                        <span className="hidden sm:inline">Add Song</span>
-                    </Button>
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-9 w-9 text-muted-foreground hover:text-destructive" 
-                        onClick={() => onDeleteSet(set.id)}
-                    >
-                        <Trash2 className="h-5 w-5" />
-                    </Button>
-                </div>
+                {!readOnly && (
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm" onClick={() => onAddSong(set.id)} className="h-9 px-2 sm:px-3">
+                            <Plus className="sm:mr-1 h-4 w-4" /> 
+                            <span className="hidden sm:inline">Add Song</span>
+                        </Button>
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-9 w-9 text-muted-foreground hover:text-destructive" 
+                            onClick={() => onDeleteSet(set.id)}
+                        >
+                            <Trash2 className="h-5 w-5" />
+                        </Button>
+                    </div>
+                )}
             </CardHeader>
             {!isCollapsed && (
                 <CardContent className="p-0 animate-in slide-in-from-top-2 fade-in duration-300">
@@ -143,49 +147,51 @@ export const SetCard = ({
                                         </div>
 
                                         {/* Actions - Context Menu Only */}
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0">
-                                                    <MoreVertical className="h-5 w-5" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end" className="w-56 p-2">
-                                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                <DropdownMenuItem onClick={() => onRemoveSong(setSong.id)} className="text-destructive focus:text-destructive py-3">
-                                                    <Trash2 className="mr-2 h-4 w-4" /> Remove from Set
-                                                </DropdownMenuItem>
-                                                
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuLabel>Change Order</DropdownMenuLabel>
-                                                <DropdownMenuItem 
-                                                    disabled={index === 0}
-                                                    onClick={() => onMoveOrder(set.id, index, 'up')}
-                                                    className="py-3"
-                                                >
-                                                    <ArrowUp className="mr-2 h-4 w-4" /> Move Up
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem 
-                                                    disabled={index === set.songs.length - 1}
-                                                    onClick={() => onMoveOrder(set.id, index, 'down')}
-                                                    className="py-3"
-                                                >
-                                                    <ArrowDown className="mr-2 h-4 w-4" /> Move Down
-                                                </DropdownMenuItem>
-
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuLabel>Move to Set...</DropdownMenuLabel>
-                                                {setlist.sets.map(targetSet => (
+                                        {!readOnly && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0">
+                                                        <MoreVertical className="h-5 w-5" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-56 p-2">
+                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                    <DropdownMenuItem onClick={() => onRemoveSong(setSong.id)} className="text-destructive focus:text-destructive py-3">
+                                                        <Trash2 className="mr-2 h-4 w-4" /> Remove from Set
+                                                    </DropdownMenuItem>
+                                                    
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuLabel>Change Order</DropdownMenuLabel>
                                                     <DropdownMenuItem 
-                                                        key={targetSet.id}
-                                                        disabled={targetSet.id === set.id}
-                                                        onClick={() => onMoveToSet(setSong.id, targetSet.id)}
+                                                        disabled={index === 0}
+                                                        onClick={() => onMoveOrder(set.id, index, 'up')}
                                                         className="py-3"
                                                     >
-                                                        <ArrowRightLeft className="mr-2 h-4 w-4" /> {targetSet.name}
+                                                        <ArrowUp className="mr-2 h-4 w-4" /> Move Up
                                                     </DropdownMenuItem>
-                                                ))}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                                                    <DropdownMenuItem 
+                                                        disabled={index === set.songs.length - 1}
+                                                        onClick={() => onMoveOrder(set.id, index, 'down')}
+                                                        className="py-3"
+                                                    >
+                                                        <ArrowDown className="mr-2 h-4 w-4" /> Move Down
+                                                    </DropdownMenuItem>
+
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuLabel>Move to Set...</DropdownMenuLabel>
+                                                    {setlist.sets.map(targetSet => (
+                                                        <DropdownMenuItem 
+                                                            key={targetSet.id}
+                                                            disabled={targetSet.id === set.id}
+                                                            onClick={() => onMoveToSet(setSong.id, targetSet.id)}
+                                                            className="py-3"
+                                                        >
+                                                            <ArrowRightLeft className="mr-2 h-4 w-4" /> {targetSet.name}
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
                                     </div>
                                 );
                             })}

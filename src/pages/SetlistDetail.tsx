@@ -1,5 +1,5 @@
 import AppLayout from "@/components/AppLayout";
-import { Loader2, CloudOff, Save, Undo, Plus, Star, Clock, Trash2 } from "lucide-react";
+import { Loader2, CloudOff, Save, Undo, Plus, Star, Clock, Trash2, Lock } from "lucide-react";
 import { syncSetlist } from "@/lib/api";
 import { parseDurationToSeconds, formatDurationRounded } from "@/lib/utils";
 import { useState, useEffect, useCallback } from "react";
@@ -18,6 +18,7 @@ import { useSetlistWithSongs, useSyncedSongs } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { Setlist, Set as SetType, SetSong } from "@/types";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { useAuth } from "@/context/AuthContext";
 
 // Helper to deep clone setlist for state
 const cloneSetlistData = (data: Setlist): Setlist => JSON.parse(JSON.stringify(data));
@@ -26,6 +27,7 @@ const SetlistDetail = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const isOnline = useNetworkStatus();
+  const { canEditSetlist } = useAuth();
   
   // -- Data Fetching --
   const fetchedSetlist = useSetlistWithSongs(id);
@@ -49,6 +51,8 @@ const SetlistDetail = () => {
   
   // Auto-scroll target
   const [scrollToSetId, setScrollToSetId] = useState<string | null>(null);
+
+  const canEdit = localSetlist ? canEditSetlist(localSetlist) : false;
 
   // Initialize Local State from Cache
   useEffect(() => {
@@ -106,12 +110,14 @@ const SetlistDetail = () => {
 
   const handleUpdateName = (newName: string) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => { if (draft) draft.name = newName; });
   };
 
   const handleAddSet = (isEncore = false) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       if (!localSetlist) return;
       pushHistory();
 
@@ -164,6 +170,7 @@ const SetlistDetail = () => {
 
   const handleDeleteSet = (setId: string) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -182,6 +189,7 @@ const SetlistDetail = () => {
 
   const handleAddSongs = async (targetSetId: string, songIds: string[]) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -204,6 +212,7 @@ const SetlistDetail = () => {
 
   const handleCreateSetAndAdd = async (initialSongs: string[], remainingSongs: string[]) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -254,6 +263,7 @@ const SetlistDetail = () => {
 
   const handleRemoveSong = (songId: string) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -270,6 +280,7 @@ const SetlistDetail = () => {
 
   const handleMoveOrder = (setId: string, songIndex: number, direction: 'up' | 'down') => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -286,6 +297,7 @@ const SetlistDetail = () => {
 
   const handleMoveToSet = (setSongId: string, targetSetId: string) => {
       if (!isOnline) { toast.error("Cannot edit while offline"); return; }
+      if (!canEdit) return;
       pushHistory();
       updateLocalSetlist(draft => {
           if (!draft) return;
@@ -368,37 +380,48 @@ const SetlistDetail = () => {
                  <CloudOff className="h-4 w-4" /> Offline Mode: Read Only
              </div>
         )}
+        {isOnline && !canEdit && (
+             <div className="bg-muted px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                 <Lock className="h-4 w-4" /> View Only (Managed by Admin/Manager)
+             </div>
+        )}
 
         {/* Sticky Header with Action Bar */}
         <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b shadow-sm -mx-4 px-4 sm:mx-0 sm:px-0 pt-4 pb-3 mb-6 transition-all">
-            <SetlistHeader 
-                name={localSetlist.name}
-                onUpdateName={handleUpdateName}
-            >
-                {/* Desktop Buttons */}
-                {isOnline && (
-                    <div className="hidden md:flex items-center gap-2">
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleAddSet(false)} 
-                            className="h-9 px-3 border border-dashed"
-                        >
-                            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Set
-                        </Button>
-                        {!hasEncore && (
+            {canEdit ? (
+                <SetlistHeader 
+                    name={localSetlist.name}
+                    onUpdateName={handleUpdateName}
+                >
+                    {/* Desktop Buttons */}
+                    {isOnline && (
+                        <div className="hidden md:flex items-center gap-2">
                             <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={() => handleAddSet(true)} 
-                                className="h-9 px-3 border border-dashed text-amber-600 hover:text-amber-700 dark:text-amber-500"
+                                onClick={() => handleAddSet(false)} 
+                                className="h-9 px-3 border border-dashed"
                             >
-                                <Star className="mr-1.5 h-3.5 w-3.5" /> Add Encore
+                                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Set
                             </Button>
-                        )}
-                    </div>
-                )}
-            </SetlistHeader>
+                            {!hasEncore && (
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => handleAddSet(true)} 
+                                    className="h-9 px-3 border border-dashed text-amber-600 hover:text-amber-700 dark:text-amber-500"
+                                >
+                                    <Star className="mr-1.5 h-3.5 w-3.5" /> Add Encore
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                </SetlistHeader>
+            ) : (
+                <div className="flex items-center gap-2 pb-2">
+                    <h1 className="text-2xl font-bold tracking-tight truncate">{localSetlist.name}</h1>
+                </div>
+            )}
             
             {/* Toolbar Row */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1 mt-2">
@@ -409,7 +432,7 @@ const SetlistDetail = () => {
                     </div>
                 </div>
 
-                {isDirty && isOnline && (
+                {isDirty && isOnline && canEdit && (
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-end animate-in fade-in slide-in-from-right-4">
                         <Button variant="outline" size="sm" onClick={handleUndo} disabled={history.length === 0 || saveMutation.isPending}>
                             <Undo className="h-4 w-4 mr-2" /> Undo
@@ -435,20 +458,21 @@ const SetlistDetail = () => {
           {localSetlist.sets.length === 0 ? (
              <div className="text-center py-20 border-2 border-dashed rounded-lg bg-muted/10">
                 <p className="text-muted-foreground mb-4">No sets added yet.</p>
-                <Button onClick={() => handleAddSet(false)} disabled={!isOnline}>Create First Set</Button>
+                {canEdit && <Button onClick={() => handleAddSet(false)} disabled={!isOnline}>Create First Set</Button>}
              </div>
           ) : (
             localSetlist.sets.map((set) => (
-                <div key={set.id} className={!isOnline ? "pointer-events-none" : ""}>
+                <div key={set.id}>
                    <SetCard 
                        set={set}
                        setlist={localSetlist}
                        setDuration={set.songs.reduce((acc, s) => acc + parseDurationToSeconds(s.song?.duration), 0)}
                        isCollapsed={!!collapsedSets[set.id]}
+                       readOnly={!canEdit || !isOnline}
                        onToggleCollapse={() => toggleSetCollapse(set.id)}
-                       onAddSong={(setId) => { if(isOnline) { setActiveSetId(setId); setIsAddSongOpen(true); }}}
-                       onDeleteSet={(setId) => { if(isOnline) setSetToDelete(setId); }}
-                       onRemoveSong={(songId) => { if(isOnline) setSongToRemove(songId); }}
+                       onAddSong={(setId) => { if(isOnline && canEdit) { setActiveSetId(setId); setIsAddSongOpen(true); }}}
+                       onDeleteSet={(setId) => { if(isOnline && canEdit) setSetToDelete(setId); }}
+                       onRemoveSong={(songId) => { if(isOnline && canEdit) setSongToRemove(songId); }}
                        onMoveOrder={handleMoveOrder}
                        onMoveToSet={handleMoveToSet}
                    />
@@ -458,7 +482,7 @@ const SetlistDetail = () => {
         </div>
 
         {/* Mobile FAB */}
-        {isOnline && (
+        {isOnline && canEdit && (
             <div className="md:hidden fixed bottom-24 right-4 z-40">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -482,7 +506,7 @@ const SetlistDetail = () => {
             </div>
         )}
 
-        {isAddSongOpen && isOnline && (
+        {isAddSongOpen && isOnline && canEdit && (
             <AddSongDialog 
                 open={isAddSongOpen}
                 setlist={localSetlist}

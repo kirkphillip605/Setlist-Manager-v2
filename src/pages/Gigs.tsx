@@ -22,11 +22,13 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
 import { format, parseISO } from "date-fns";
 import { GigCreateWizard } from "@/components/GigCreateWizard";
+import { useAuth } from "@/context/AuthContext";
 
 const Gigs = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const isOnline = useNetworkStatus();
+    const { canManageGigs } = useAuth();
     
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [showPast, setShowPast] = useState(false);
@@ -138,9 +140,11 @@ const Gigs = () => {
                         </p>
                     </div>
                     {/* Desktop Button */}
-                    <Button onClick={openCreate} className="hidden md:flex rounded-full shadow-lg" disabled={!isOnline}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Gig
-                    </Button>
+                    {canManageGigs && (
+                        <Button onClick={openCreate} className="hidden md:flex rounded-full shadow-lg" disabled={!isOnline}>
+                            <Plus className="mr-2 h-4 w-4" /> Add Gig
+                        </Button>
+                    )}
                 </div>
 
                 {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
@@ -150,7 +154,7 @@ const Gigs = () => {
                                 <div className="text-center py-12 border-2 border-dashed rounded-lg">
                                     <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
                                     <h3 className="font-medium text-lg">No upcoming gigs</h3>
-                                    <p className="text-muted-foreground">Add a gig to get started!</p>
+                                    {canManageGigs && <p className="text-muted-foreground">Add a gig to get started!</p>}
                                 </div>
                             ) : (
                                 <GigList list={groupedGigs.upcoming} />
@@ -168,14 +172,16 @@ const Gigs = () => {
                 )}
 
                 {/* Mobile FAB */}
-                <Button
-                    onClick={openCreate}
-                    size="icon"
-                    className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
-                    disabled={!isOnline}
-                >
-                    <Plus className="h-8 w-8" />
-                </Button>
+                {canManageGigs && (
+                    <Button
+                        onClick={openCreate}
+                        size="icon"
+                        className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        disabled={!isOnline}
+                    >
+                        <Plus className="h-8 w-8" />
+                    </Button>
+                )}
 
                 {/* New Wizard Component */}
                 <GigCreateWizard 
