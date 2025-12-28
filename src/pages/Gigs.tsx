@@ -154,38 +154,6 @@ const Gigs = () => {
                                 </div>
                             )}
                         </CardContent>
-
-                        {/* Delete Button - Now Inside Card/Link, but prevented from triggering navigation */}
-                        {isOnline && (
-                            <div className="absolute top-4 right-3 z-10">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-8 w-8 text-muted-foreground hover:bg-muted"
-                                            // IMPORTANT: Stop click from bubbling to the Link
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                        >
-                                            <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem 
-                                            className="text-destructive focus:text-destructive"
-                                            // Ensure the menu item click also doesn't trigger navigation (defensive)
-                                            onClick={(e) => { 
-                                                e.preventDefault(); 
-                                                e.stopPropagation(); 
-                                                handleDeleteRequest(gig.id); 
-                                            }}
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        )}
                     </Card>
                 </Link>
             ))}
