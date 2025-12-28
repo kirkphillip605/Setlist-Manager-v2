@@ -118,67 +118,76 @@ const Gigs = () => {
     const GigList = ({ list }: { list: Gig[] }) => (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {list.map(gig => (
-                <div key={gig.id} className="relative group">
-                    <Link to={`/gigs/${gig.id}`} className="block">
-                        <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full">
-                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
-                                <div className="space-y-1">
-                                    <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
-                                    <div className="flex flex-col text-sm text-muted-foreground gap-1">
-                                        <div className="flex items-center">
-                                            <Calendar className="mr-1 h-3 w-3" />
-                                            {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
-                                        </div>
-                                        <div className="flex items-center">
-                                            <Clock className="mr-1 h-3 w-3" />
-                                            {format(parseISO(gig.start_time), "h:mm a")} 
-                                            {gig.end_time && ` - ${format(parseISO(gig.end_time), "h:mm a")}`}
-                                        </div>
+                <Link key={gig.id} to={`/gigs/${gig.id}`} className="block h-full group relative">
+                    <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full">
+                        <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
+                            <div className="space-y-1">
+                                <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
+                                <div className="flex flex-col text-sm text-muted-foreground gap-1">
+                                    <div className="flex items-center">
+                                        <Calendar className="mr-1 h-3 w-3" />
+                                        {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
+                                    </div>
+                                    <div className="flex items-center">
+                                        <Clock className="mr-1 h-3 w-3" />
+                                        {format(parseISO(gig.start_time), "h:mm a")} 
+                                        {gig.end_time && ` - ${format(parseISO(gig.end_time), "h:mm a")}`}
                                     </div>
                                 </div>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                {gig.venue_name && (
-                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                        <MapPin className="h-3 w-3" /> {gig.venue_name}
-                                    </div>
-                                )}
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {gig.venue_name && (
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" /> {gig.venue_name}
+                                </div>
+                            )}
 
-                                {gig.setlist ? (
-                                    <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded">
-                                        <ListMusic className="h-4 w-4" />
-                                        Setlist: {gig.setlist.name}
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded">
-                                        No setlist attached
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </Link>
-                    
-                    {/* Delete Button - Positioned Absolutely Outside Link */}
-                    {isOnline && (
-                        <div className="absolute top-4 right-3 z-10">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted">
-                                        <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem 
-                                        className="text-destructive focus:text-destructive"
-                                        onClick={() => handleDeleteRequest(gig.id)}
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </div>
-                    )}
-                </div>
+                            {gig.setlist ? (
+                                <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded">
+                                    <ListMusic className="h-4 w-4" />
+                                    Setlist: {gig.setlist.name}
+                                </div>
+                            ) : (
+                                <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded">
+                                    No setlist attached
+                                </div>
+                            )}
+                        </CardContent>
+
+                        {/* Delete Button - Now Inside Card/Link, but prevented from triggering navigation */}
+                        {isOnline && (
+                            <div className="absolute top-4 right-3 z-10">
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 text-muted-foreground hover:bg-muted"
+                                            // IMPORTANT: Stop click from bubbling to the Link
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                        >
+                                            <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem 
+                                            className="text-destructive focus:text-destructive"
+                                            // Ensure the menu item click also doesn't trigger navigation (defensive)
+                                            onClick={(e) => { 
+                                                e.preventDefault(); 
+                                                e.stopPropagation(); 
+                                                handleDeleteRequest(gig.id); 
+                                            }}
+                                        >
+                                            <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
+                        )}
+                    </Card>
+                </Link>
             ))}
         </div>
     );
