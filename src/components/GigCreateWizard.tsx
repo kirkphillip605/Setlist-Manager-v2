@@ -236,7 +236,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                             <div className="p-4 bg-background border-b space-y-4 shrink-0">
                                 <div className="flex gap-2">
                                     <Input 
-                                        placeholder="Enter venue name AND location (e.g. "Docs Bar Watertown SD)" 
+                                        placeholder="Enter venue name AND location (e.g. Docs Bar Watertown SD)" 
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && handleSearch()}
