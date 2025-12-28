@@ -265,7 +265,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                                             ) : (
                                                 <div className="flex flex-col items-center justify-center h-40 text-muted-foreground/50">
                                                     <Globe className="w-12 h-12 mb-2" />
-                                                    <p>For best results, enter the venue's name along with the city & state and/or zip code. (e.g. Thirstys Bar Mitchell SD).</p>
+                                                    <p>Enter the venue name AND city & state and/or zip code. For example, search "Docs Bar Watertown SD" instead of "Docs Bar"</p>
                                                 </div>
                                             )}
                                         </div>
