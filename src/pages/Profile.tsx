@@ -41,7 +41,6 @@ const Profile = () => {
     first_name: "",
     last_name: "",
     position: "",
-    phone: "",
     avatar_url: ""
   });
 
@@ -77,7 +76,6 @@ const Profile = () => {
           first_name: data.first_name || "",
           last_name: data.last_name || "",
           position: data.position || "",
-          phone: data.phone || "",
           avatar_url: data.avatar_url || ""
         });
       }
@@ -98,7 +96,6 @@ const Profile = () => {
         first_name: profile.first_name,
         last_name: profile.last_name,
         position: profile.position,
-        phone: profile.phone || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', session.user.id);
@@ -253,16 +250,6 @@ const Profile = () => {
                     onChange={(e) => setProfile({ ...profile, last_name: e.target.value })}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                    id="phone"
-                    value={profile.phone}
-                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                    placeholder="+1 555 000 0000"
-                />
               </div>
 
               <div className="space-y-2">

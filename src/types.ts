@@ -99,7 +99,6 @@ export interface Profile {
   first_name: string | null;
   last_name: string | null;
   position: string | null;
-  phone: string | null;
   role: UserRole;
   is_approved: boolean;
   is_active: boolean;

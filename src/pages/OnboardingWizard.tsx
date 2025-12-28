@@ -28,7 +28,6 @@ const OnboardingWizard = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [position, setPosition] = useState("");
-  const [phone, setPhone] = useState("");
   
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -43,7 +42,6 @@ const OnboardingWizard = () => {
         if (profile.first_name) setFirstName(profile.first_name);
         if (profile.last_name) setLastName(profile.last_name);
         if (profile.position) setPosition(profile.position);
-        if (profile.phone) setPhone(profile.phone);
         
         // If we found data, mark initialized to stop overwriting user typing
         if (profile.first_name || profile.last_name) initializedRef.current = true;
@@ -77,7 +75,6 @@ const OnboardingWizard = () => {
             first_name: firstName,
             last_name: lastName,
             position: position,
-            phone: phone || null,
             updated_at: new Date().toISOString()
         })
         .eq('id', session?.user?.id);
@@ -87,10 +84,6 @@ const OnboardingWizard = () => {
         setLoading(false);
         return;
     }
-
-    // Attempt to update auth user metadata phone if provided?
-    // Skip for now to avoid OTP trigger during onboarding unless mandatory.
-    // We just save to profile for contact info.
 
     // Refresh context
     await refreshProfile();
@@ -180,18 +173,6 @@ const OnboardingWizard = () => {
                         </div>
                     </div>
                     
-                    <div className="space-y-2">
-                        <Label htmlFor="phone">Phone Number (Optional)</Label>
-                        <Input 
-                            id="phone" 
-                            type="tel"
-                            value={phone} 
-                            onChange={e => setPhone(e.target.value)} 
-                            placeholder="+1 555 000 0000"
-                            autoComplete="tel"
-                        />
-                    </div>
-
                     <div className="space-y-2">
                         <Label htmlFor="pos">Band Position</Label>
                         <Select value={position} onValueChange={setPosition} required>
