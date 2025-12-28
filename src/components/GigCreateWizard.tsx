@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Search, MapPin, Check, ChevronRight, ChevronLeft } from "lucide-react";
+import { Loader2, Search, MapPin, Check, ChevronRight, ChevronLeft, Keyboard, Globe } from "lucide-react";
 import { Gig, Setlist } from "@/types";
 import { searchVenues, saveGig } from "@/lib/api";
 import { toast } from "sonner";
@@ -22,6 +22,9 @@ interface GigCreateWizardProps {
 
 export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProps) => {
     const [step, setStep] = useState(1);
+    // New state for Step 2 sub-modes
+    const [venueMode, setVenueMode] = useState<'select' | 'search' | 'manual'>('select');
+    
     const [formData, setFormData] = useState<Partial<Gig>>({
         name: "",
         start_time: "",
@@ -41,6 +44,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
     useEffect(() => {
         if (open) {
             setStep(1);
+            setVenueMode('select');
             setFormData(prev => ({
                 name: "",
                 start_time: "",
@@ -106,6 +110,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
             zip: item.address.postalCode
         }));
         toast.success("Venue details applied");
+        setStep(3); // Auto-advance
     };
 
     // --- FINAL SUBMISSION ---
@@ -124,7 +129,18 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
         setStep(step + 1);
     };
 
-    const handleBack = () => setStep(step - 1);
+    const handleBack = () => {
+        // If we are in Step 2 sub-modes (search/manual), go back to select
+        if (step === 2 && venueMode !== 'select') {
+            setVenueMode('select');
+            return;
+        }
+        setStep(step - 1);
+    };
+
+    // Helper to determine if "Next" button should be visible/enabled
+    const showNextButton = step !== 2 || venueMode === 'manual';
+    const isNextDisabled = (step === 1 && !formData.name);
 
     return (
         <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
@@ -184,8 +200,52 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                         </ScrollArea>
                     )}
 
-                    {/* STEP 2: VENUE */}
-                    {step === 2 && (
+                    {/* STEP 2: VENUE - SELECT MODE */}
+                    {step === 2 && venueMode === 'select' && (
+                        <div className="p-6 h-full flex flex-col items-center justify-center space-y-6">
+                            <div className="text-center space-y-2 max-w-sm mx-auto">
+                                <h3 className="text-lg font-semibold">Location Details</h3>
+                                <p className="text-sm text-muted-foreground">How would you like to enter the venue information?</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 gap-4 w-full max-w-sm">
+                                <Card 
+                                    className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all group"
+                                    onClick={() => setVenueMode('search')}
+                                >
+                                    <CardContent className="flex items-center gap-4 p-4">
+                                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                            <Globe className="w-5 h-5" />
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="font-semibold">Search Venue</div>
+                                            <div className="text-xs text-muted-foreground">Auto-fill address from maps</div>
+                                        </div>
+                                        <ChevronRight className="w-5 h-5 ml-auto text-muted-foreground" />
+                                    </CardContent>
+                                </Card>
+
+                                <Card 
+                                    className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-all group"
+                                    onClick={() => setVenueMode('manual')}
+                                >
+                                    <CardContent className="flex items-center gap-4 p-4">
+                                        <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-foreground group-hover:scale-110 transition-transform">
+                                            <Keyboard className="w-5 h-5" />
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="font-semibold">Enter Manually</div>
+                                            <div className="text-xs text-muted-foreground">Type address details yourself</div>
+                                        </div>
+                                        <ChevronRight className="w-5 h-5 ml-auto text-muted-foreground" />
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 2: VENUE - SEARCH MODE */}
+                    {step === 2 && venueMode === 'search' && (
                         <div className="flex flex-col h-full">
                             <div className="p-4 bg-background border-b space-y-4">
                                 <div className="flex gap-2">
@@ -194,6 +254,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && isValidQuery && handleSearch()}
+                                        autoFocus
                                     />
                                     <Button onClick={handleSearch} disabled={isSearching || !isValidQuery}>
                                         {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -201,72 +262,76 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                                 </div>
                             </div>
                             
-                            <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-                                {/* Results List */}
-                                <div className="flex-1 border-r bg-muted/20 overflow-hidden flex flex-col">
-                                    <div className="p-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/50 border-b">
-                                        Search Results
-                                    </div>
-                                    <ScrollArea className="flex-1">
-                                        {searchResults.length === 0 ? (
-                                            <div className="p-8 text-center text-muted-foreground text-sm space-y-4">
-                                                {hasSearched ? (
-                                                    <>
-                                                        <p>No venues found.</p>
-                                                        <div className="p-3 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20 text-xs">
-                                                            <p className="font-semibold mb-1">Tip for better results:</p>
-                                                            <p>Include <b>City & State</b> or <b>Zip Code</b> along with the venue name.</p>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <p>Search for a venue above to auto-fill details.</p>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="divide-y">
-                                                {searchResults.map((item: any) => (
-                                                    <div 
-                                                        key={item.id} 
-                                                        className="p-3 hover:bg-accent cursor-pointer transition-colors"
-                                                        onClick={() => selectVenue(item)}
-                                                    >
-                                                        <div className="font-medium text-sm">{item.title}</div>
-                                                        <div className="text-xs text-muted-foreground truncate">{item.address.label}</div>
+                            <div className="flex-1 min-h-0 bg-background">
+                                <ScrollArea className="h-full">
+                                    {searchResults.length === 0 ? (
+                                        <div className="p-8 text-center text-muted-foreground text-sm space-y-4">
+                                            {hasSearched ? (
+                                                <>
+                                                    <p>No venues found.</p>
+                                                    <div className="p-3 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20 text-xs">
+                                                        <p className="font-semibold mb-1">Tip for better results:</p>
+                                                        <p>Include <b>City & State</b> or <b>Zip Code</b> along with the venue name.</p>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </ScrollArea>
-                                </div>
-
-                                {/* Manual Form */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background">
-                                    <div className="text-sm font-medium border-b pb-2 mb-2">Venue Details</div>
-                                    <div className="space-y-2">
-                                        <Label>Venue Name</Label>
-                                        <Input value={formData.venue_name} onChange={e => setFormData({...formData, venue_name: e.target.value})} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Address</Label>
-                                        <Input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-2">
-                                            <Label>City</Label>
-                                            <Input value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                                                </>
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground/50">
+                                                    <Search className="w-12 h-12 mb-2" />
+                                                    <p>Search above to find a venue</p>
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label>State</Label>
-                                            <Input value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} />
+                                    ) : (
+                                        <div className="divide-y">
+                                            {searchResults.map((item: any) => (
+                                                <div 
+                                                    key={item.id} 
+                                                    className="p-4 hover:bg-accent cursor-pointer transition-colors flex items-center justify-between group"
+                                                    onClick={() => selectVenue(item)}
+                                                >
+                                                    <div>
+                                                        <div className="font-medium">{item.title}</div>
+                                                        <div className="text-xs text-muted-foreground">{item.address.label}</div>
+                                                    </div>
+                                                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100" />
+                                                </div>
+                                            ))}
                                         </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Zip</Label>
-                                        <Input value={formData.zip} onChange={e => setFormData({...formData, zip: e.target.value})} />
-                                    </div>
-                                </div>
+                                    )}
+                                </ScrollArea>
                             </div>
                         </div>
+                    )}
+
+                    {/* STEP 2: VENUE - MANUAL MODE */}
+                    {step === 2 && venueMode === 'manual' && (
+                        <ScrollArea className="h-full bg-background">
+                            <div className="p-6 space-y-4">
+                                <div className="text-sm font-medium border-b pb-2 mb-2">Venue Details</div>
+                                <div className="space-y-2">
+                                    <Label>Venue Name</Label>
+                                    <Input value={formData.venue_name} onChange={e => setFormData({...formData, venue_name: e.target.value})} autoFocus />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Address</Label>
+                                    <Input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-2">
+                                        <Label>City</Label>
+                                        <Input value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>State</Label>
+                                        <Input value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Zip</Label>
+                                    <Input value={formData.zip} onChange={e => setFormData({...formData, zip: e.target.value})} />
+                                </div>
+                            </div>
+                        </ScrollArea>
                     )}
 
                     {/* STEP 3: SETLIST */}
@@ -314,9 +379,11 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                     
                     <div className="flex gap-2">
                         {step < 3 ? (
-                            <Button onClick={handleNext} disabled={step === 1 && !formData.name}>
-                                Next <ChevronRight className="ml-2 h-4 w-4" />
-                            </Button>
+                            showNextButton && (
+                                <Button onClick={handleNext} disabled={isNextDisabled}>
+                                    Next <ChevronRight className="ml-2 h-4 w-4" />
+                                </Button>
+                            )
                         ) : (
                             <Button 
                                 onClick={() => saveMutation.mutate(formData as Gig)} 
