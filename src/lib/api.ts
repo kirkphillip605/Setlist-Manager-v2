@@ -129,7 +129,7 @@ export const saveGig = async (gig: Partial<Gig>) => {
         city: gig.city,
         state: gig.state,
         zip: gig.zip,
-        // Only set created_by on insert, do not send it on update to avoid RLS issues if unchanged
+        // Only set created_by on insert
         ...(gig.id ? {} : { created_by: user?.id })
     };
 
@@ -137,14 +137,14 @@ export const saveGig = async (gig: Partial<Gig>) => {
         const { data, error } = await supabase.from('gigs').update(gigData).eq('id', gig.id).select().single();
         if (error) {
             console.error("Update Gig Error:", error);
-            throw new Error(error.message);
+            throw new Error(error.message || "Failed to update gig");
         }
         return data;
     } else {
         const { data, error } = await supabase.from('gigs').insert(gigData).select().single();
         if (error) {
             console.error("Insert Gig Error:", error);
-            throw new Error(error.message);
+            throw new Error(error.message || "Failed to create gig");
         }
         return data;
     }
@@ -266,6 +266,8 @@ export const createSetlist = async (name: string, isPersonal: boolean = false, i
       await supabase.from('setlists').update({ is_default: false }).eq('is_default', true);
   }
 
+  // NOTE: 'date' column in setlists is still text based on schema in context, 
+  // but let's send ISO string just in case.
   const { data, error } = await supabase
     .from('setlists')
     .insert({ 
