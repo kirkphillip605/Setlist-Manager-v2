@@ -13,22 +13,32 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // We initially set the app to draw edge-to-edge
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        
-        // Initial immersive application. 
-        // Note: We do NOT re-apply on window focus change to allow JS to control the state via plugins.
         applyImmersiveMode();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            applyImmersiveMode();
+        }
     }
 
     private void applyImmersiveMode() {
         View decorView = getWindow().getDecorView();
-        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), decorView);
+        WindowInsetsControllerCompat controller =
+            WindowCompat.getInsetsController(getWindow(), decorView);
+
         if (controller == null) return;
 
-        controller.hide(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
+        controller.hide(
+            WindowInsetsCompat.Type.statusBars()
+          | WindowInsetsCompat.Type.navigationBars()
+        );
+
         controller.setSystemBarsBehavior(
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         );
     }
 }
