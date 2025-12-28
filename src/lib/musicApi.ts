@@ -1,5 +1,4 @@
-const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-const SPOTIFY_CLIENT_SECRET = import.meta.env.VITE_SPOTIFY_CLIENT_SECRET;
+import { supabase } from "@/integrations/supabase/client";
 
 export interface MusicResult {
   id: string; // Spotify ID
@@ -46,92 +45,16 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
   throw new Error("Unreachable code");
 };
 
-let spotifyToken: string | null = null;
-let tokenExpiration: number = 0;
-
-const getSpotifyToken = async () => {
-  if (spotifyToken && Date.now() < tokenExpiration) {
-    return spotifyToken;
-  }
-
-  try {
-    const auth = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
-    const response = await fetchWithRetry('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: 'grant_type=client_credentials'
-    }, 1, 5000);
-
-    if (!response.ok) {
-      console.error("Spotify Auth Error", await response.text());
-      throw new Error('Failed to authenticate with Spotify');
-    }
-
-    const data = await response.json();
-    spotifyToken = data.access_token;
-    tokenExpiration = Date.now() + (data.expires_in * 1000);
-    return spotifyToken;
-  } catch (error) {
-    console.error("Spotify Token Error:", error);
-    throw error;
-  }
-};
-
-const formatDuration = (ms: number) => {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = ((ms % 60000) / 1000).toFixed(0);
-  return `${minutes}:${Number(seconds) < 10 ? '0' : ''}${seconds}`;
-};
-
 export const searchMusic = async (query: string): Promise<MusicResult[]> => {
   if (!query) return [];
 
   try {
-    const token = await getSpotifyToken();
-    const response = await fetchWithRetry(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`, 
-      {
-        headers: { 'Authorization': `Bearer ${token}` }
-      },
-      1, // 1 retry
-      8000 // 8s timeout
-    );
+    const { data, error } = await supabase.functions.invoke('spotify-proxy', {
+        body: { action: 'search', query }
+    });
 
-    if (!response.ok) throw new Error("Spotify search failed");
-
-    const data = await response.json();
-    const tracks = data.tracks.items;
-
-    const seen = new Set<string>();
-    const results: MusicResult[] = [];
-
-    for (const track of tracks) {
-      const artist = track.artists[0].name;
-      const title = track.name;
-      const key = `${artist.toLowerCase().trim()}|${title.toLowerCase().trim()}`;
-      
-      const image = track.album.images[1]?.url || track.album.images[0]?.url || "";
-      const spotifyUrl = track.external_urls?.spotify || "";
-      const durationStr = track.duration_ms ? formatDuration(track.duration_ms) : "";
-
-      if (!seen.has(key)) {
-        seen.add(key);
-        results.push({
-          id: track.id,
-          title: track.name,
-          artist: track.artists.map((a: any) => a.name).join(", "),
-          album: track.album.name,
-          coverUrl: image,
-          spotifyUrl: spotifyUrl,
-          duration: durationStr
-        });
-      }
-    }
-
-    return results.slice(0, 10);
+    if (error) throw error;
+    return data || [];
   } catch (error) {
     console.error("Search Error:", error);
     return [];
@@ -160,7 +83,6 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
     }
 
     const data = await response.json();
-    console.log("Track Analysis Response:", data);
     
     if (!data.content || data.content.length === 0) {
       return {};
@@ -184,8 +106,6 @@ export const fetchAudioFeatures = async (spotifyId: string): Promise<AudioFeatur
       tempoString = Math.round(Number(track.tempo)).toString();
     }
 
-    // This API does NOT return duration in a usable format for us (only as part of analysis frames potentially), 
-    // so we rely on the search result for duration.
     return {
       key: keyString,
       tempo: tempoString,
