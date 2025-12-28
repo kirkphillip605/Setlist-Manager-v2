@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { storageAdapter } from "@/lib/storageAdapter";
 import { Profile } from "@/types";
 import { clear as clearIdb } from "idb-keyval";
+import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
 
 interface AuthContextType {
   session: Session | null;
@@ -39,6 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         if (error) {
             console.error("Session check error:", error);
+            // If refresh token is missing/invalid, force logout
             if (error.message.includes("refresh_token_not_found") || error.status === 400) {
                await handleSignOut();
                return;
@@ -50,7 +53,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(currentSession);
             }
         } else if (session) {
-            await handleSignOut();
+            // If local state has session but Supabase doesn't, sync it
+            setSession(null);
         }
     } catch (e) {
         console.error("Unexpected session check failure:", e);
@@ -61,40 +65,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setAuthLoading(true);
     
     try {
-        // 1. Clear React Query Cache (In-Memory)
+        // 1. Supabase SignOut
+        await supabase.auth.signOut();
+    } catch (e) {
+        console.error("Supabase signOut failed (likely offline):", e);
+    }
+
+    try {
+        // 2. Clear React Query Cache (In-Memory)
         queryClient.removeQueries();
         queryClient.clear();
         
-        // 2. Clear Session State
-        setSession(null);
-        
-        // 3. Clear Persisted Query Cache (Disk/LocalStorage)
+        // 3. Clear Persisted Query Cache
         await storageAdapter.removeItem("REACT_QUERY_OFFLINE_CACHE");
         
         // 4. Clear IndexedDB (Images/Assets)
         await clearIdb();
 
-        // 5. Clear any other app specific keys if necessary
-        // (keeping login_email for convenience if implemented)
+        // 5. Aggressively clear Auth Tokens
+        if (Capacitor.isNativePlatform()) {
+            await Preferences.clear(); // Clears everything in Preferences
+            // Restore 'login_email' if it existed, as that's a user preference, not session data
+            // (handled by Login page reading before this, but if we want to keep it across logout we should save/restore)
+            // Ideally we only delete keys starting with 'sb-' but Preferences doesn't support 'keys()' well on all platforms.
+            // For now, full clear is safest to ensure tokens are gone.
+        } else {
+            localStorage.clear(); // Clears everything on web
+        }
 
+        // 6. Update State
+        setSession(null);
+        
     } catch (e) {
         console.warn("Failed to clear local cache during signout", e);
-    }
-
-    // Attempt Supabase SignOut with Timeout
-    try {
-        const signOutPromise = supabase.auth.signOut();
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Sign out timed out")), 3000)
-        );
-        
-        await Promise.race([signOutPromise, timeoutPromise]);
-    } catch (e) {
-        console.error("Sign out error or timeout (likely offline), forcing local cleanup", e);
-        // Force clear local storage just in case Supabase client didn't finish
-        localStorage.removeItem('sb-gnrornithoqdrqfxuuhq-auth-token'); 
     } finally {
         setAuthLoading(false);
+        // Force reload to ensure clean state if needed, or just let Router handle it
+        // window.location.href = '/login'; 
     }
   };
 
@@ -117,6 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (mounted) {
+        console.log("Auth State Change:", event);
         if (event === 'SIGNED_OUT') {
             queryClient.clear();
             setSession(null);
@@ -153,6 +161,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
         if (!session?.user?.id) return null;
+        
+        // Ensure profile exists in local cache or fetch
         const { data, error } = await supabase
             .from('profiles')
             .select('*')
@@ -160,10 +170,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .single();
         
         if (error) {
+            console.error("Profile fetch error:", error);
+            // If 406 Not Acceptable or similar auth issue
             if (error.code === 'PGRST301' || error.message.includes("JWT")) { 
                 checkSession();
             }
-            throw error;
+            return null; // Return null to allow retry or graceful degrade
         }
         return data as Profile;
     },
