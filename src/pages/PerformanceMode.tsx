@@ -19,7 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History, ZoomIn, ZoomOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,6 +32,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useGigSession } from "@/hooks/useGigSession";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { TempoBlinker } from "@/components/TempoBlinker";
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
@@ -51,6 +52,20 @@ const PerformanceMode = () => {
   
   // Recovery Dialogs
   const [recoveryData, setRecoveryData] = useState<{ type: 'leader' | 'follower', session: any } | null>(null);
+
+  // -- Zoom State --
+  const [fontSize, setFontSize] = useState(() => {
+      const saved = localStorage.getItem("lyrics_font_size");
+      return saved ? parseInt(saved) : 20; // Default 20px
+  });
+
+  const handleZoom = (delta: number) => {
+      setFontSize(prev => {
+          const newState = Math.min(Math.max(prev + delta, 12), 64);
+          localStorage.setItem("lyrics_font_size", newState.toString());
+          return newState;
+      });
+  };
 
   // Determine effective mode for Logic
   // If isForcedStandalone is true, we treat it as NOT gig mode for data syncing, even if gigId exists
@@ -438,7 +453,6 @@ const PerformanceMode = () => {
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
 
   // Only show metronome in Practice Mode
-  // If gigId exists (Session or Standalone), we hide metronome
   const showMetronome = !gigId;
 
   if (!setlist || (isGigMode && sessionLoading)) {
@@ -553,6 +567,10 @@ const PerformanceMode = () => {
         </div>
         
         <div className="flex-1 text-center hidden md:flex items-center justify-center min-w-0 px-2">
+            {/* Visual Metronome (Gig Mode Only) */}
+            {isGigMode && activeSong?.tempo && (
+                <TempoBlinker bpm={parseInt(activeSong.tempo)} className="w-4 h-4 mr-3 shrink-0" />
+            )}
             <span className="font-bold text-lg truncate">{activeSong?.title}</span>
             <span className="text-muted-foreground ml-2 text-sm truncate max-w-[150px]">{activeSong?.artist}</span>
         </div>
@@ -585,7 +603,13 @@ const PerformanceMode = () => {
             {activeSong ? (
               <div className="space-y-6">
                 <div className="md:hidden text-center border-b pb-4 mb-4">
-                    <h2 className="text-2xl font-bold leading-tight">{activeSong.title}</h2>
+                    <div className="flex items-center justify-center gap-3 mb-2">
+                        {/* Mobile Visual Metronome */}
+                        {isGigMode && activeSong.tempo && (
+                            <TempoBlinker bpm={parseInt(activeSong.tempo)} className="w-4 h-4" />
+                        )}
+                        <h2 className="text-2xl font-bold leading-tight">{activeSong.title}</h2>
+                    </div>
                     <p className="text-muted-foreground">{activeSong.artist}</p>
                 </div>
                 
@@ -595,8 +619,11 @@ const PerformanceMode = () => {
                     {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-1 rounded text-sm">{activeSong.note}</div>}
                 </div>
 
-                <div className="whitespace-pre-wrap font-mono text-lg md:text-xl leading-relaxed">
-                  {activeSong.lyrics || <span className="text-muted-foreground italic">No lyrics available.</span>}
+                <div 
+                    className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200"
+                    style={{ fontSize: `${fontSize}px` }}
+                >
+                  {activeSong.lyrics || <span className="text-muted-foreground italic text-base">No lyrics available.</span>}
                 </div>
               </div>
             ) : (
@@ -607,6 +634,27 @@ const PerformanceMode = () => {
             )}
           </div>
         </ScrollArea>
+        
+        {/* Floating Zoom Controls */}
+        <div className="absolute bottom-20 right-4 flex flex-col gap-2 z-30">
+            <Button 
+                variant="secondary" 
+                size="icon" 
+                className="h-10 w-10 shadow-lg rounded-full opacity-50 hover:opacity-100 transition-opacity" 
+                onClick={() => handleZoom(2)}
+            >
+                <ZoomIn className="h-5 w-5" />
+            </Button>
+            <Button 
+                variant="secondary" 
+                size="icon" 
+                className="h-10 w-10 shadow-lg rounded-full opacity-50 hover:opacity-100 transition-opacity" 
+                onClick={() => handleZoom(-2)}
+            >
+                <ZoomOut className="h-5 w-5" />
+            </Button>
+        </div>
+
         {tempSong && <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">Ad-Hoc</div>}
         
         {/* Metronome Overlay - ONLY for Practice Mode */}
