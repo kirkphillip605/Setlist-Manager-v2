@@ -19,7 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -200,6 +200,7 @@ const PerformanceMode = () => {
   const { data: allSongs = [] } = useSyncedSongs();
   const { data: allSkipped = [] } = useSyncedSkippedSongs();
 
+  // Retrieve skipped songs strictly for the Dialog, NOT for the setlist
   const skippedSongs = useMemo(() => {
       if (!gigId) return [];
       return allSkipped
@@ -210,22 +211,8 @@ const PerformanceMode = () => {
 
   const sets = useMemo(() => {
       if (!setlist) return [];
-      const baseSets = [...setlist.sets];
-      if (!!gigId && skippedSongs.length > 0) {
-          baseSets.push({
-              id: 'skipped-set',
-              name: 'Skipped Songs',
-              position: 999,
-              songs: skippedSongs.map((s, idx) => ({
-                  id: `skip-${s.id}-${idx}`,
-                  position: idx,
-                  songId: s.id,
-                  song: s
-              }))
-          });
-      }
-      return baseSets;
-  }, [setlist, skippedSongs, gigId]);
+      return setlist.sets; // Just return standard sets, no injection
+  }, [setlist]);
 
   // -- Sync Effect (Follower Logic) --
   useEffect(() => {
@@ -322,8 +309,33 @@ const PerformanceMode = () => {
       if (isLeader) broadcastState(currentSetIndex, currentSongIndex, song.id);
   };
 
+  // Skipped Songs Logic
+  const handleSkipSong = async () => {
+      if (!gigId || !activeSong) return;
+      
+      // 1. Add to skipped list
+      await addSkippedSong(gigId, activeSong.id);
+      toast.info("Song skipped");
+      
+      // 2. Advance to next song
+      handleNext();
+  };
+
+  const handleRestoreSkippedSong = async (song: Song) => {
+      if (!gigId) return;
+      
+      // 1. Remove from skipped list
+      await removeSkippedSong(gigId, song.id);
+      
+      // 2. Play immediately (Treat as Ad-Hoc for simplicity/flexibility)
+      handleAdHocSelect(song);
+      setShowSkippedSongs(false);
+      toast.success("Playing skipped song");
+  };
+
   // -- UI States --
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showSkippedSongs, setShowSkippedSongs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
@@ -424,6 +436,10 @@ const PerformanceMode = () => {
   const currentSet = sets[currentSetIndex];
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  // Only show metronome in Practice Mode
+  // If gigId exists (Session or Standalone), we hide metronome
+  const showMetronome = !gigId;
 
   if (!setlist || (isGigMode && sessionLoading)) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -542,8 +558,9 @@ const PerformanceMode = () => {
         </div>
 
         <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
+            {/* Skip Button - Only for Leader in Session Mode */}
             {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
-                 <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-9" onClick={() => addSkippedSong(gigId!, activeSong.id)}>
+                 <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-9" onClick={handleSkipSong}>
                      <Forward className="w-4 h-4 mr-2" /> Skip
                  </Button>
             )}
@@ -591,7 +608,9 @@ const PerformanceMode = () => {
           </div>
         </ScrollArea>
         {tempSong && <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">Ad-Hoc</div>}
-        {(!isGigMode || initialStandalone || isForcedStandalone) && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
+        
+        {/* Metronome Overlay - ONLY for Practice Mode */}
+        {showMetronome && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
       </div>
 
       {/* --- Footer Controls --- */}
@@ -601,10 +620,25 @@ const PerformanceMode = () => {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-5 w-5" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-48 mb-2">
-                        <DropdownMenuItem onClick={() => isMetronomeOpen ? closeMetronome() : openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120)} className="py-3">
-                            <Timer className="mr-2 h-4 w-4" /> Metronome
-                        </DropdownMenuItem>
+                        {/* Metronome Menu Item: Only if NOT gig mode */}
+                        {showMetronome && (
+                            <DropdownMenuItem onClick={() => isMetronomeOpen ? closeMetronome() : openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120)} className="py-3">
+                                <Timer className="mr-2 h-4 w-4" /> Metronome
+                            </DropdownMenuItem>
+                        )}
+                        
                         <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3"><Search className="mr-2 h-4 w-4" /> Quick Find</DropdownMenuItem>
+                        
+                        {/* Skipped Songs Menu Item: Only for Leader in Gig Mode, if skipped songs exist */}
+                        {isGigMode && isLeader && skippedSongs.length > 0 && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setShowSkippedSongs(true)} className="py-3 text-orange-600">
+                                    <History className="mr-2 h-4 w-4" /> Skipped Songs ({skippedSongs.length})
+                                </DropdownMenuItem>
+                            </>
+                        )}
+
                         {isGigMode && (
                             <>
                                 <DropdownMenuSeparator />
@@ -652,6 +686,29 @@ const PerformanceMode = () => {
                 </div>
             </ScrollArea>
         </DialogContent>
+      </Dialog>
+
+      {/* Skipped Songs Dialog */}
+      <Dialog open={showSkippedSongs} onOpenChange={setShowSkippedSongs}>
+          <DialogContent className="max-w-md h-[60vh] flex flex-col p-0 gap-0">
+              <DialogHeader className="px-6 py-4 border-b">
+                  <DialogTitle>Skipped Songs</DialogTitle>
+                  <DialogDescription>Select a song to play it now (as ad-hoc).</DialogDescription>
+              </DialogHeader>
+              <ScrollArea className="flex-1">
+                  <div className="divide-y">
+                      {skippedSongs.map(song => (
+                          <div key={song.id} className="p-4 hover:bg-accent cursor-pointer flex items-center justify-between group" onClick={() => handleRestoreSkippedSong(song)}>
+                              <div>
+                                  <div className="font-medium">{song.title}</div>
+                                  <div className="text-sm text-muted-foreground">{song.artist}</div>
+                              </div>
+                              <Radio className="h-4 w-4 text-primary opacity-0 group-hover:opacity-100" />
+                          </div>
+                      ))}
+                  </div>
+              </ScrollArea>
+          </DialogContent>
       </Dialog>
 
       {/* Leader Exit Dialog */}
