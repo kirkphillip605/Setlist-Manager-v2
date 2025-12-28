@@ -45,7 +45,7 @@ serve(async (req) => {
     // 5. Call HERE API
     const baseUrl = "https://discover.search.hereapi.com/v1/discover";
     const params = new URLSearchParams({
-      limit: "10",
+      limit: "20", // Fetch slightly more to account for filtering
       in: "countryCode:USA",
       at: "39.8283,-98.5795", // Default search center
       q: query,
@@ -62,7 +62,10 @@ serve(async (req) => {
 
     const data = await response.json();
 
-    return new Response(JSON.stringify(data), { 
+    // Filter server-side: only return specific places (venues), ignoring generic cities/regions
+    const items = (data.items || []).filter((item: any) => item.resultType === 'place').slice(0, 10);
+
+    return new Response(JSON.stringify({ items }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
 

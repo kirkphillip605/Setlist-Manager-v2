@@ -164,6 +164,7 @@ export const searchVenues = async (query: string) => {
     });
     
     if (error) throw error;
+    // Edge function handles filtering for 'place'
     return data?.items || [];
 };
 

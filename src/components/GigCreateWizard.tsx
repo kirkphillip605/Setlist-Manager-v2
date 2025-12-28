@@ -74,10 +74,17 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearching, setIsSearching] = useState(false);
     const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [hasSearched, setHasSearched] = useState(false);
+
+    // Ensure at least 2 words
+    const isValidQuery = searchQuery.trim().split(/\s+/).length >= 2;
 
     const handleSearch = async () => {
-        if (!searchQuery.trim()) return;
+        if (!searchQuery.trim() || !isValidQuery) return;
+        
         setIsSearching(true);
+        setHasSearched(true);
+        
         try {
             const results = await searchVenues(searchQuery);
             setSearchResults(results);
@@ -114,9 +121,6 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
 
     const handleNext = () => {
         if (step === 1 && !formData.name) return;
-        if (step === 2) {
-            // Optional validation for venue? Skipping for now as it's optional.
-        }
         setStep(step + 1);
     };
 
@@ -189,9 +193,9 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                                         placeholder="Search venue (e.g. Docs Bar Watertown SD)" 
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                                        onKeyDown={e => e.key === 'Enter' && isValidQuery && handleSearch()}
                                     />
-                                    <Button onClick={handleSearch} disabled={isSearching}>
+                                    <Button onClick={handleSearch} disabled={isSearching || !isValidQuery}>
                                         {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                                     </Button>
                                 </div>
@@ -205,8 +209,18 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                                     </div>
                                     <ScrollArea className="flex-1">
                                         {searchResults.length === 0 ? (
-                                            <div className="p-8 text-center text-muted-foreground text-sm">
-                                                Search for a venue above to auto-fill details.
+                                            <div className="p-8 text-center text-muted-foreground text-sm space-y-4">
+                                                {hasSearched ? (
+                                                    <>
+                                                        <p>No venues found.</p>
+                                                        <div className="p-3 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md border border-amber-500/20 text-xs">
+                                                            <p className="font-semibold mb-1">Tip for better results:</p>
+                                                            <p>Include <b>City & State</b> or <b>Zip Code</b> along with the venue name.</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <p>Search for a venue above to auto-fill details.</p>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="divide-y">
