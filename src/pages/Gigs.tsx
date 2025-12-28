@@ -20,14 +20,13 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 const Gigs = () => {
-    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const isOnline = useNetworkStatus();
     
@@ -53,7 +52,7 @@ const Gigs = () => {
             setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
             toast.success("Gig saved successfully");
         },
-        onError: (e) => toast.error("Failed to save gig: " + e.message)
+        onError: (e: any) => toast.error("Failed to save gig: " + (e.message || "Unknown error"))
     });
 
     const deleteMutation = useMutation({
@@ -62,11 +61,13 @@ const Gigs = () => {
             queryClient.invalidateQueries({ queryKey: ['gigs'] });
             setDeleteId(null);
             toast.success("Gig deleted");
-        }
+        },
+        onError: (e: any) => toast.error("Failed to delete gig: " + (e.message || "Unknown error"))
     });
 
     const groupedGigs = useMemo(() => {
-        const now = new Date().toISOString();
+        // Use local comparison for sorting since we want literal time ordering
+        const now = new Date().toISOString(); 
         const upcoming = gigs.filter(g => g.start_time >= now).sort((a, b) => a.start_time.localeCompare(b.start_time));
         const past = gigs.filter(g => g.start_time < now).sort((a, b) => b.start_time.localeCompare(a.start_time));
         return { upcoming, past };
@@ -91,17 +92,18 @@ const Gigs = () => {
 
     const handleStartTimeChange = (val: string) => {
         // Val is YYYY-MM-DDTHH:mm
-        // Auto-set end time to 4 hours later
         if (val) {
-            const startDate = new Date(val);
-            const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
+            // Calculate 4 hours later simply by parsing ISO components to avoid timezone math complexity
+            // We want literal 4 hours later.
+            const date = new Date(val);
+            // Add 4 hours
+            date.setHours(date.getHours() + 4);
             
-            // Format endDate to datetime-local string (manually to avoid timezone shift)
-            // We want the literal time shifted by 4 hours. 
-            // e.g. 2025-01-01T20:00 -> 2025-01-02T00:00
-            
-            // Native Date methods use local timezone, which matches datetime-local input behavior
-            const endString = new Date(endDate.getTime() - (endDate.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            // Re-format to YYYY-MM-DDTHH:mm
+            // We use a trick: getISOString uses UTC. We want to preserve local numbers.
+            // So we subtract timezone offset before printing ISO.
+            const offset = date.getTimezoneOffset() * 60000;
+            const endString = new Date(date.getTime() - offset).toISOString().slice(0, 16);
             
             setNewGig(prev => ({ 
                 ...prev, 
@@ -116,68 +118,67 @@ const Gigs = () => {
     const GigList = ({ list }: { list: Gig[] }) => (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {list.map(gig => (
-                <Card 
-                    key={gig.id} 
-                    className="hover:bg-accent/40 transition-colors border shadow-sm relative cursor-pointer"
-                    onClick={() => navigate(`/gigs/${gig.id}`)}
-                >
-                    <CardHeader className="flex flex-row items-start justify-between pb-2">
-                        <div className="space-y-1">
-                            <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
-                            <div className="flex flex-col text-sm text-muted-foreground gap-1">
-                                <div className="flex items-center">
-                                    <Calendar className="mr-1 h-3 w-3" />
-                                    {format(new Date(gig.start_time), "EEE, MMM d, yyyy")}
+                <div key={gig.id} className="relative group">
+                    <Link to={`/gigs/${gig.id}`} className="block">
+                        <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full">
+                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-12">
+                                <div className="space-y-1">
+                                    <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
+                                    <div className="flex flex-col text-sm text-muted-foreground gap-1">
+                                        <div className="flex items-center">
+                                            <Calendar className="mr-1 h-3 w-3" />
+                                            {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
+                                        </div>
+                                        <div className="flex items-center">
+                                            <Clock className="mr-1 h-3 w-3" />
+                                            {format(parseISO(gig.start_time), "h:mm a")} 
+                                            {gig.end_time && ` - ${format(parseISO(gig.end_time), "h:mm a")}`}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex items-center">
-                                    <Clock className="mr-1 h-3 w-3" />
-                                    {format(new Date(gig.start_time), "h:mm a")} 
-                                    {gig.end_time && ` - ${format(new Date(gig.end_time), "h:mm a")}`}
-                                </div>
-                            </div>
-                        </div>
-                        {isOnline && (
-                            <div onClick={(e) => e.stopPropagation()} className="relative z-10">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
-                                            <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem 
-                                            className="text-destructive focus:text-destructive"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteRequest(gig.id);
-                                            }}
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        )}
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {gig.venue_name && (
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                <MapPin className="h-3 w-3" /> {gig.venue_name}
-                            </div>
-                        )}
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {gig.venue_name && (
+                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                        <MapPin className="h-3 w-3" /> {gig.venue_name}
+                                    </div>
+                                )}
 
-                        {gig.setlist ? (
-                            <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded">
-                                <ListMusic className="h-4 w-4" />
-                                Setlist: {gig.setlist.name}
-                            </div>
-                        ) : (
-                            <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded">
-                                No setlist attached
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                                {gig.setlist ? (
+                                    <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded">
+                                        <ListMusic className="h-4 w-4" />
+                                        Setlist: {gig.setlist.name}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded">
+                                        No setlist attached
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    
+                    {/* Delete Button - Positioned Absolutely Outside Link */}
+                    {isOnline && (
+                        <div className="absolute top-4 right-3 z-10">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted">
+                                        <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem 
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={() => handleDeleteRequest(gig.id)}
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    )}
+                </div>
             ))}
         </div>
     );
@@ -259,7 +260,6 @@ const Gigs = () => {
                                     <Input 
                                         type="datetime-local" 
                                         value={newGig.start_time || ""} 
-                                        min={new Date().toISOString().slice(0, 16)}
                                         onChange={e => handleStartTimeChange(e.target.value)} 
                                     />
                                 </div>

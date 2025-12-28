@@ -17,12 +17,12 @@ import { Gig } from "@/types";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 const GigDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { isAdmin } = useAuth();
+    const { isAdmin, user } = useAuth(); // Need user to check ownership
     const queryClient = useQueryClient();
     const isOnline = useNetworkStatus();
     
@@ -43,7 +43,7 @@ const GigDetail = () => {
             setIsEditOpen(false);
             toast.success("Gig updated");
         },
-        onError: (e) => toast.error("Failed to update gig: " + e.message)
+        onError: (e: any) => toast.error("Failed to update gig: " + (e.message || "Unknown error"))
     });
 
     const handleEditOpen = () => {
@@ -53,13 +53,11 @@ const GigDetail = () => {
         }
         if (!gig) return;
         
-        // Convert to datetime-local friendly format (remove Seconds and Z)
-        // Timestamptz from DB is ISO. We need local time for input.
+        // Since we are now using TIMESTAMP WITHOUT TIME ZONE, the string from DB (e.g., "2025-12-31T20:00:00")
+        // is exactly what we want to feed into datetime-local (up to minutes).
         const formatForInput = (isoString?: string | null) => {
             if (!isoString) return "";
-            const d = new Date(isoString);
-            const offset = d.getTimezoneOffset() * 60000;
-            return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+            return isoString.slice(0, 16);
         };
 
         setEditForm({
@@ -78,6 +76,24 @@ const GigDetail = () => {
         setIsEditOpen(true);
     };
 
+    const handleStartTimeChange = (val: string) => {
+        // Auto-update end time logic for Edit mode too
+        if (val) {
+            const date = new Date(val);
+            date.setHours(date.getHours() + 4);
+            const offset = date.getTimezoneOffset() * 60000;
+            const endString = new Date(date.getTime() - offset).toISOString().slice(0, 16);
+            
+            setEditForm(prev => ({ 
+                ...prev, 
+                start_time: val,
+                end_time: endString 
+            }));
+        } else {
+            setEditForm(prev => ({ ...prev, start_time: val }));
+        }
+    };
+
     const handleNavigate = () => {
         if (!gig) return;
         const fullAddress = `${gig.address || ''}, ${gig.city || ''}, ${gig.state || ''} ${gig.zip || ''}`.trim().replace(/^,/, '').replace(/,$/, '');
@@ -87,8 +103,6 @@ const GigDetail = () => {
             toast.error("No address or venue name to navigate to.");
             return;
         }
-
-        // Universal link that typically opens native maps on mobile or Google Maps on web
         window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, '_blank');
     };
 
@@ -104,9 +118,9 @@ const GigDetail = () => {
         </AppLayout>
     );
 
-    // Past = End time is in past, or start time if no end
-    const isPast = new Date(gig.end_time || gig.start_time) < new Date();
-    const canEdit = (!isPast || isAdmin) && isOnline;
+    // Permission Check: Admin OR Creator
+    const isOwner = user?.id === gig.created_by;
+    const canEdit = (isAdmin || isOwner) && isOnline;
 
     return (
         <AppLayout>
@@ -123,11 +137,11 @@ const GigDetail = () => {
                             <div className="flex items-center text-muted-foreground text-sm gap-2">
                                 <span className="flex items-center">
                                     <Calendar className="mr-1 h-3 w-3" />
-                                    {format(new Date(gig.start_time), "EEE, MMM d")}
+                                    {format(parseISO(gig.start_time), "EEE, MMM d")}
                                 </span>
                                 <span className="flex items-center">
                                     <Clock className="mr-1 h-3 w-3" />
-                                    {format(new Date(gig.start_time), "h:mm a")}
+                                    {format(parseISO(gig.start_time), "h:mm a")}
                                 </span>
                                 {!isOnline && <span className="flex items-center text-xs bg-muted px-1.5 rounded"><CloudOff className="w-3 h-3 mr-1" /> Offline</span>}
                             </div>
@@ -216,7 +230,7 @@ const GigDetail = () => {
                                     <Input 
                                         type="datetime-local" 
                                         value={editForm.start_time || ""} 
-                                        onChange={e => setEditForm({ ...editForm, start_time: e.target.value })} 
+                                        onChange={e => handleStartTimeChange(e.target.value)} 
                                     />
                                 </div>
                                 <div className="space-y-2">
