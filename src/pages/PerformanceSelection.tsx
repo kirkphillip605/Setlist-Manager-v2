@@ -20,7 +20,7 @@ const PerformanceSelection = () => {
   const { data: gigs = [] } = useSyncedGigs();
 
   // Filter Gigs: Today and Future
-  const upcomingGigs = gigs.filter(g => new Date(g.date) >= new Date(new Date().setDate(new Date().getDate() - 1)));
+  const upcomingGigs = gigs.filter(g => new Date(g.start_time) >= new Date(new Date().setDate(new Date().getDate() - 1)));
 
   const handleGigSelect = (gig: any) => {
     if (!gig.setlist_id) {
@@ -100,7 +100,7 @@ const PerformanceSelection = () => {
                                     >
                                         <div>
                                             <div className="font-bold">{gig.name}</div>
-                                            <div className="text-sm text-muted-foreground">{new Date(gig.date).toLocaleDateString()}</div>
+                                            <div className="text-sm text-muted-foreground">{new Date(gig.start_time).toLocaleDateString()}</div>
                                         </div>
                                         <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
                                     </div>

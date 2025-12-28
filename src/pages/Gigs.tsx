@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { saveGig, deleteGig } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, MoreVertical } from "lucide-react";
+import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, MoreVertical, Clock } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { format } from "date-fns";
 
 const Gigs = () => {
     const navigate = useNavigate();
@@ -35,7 +36,7 @@ const Gigs = () => {
     const [deleteId, setDeleteId] = useState<string | null>(null);
 
     // Form State
-    const [newGig, setNewGig] = useState<Partial<Gig>>({ name: "", date: "", notes: "", setlist_id: null });
+    const [newGig, setNewGig] = useState<Partial<Gig>>({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
 
     // Use Master Cache
     const { data: gigs = [], isLoading } = useSyncedGigs();
@@ -49,10 +50,10 @@ const Gigs = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['gigs'] });
             setIsCreateOpen(false);
-            setNewGig({ name: "", date: "", notes: "", setlist_id: null });
+            setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
             toast.success("Gig saved successfully");
         },
-        onError: () => toast.error("Failed to save gig")
+        onError: (e) => toast.error("Failed to save gig: " + e.message)
     });
 
     const deleteMutation = useMutation({
@@ -65,9 +66,9 @@ const Gigs = () => {
     });
 
     const groupedGigs = useMemo(() => {
-        const today = new Date().toISOString().split('T')[0];
-        const upcoming = gigs.filter(g => g.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-        const past = gigs.filter(g => g.date < today).sort((a, b) => b.date.localeCompare(a.date));
+        const now = new Date().toISOString();
+        const upcoming = gigs.filter(g => g.start_time >= now).sort((a, b) => a.start_time.localeCompare(b.start_time));
+        const past = gigs.filter(g => g.start_time < now).sort((a, b) => b.start_time.localeCompare(a.start_time));
         return { upcoming, past };
     }, [gigs]);
 
@@ -76,7 +77,7 @@ const Gigs = () => {
             toast.error("Offline: Cannot create gigs");
             return;
         }
-        setNewGig({ name: "", date: "", notes: "", setlist_id: null });
+        setNewGig({ name: "", start_time: "", end_time: "", notes: "", setlist_id: null });
         setIsCreateOpen(true);
     };
 
@@ -86,6 +87,30 @@ const Gigs = () => {
             return;
         }
         setDeleteId(id);
+    };
+
+    const handleStartTimeChange = (val: string) => {
+        // Val is YYYY-MM-DDTHH:mm
+        // Auto-set end time to 4 hours later
+        if (val) {
+            const startDate = new Date(val);
+            const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
+            
+            // Format endDate to datetime-local string (manually to avoid timezone shift)
+            // We want the literal time shifted by 4 hours. 
+            // e.g. 2025-01-01T20:00 -> 2025-01-02T00:00
+            
+            // Native Date methods use local timezone, which matches datetime-local input behavior
+            const endString = new Date(endDate.getTime() - (endDate.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            
+            setNewGig(prev => ({ 
+                ...prev, 
+                start_time: val,
+                end_time: endString 
+            }));
+        } else {
+            setNewGig(prev => ({ ...prev, start_time: val }));
+        }
     };
 
     const GigList = ({ list }: { list: Gig[] }) => (
@@ -99,13 +124,20 @@ const Gigs = () => {
                     <CardHeader className="flex flex-row items-start justify-between pb-2">
                         <div className="space-y-1">
                             <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
-                            <div className="flex items-center text-sm text-muted-foreground">
-                                <Calendar className="mr-1 h-3 w-3" />
-                                {new Date(gig.date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                            <div className="flex flex-col text-sm text-muted-foreground gap-1">
+                                <div className="flex items-center">
+                                    <Calendar className="mr-1 h-3 w-3" />
+                                    {format(new Date(gig.start_time), "EEE, MMM d, yyyy")}
+                                </div>
+                                <div className="flex items-center">
+                                    <Clock className="mr-1 h-3 w-3" />
+                                    {format(new Date(gig.start_time), "h:mm a")} 
+                                    {gig.end_time && ` - ${format(new Date(gig.end_time), "h:mm a")}`}
+                                </div>
                             </div>
                         </div>
                         {isOnline && (
-                            <div onClick={(e) => e.stopPropagation()}>
+                            <div onClick={(e) => e.stopPropagation()} className="relative z-10">
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
@@ -115,7 +147,10 @@ const Gigs = () => {
                                     <DropdownMenuContent align="end">
                                         <DropdownMenuItem 
                                             className="text-destructive focus:text-destructive"
-                                            onClick={() => handleDeleteRequest(gig.id)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteRequest(gig.id);
+                                            }}
                                         >
                                             <Trash2 className="mr-2 h-4 w-4" /> Delete Gig
                                         </DropdownMenuItem>
@@ -218,13 +253,24 @@ const Gigs = () => {
                                     placeholder="e.g. The Blue Note" 
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label>Date</Label>
-                                <Input 
-                                    type="date" 
-                                    value={newGig.date || ""} 
-                                    onChange={e => setNewGig(prev => ({ ...prev, date: e.target.value }))} 
-                                />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Start</Label>
+                                    <Input 
+                                        type="datetime-local" 
+                                        value={newGig.start_time || ""} 
+                                        min={new Date().toISOString().slice(0, 16)}
+                                        onChange={e => handleStartTimeChange(e.target.value)} 
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>End</Label>
+                                    <Input 
+                                        type="datetime-local" 
+                                        value={newGig.end_time || ""} 
+                                        onChange={e => setNewGig(prev => ({ ...prev, end_time: e.target.value }))} 
+                                    />
+                                </div>
                             </div>
                              <div className="space-y-2">
                                 <Label>Setlist</Label>
@@ -254,7 +300,7 @@ const Gigs = () => {
                             <DialogFooter>
                                 <Button 
                                     onClick={() => saveMutation.mutate(newGig as Gig)} 
-                                    disabled={!newGig.name || !newGig.date || saveMutation.isPending || !isOnline}
+                                    disabled={!newGig.name || !newGig.start_time || saveMutation.isPending || !isOnline}
                                 >
                                     {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Save Gig

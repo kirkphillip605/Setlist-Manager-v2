@@ -6,6 +6,7 @@ import { Music, ListMusic, CalendarDays, ArrowRight, Eye, Play } from "lucide-re
 import { useSyncedSongs, useSyncedSetlists, useSyncedGigs } from "@/hooks/useSyncedData";
 import { Badge } from "@/components/ui/badge";
 import { AlbumArtwork } from "@/components/AlbumArtwork";
+import { format, isSameDay } from "date-fns";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -18,17 +19,16 @@ const Index = () => {
   const personalSetlists = setlists.filter(s => s.is_personal);
   
   // Date Logic
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const now = new Date();
   
   // Filter Gigs
   const upcomingGigs = gigs
-    .filter(g => g.date >= todayStr)
-    .sort((a,b) => a.date.localeCompare(b.date));
+    .filter(g => new Date(g.start_time) >= now || isSameDay(new Date(g.start_time), now))
+    .sort((a,b) => a.start_time.localeCompare(b.start_time));
     
-  const todaysGig = upcomingGigs.find(g => g.date === todayStr);
+  const todaysGig = upcomingGigs.find(g => isSameDay(new Date(g.start_time), now));
   // Get next 2 gigs that aren't today
-  const nextGigs = upcomingGigs.filter(g => g.date !== todayStr).slice(0, 2);
+  const nextGigs = upcomingGigs.filter(g => !isSameDay(new Date(g.start_time), now)).slice(0, 2);
 
   // Recent Songs (Last 3 created)
   const recentSongs = [...songs]
@@ -63,7 +63,7 @@ const Index = () => {
                                 <Badge variant="default" className="animate-pulse">HAPPENING TODAY</Badge>
                             </div>
                             <div className="font-bold text-xl">{todaysGig.name}</div>
-                            <div className="text-sm text-muted-foreground">{todaysGig.venue_name || "No Venue"}</div>
+                            <div className="text-sm text-muted-foreground">{todaysGig.venue_name || "No Venue"} • {format(new Date(todaysGig.start_time), "h:mm a")}</div>
                         </div>
                         <ArrowRight className="h-6 w-6 text-primary" />
                     </div>
@@ -83,7 +83,7 @@ const Index = () => {
                                 <div>
                                     <div className="font-semibold">{gig.name}</div>
                                     <div className="text-xs text-muted-foreground">
-                                        {new Date(gig.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} • {gig.venue_name}
+                                        {format(new Date(gig.start_time), "EEE, MMM d")} • {gig.venue_name}
                                     </div>
                                 </div>
                                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0">

@@ -90,7 +90,7 @@ export const getGigs = async (): Promise<Gig[]> => {
   const { data, error } = await supabase
     .from('gigs')
     .select(`*, setlist:setlists(id, name)`)
-    .order('date', { ascending: true });
+    .order('start_time', { ascending: true });
     
   if (error) throw error;
   return data as Gig[];
@@ -110,14 +110,18 @@ export const getGig = async (id: string): Promise<Gig | null> => {
 export const saveGig = async (gig: Partial<Gig>) => {
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Validation: Check for active session if editing
     if (gig.id) {
         const { data: session } = await supabase.from('gig_sessions').select('id').eq('gig_id', gig.id).eq('is_active', true).maybeSingle();
         if (session) throw new Error("Cannot edit gig while a performance session is active.");
     }
 
+    if (!gig.start_time) throw new Error("Start time is required");
+
     const gigData = {
         name: gig.name,
-        date: gig.date,
+        start_time: gig.start_time,
+        end_time: gig.end_time,
         notes: gig.notes,
         setlist_id: gig.setlist_id,
         venue_name: gig.venue_name,
@@ -125,16 +129,23 @@ export const saveGig = async (gig: Partial<Gig>) => {
         city: gig.city,
         state: gig.state,
         zip: gig.zip,
+        // Only set created_by on insert, do not send it on update to avoid RLS issues if unchanged
         ...(gig.id ? {} : { created_by: user?.id })
     };
 
     if (gig.id) {
         const { data, error } = await supabase.from('gigs').update(gigData).eq('id', gig.id).select().single();
-        if (error) throw error;
+        if (error) {
+            console.error("Update Gig Error:", error);
+            throw new Error(error.message);
+        }
         return data;
     } else {
         const { data, error } = await supabase.from('gigs').insert(gigData).select().single();
-        if (error) throw error;
+        if (error) {
+            console.error("Insert Gig Error:", error);
+            throw new Error(error.message);
+        }
         return data;
     }
 };

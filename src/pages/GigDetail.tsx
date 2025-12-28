@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { saveGig } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff } from "lucide-react";
+import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff, Clock } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -17,6 +17,7 @@ import { Gig } from "@/types";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
+import { format } from "date-fns";
 
 const GigDetail = () => {
     const { id } = useParams();
@@ -42,7 +43,7 @@ const GigDetail = () => {
             setIsEditOpen(false);
             toast.success("Gig updated");
         },
-        onError: () => toast.error("Failed to update gig")
+        onError: (e) => toast.error("Failed to update gig: " + e.message)
     });
 
     const handleEditOpen = () => {
@@ -51,10 +52,21 @@ const GigDetail = () => {
             return;
         }
         if (!gig) return;
+        
+        // Convert to datetime-local friendly format (remove Seconds and Z)
+        // Timestamptz from DB is ISO. We need local time for input.
+        const formatForInput = (isoString?: string | null) => {
+            if (!isoString) return "";
+            const d = new Date(isoString);
+            const offset = d.getTimezoneOffset() * 60000;
+            return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+        };
+
         setEditForm({
             id: gig.id,
             name: gig.name,
-            date: gig.date,
+            start_time: formatForInput(gig.start_time),
+            end_time: formatForInput(gig.end_time),
             notes: gig.notes,
             setlist_id: gig.setlist_id,
             venue_name: gig.venue_name,
@@ -92,7 +104,8 @@ const GigDetail = () => {
         </AppLayout>
     );
 
-    const isPast = new Date(gig.date) < new Date(new Date().setHours(0,0,0,0));
+    // Past = End time is in past, or start time if no end
+    const isPast = new Date(gig.end_time || gig.start_time) < new Date();
     const canEdit = (!isPast || isAdmin) && isOnline;
 
     return (
@@ -110,7 +123,11 @@ const GigDetail = () => {
                             <div className="flex items-center text-muted-foreground text-sm gap-2">
                                 <span className="flex items-center">
                                     <Calendar className="mr-1 h-3 w-3" />
-                                    {new Date(gig.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                    {format(new Date(gig.start_time), "EEE, MMM d")}
+                                </span>
+                                <span className="flex items-center">
+                                    <Clock className="mr-1 h-3 w-3" />
+                                    {format(new Date(gig.start_time), "h:mm a")}
                                 </span>
                                 {!isOnline && <span className="flex items-center text-xs bg-muted px-1.5 rounded"><CloudOff className="w-3 h-3 mr-1" /> Offline</span>}
                             </div>
@@ -193,9 +210,23 @@ const GigDetail = () => {
                                 <Label>Event Name</Label>
                                 <Input value={editForm.name || ""} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
                             </div>
-                            <div className="grid gap-2">
-                                <Label>Date</Label>
-                                <Input type="date" value={editForm.date || ""} onChange={e => setEditForm({ ...editForm, date: e.target.value })} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Start</Label>
+                                    <Input 
+                                        type="datetime-local" 
+                                        value={editForm.start_time || ""} 
+                                        onChange={e => setEditForm({ ...editForm, start_time: e.target.value })} 
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>End</Label>
+                                    <Input 
+                                        type="datetime-local" 
+                                        value={editForm.end_time || ""} 
+                                        onChange={e => setEditForm({ ...editForm, end_time: e.target.value })} 
+                                    />
+                                </div>
                             </div>
                             <div className="grid gap-2">
                                 <Label>Venue Name</Label>

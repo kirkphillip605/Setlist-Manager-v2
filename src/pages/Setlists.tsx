@@ -396,7 +396,7 @@ const Setlists = () => {
                                         {usageData.map((gig, idx) => (
                                             <li key={idx}>
                                                 <span className="font-medium">{gig.name}</span> 
-                                                <span className="text-xs text-muted-foreground ml-2">({gig.date})</span>
+                                                <span className="text-xs text-muted-foreground ml-2">({new Date(gig.start_time).toLocaleDateString()})</span>
                                             </li>
                                         ))}
                                     </ul>
