@@ -4,7 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, baggage, sentry-trace',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
@@ -34,8 +35,6 @@ serve(async (req) => {
     }
 
     // 3. Authenticate with Spotify (Client Credentials Flow)
-    // In a high-traffic app, you would cache this token in DB or Edge Config.
-    // For this use case, fetching a new one per request is acceptable but rate-limited.
     const auth = btoa(`${client_id}:${client_secret}`);
     const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
@@ -65,7 +64,6 @@ serve(async (req) => {
         
         const data = await spotifyRes.json();
         
-        // Process & Dedup Results (Logic moved from frontend)
         const tracks = data.tracks.items;
         const seen = new Set<string>();
         const results: any[] = [];
@@ -81,7 +79,6 @@ serve(async (req) => {
             const title = track.name;
             const key = `${artist.toLowerCase().trim()}|${title.toLowerCase().trim()}`;
             
-            // Prefer medium image, fall back to small
             const image = track.album.images[1]?.url || track.album.images[0]?.url || "";
             const spotifyUrl = track.external_urls?.spotify || "";
             const durationStr = track.duration_ms ? formatDuration(track.duration_ms) : "";
