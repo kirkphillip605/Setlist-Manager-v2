@@ -6,10 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { saveGig } from "@/lib/api";
+import { saveGig, deleteGig } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff, Clock } from "lucide-react";
+import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff, Clock, Trash2, AlertTriangle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -17,19 +17,23 @@ import { Gig } from "@/types";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInMinutes } from "date-fns";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
+} from "@/components/ui/alert-dialog";
 
 const GigDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { isAdmin, user } = useAuth(); // Need user to check ownership
+    const { isAdmin, user } = useAuth();
     const queryClient = useQueryClient();
     const isOnline = useNetworkStatus();
     
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Gig>>({});
 
-    // Use Master Cache
     const { data: gigs = [], isLoading } = useSyncedGigs();
     const gig = useMemo(() => gigs.find(g => g.id === id), [gigs, id]);
 
@@ -46,6 +50,19 @@ const GigDetail = () => {
         onError: (e: any) => toast.error("Failed to update gig: " + (e.message || "Unknown error"))
     });
 
+    const deleteMutation = useMutation({
+        mutationFn: deleteGig,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['gigs'] });
+            toast.success("Gig deleted");
+            navigate("/gigs");
+        },
+        onError: (e: any) => {
+            setShowDeleteConfirm(false);
+            toast.error(e.message || "Failed to delete gig");
+        }
+    });
+
     const handleEditOpen = () => {
         if (!isOnline) {
             toast.error("Offline: Cannot edit gig");
@@ -53,8 +70,6 @@ const GigDetail = () => {
         }
         if (!gig) return;
         
-        // Since we are now using TIMESTAMP WITHOUT TIME ZONE, the string from DB (e.g., "2025-12-31T20:00:00")
-        // is exactly what we want to feed into datetime-local (up to minutes).
         const formatForInput = (isoString?: string | null) => {
             if (!isoString) return "";
             return isoString.slice(0, 16);
@@ -77,12 +92,11 @@ const GigDetail = () => {
     };
 
     const handleStartTimeChange = (val: string) => {
-        // Auto-update end time logic for Edit mode too
         if (val) {
-            const date = new Date(val);
-            date.setHours(date.getHours() + 4);
-            const offset = date.getTimezoneOffset() * 60000;
-            const endString = new Date(date.getTime() - offset).toISOString().slice(0, 16);
+            const startDate = new Date(val);
+            const endDate = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
+            const offset = date => date.getTime() - (date.getTimezoneOffset() * 60000);
+            const endString = new Date(offset(endDate)).toISOString().slice(0, 16);
             
             setEditForm(prev => ({ 
                 ...prev, 
@@ -118,13 +132,23 @@ const GigDetail = () => {
         </AppLayout>
     );
 
-    // Permission Check: Admin OR Creator
-    const isOwner = user?.id === gig.created_by;
-    const canEdit = (isAdmin || isOwner) && isOnline;
+    const isPast = new Date(gig.end_time || gig.start_time) < new Date();
+    const canEdit = (!isPast || isAdmin) && isOnline;
+    
+    // Duration calc
+    let durationStr = "";
+    if (gig.end_time) {
+        const start = parseISO(gig.start_time);
+        const end = parseISO(gig.end_time);
+        const mins = differenceInMinutes(end, start);
+        const hrs = Math.floor(mins / 60);
+        const remainingMins = mins % 60;
+        durationStr = `${hrs}hr${remainingMins > 0 ? ` ${remainingMins}m` : ''}`;
+    }
 
     return (
         <AppLayout>
-            <LoadingDialog open={saveMutation.isPending} />
+            <LoadingDialog open={saveMutation.isPending || deleteMutation.isPending} />
             <div className="space-y-6 pb-20 max-w-3xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between">
@@ -134,80 +158,119 @@ const GigDetail = () => {
                         </Button>
                         <div>
                             <h1 className="text-2xl font-bold tracking-tight">{gig.name}</h1>
-                            <div className="flex items-center text-muted-foreground text-sm gap-2">
-                                <span className="flex items-center">
-                                    <Calendar className="mr-1 h-3 w-3" />
-                                    {format(parseISO(gig.start_time), "EEE, MMM d")}
-                                </span>
-                                <span className="flex items-center">
-                                    <Clock className="mr-1 h-3 w-3" />
-                                    {format(parseISO(gig.start_time), "h:mm a")}
-                                </span>
-                                {!isOnline && <span className="flex items-center text-xs bg-muted px-1.5 rounded"><CloudOff className="w-3 h-3 mr-1" /> Offline</span>}
-                            </div>
+                            {!isOnline && <span className="flex items-center text-xs bg-muted px-1.5 rounded w-fit mt-1"><CloudOff className="w-3 h-3 mr-1" /> Offline</span>}
                         </div>
                     </div>
                     {canEdit && (
-                        <Button variant="outline" size="icon" onClick={handleEditOpen}>
-                            <Edit className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="icon" onClick={handleEditOpen}>
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="destructive" size="icon" onClick={() => setShowDeleteConfirm(true)}>
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </div>
                     )}
                 </div>
 
-                {/* Details Card */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <MapPin className="h-5 w-5 text-primary" /> Venue Info
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div>
-                            <div className="font-semibold text-lg">{gig.venue_name || "Venue Name TBD"}</div>
-                            <div className="text-muted-foreground">
-                                {gig.address && <div>{gig.address}</div>}
-                                {(gig.city || gig.state || gig.zip) && (
-                                    <div>{gig.city}{gig.city && gig.state ? ', ' : ''}{gig.state} {gig.zip}</div>
-                                )}
-                                {!gig.address && !gig.city && <span className="italic">No address provided</span>}
+                {/* Info Grid */}
+                <div className="grid gap-6 md:grid-cols-2">
+                    
+                    {/* Time Card */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                <Calendar className="h-4 w-4 text-primary" /> Date & Time
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-sm text-muted-foreground uppercase font-semibold tracking-wider">Date</span>
+                                <span className="text-lg font-medium">{format(parseISO(gig.start_time), "EEEE, MMMM d, yyyy")}</span>
                             </div>
-                        </div>
-                        
-                        {(gig.venue_name || gig.address) && (
-                            <Button onClick={handleNavigate} className="w-full sm:w-auto">
-                                <Navigation className="mr-2 h-4 w-4" /> Navigate
-                            </Button>
-                        )}
-                    </CardContent>
-                </Card>
+                            
+                            <div className="flex gap-8">
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-sm text-muted-foreground uppercase font-semibold tracking-wider">Start</span>
+                                    <div className="flex items-center gap-2">
+                                        <Clock className="h-4 w-4 text-muted-foreground" />
+                                        <span className="text-lg font-medium">{format(parseISO(gig.start_time), "h:mm a")}</span>
+                                    </div>
+                                </div>
+                                {gig.end_time && (
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-sm text-muted-foreground uppercase font-semibold tracking-wider">End</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-lg font-medium">{format(parseISO(gig.end_time), "h:mm a")}</span>
+                                            {durationStr && <span className="text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">({durationStr})</span>}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
 
+                    {/* Venue Card */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                <MapPin className="h-4 w-4 text-primary" /> Location
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div>
+                                <div className="font-semibold text-lg">{gig.venue_name || "Venue Name TBD"}</div>
+                                <div className="text-muted-foreground mt-1">
+                                    {gig.address && <div>{gig.address}</div>}
+                                    {(gig.city || gig.state || gig.zip) && (
+                                        <div>{gig.city}{gig.city && gig.state ? ', ' : ''}{gig.state} {gig.zip}</div>
+                                    )}
+                                    {!gig.address && !gig.city && <span className="italic opacity-70">No address provided</span>}
+                                </div>
+                            </div>
+                            
+                            {(gig.venue_name || gig.address) && (
+                                <Button onClick={handleNavigate} variant="outline" size="sm" className="w-full">
+                                    <Navigation className="mr-2 h-4 w-4" /> Get Directions
+                                </Button>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Setlist Card */}
                 <Card>
                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <ListMusic className="h-5 w-5 text-primary" /> Setlist
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <ListMusic className="h-4 w-4 text-primary" /> Setlist
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {gig.setlist ? (
-                             <Button asChild variant="outline" className="w-full justify-start h-auto py-3">
+                             <Button asChild variant="outline" className="w-full justify-start h-auto py-4 px-4 bg-muted/10 hover:bg-muted/20 border-dashed">
                                 <Link to={`/setlists/${gig.setlist.id}`} className="flex flex-col items-start gap-1">
-                                    <span className="font-bold text-base">{gig.setlist.name}</span>
-                                    <span className="text-xs text-muted-foreground font-normal">Click to view setlist details</span>
+                                    <span className="font-bold text-lg">{gig.setlist.name}</span>
+                                    <span className="text-sm text-muted-foreground font-normal">
+                                        {gig.setlist.sets?.length || 0} Sets • View details
+                                    </span>
                                 </Link>
                              </Button>
                         ) : (
-                            <div className="text-muted-foreground italic">No setlist assigned yet.</div>
+                            <div className="text-muted-foreground italic bg-muted/20 p-4 rounded-lg text-center border border-dashed">
+                                No setlist assigned yet.
+                            </div>
                         )}
                     </CardContent>
                 </Card>
 
+                {/* Notes Card */}
                 {gig.notes && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-base">Notes</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="whitespace-pre-wrap text-sm">{gig.notes}</div>
+                            <div className="whitespace-pre-wrap text-sm leading-relaxed">{gig.notes}</div>
                         </CardContent>
                     </Card>
                 )}
@@ -291,6 +354,29 @@ const GigDetail = () => {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                {/* Delete Alert */}
+                <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                                <AlertTriangle className="h-5 w-5" /> Delete Gig?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Are you sure you want to delete <b>{gig.name}</b>? This action cannot be undone.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                                onClick={() => deleteMutation.mutate(gig.id)} 
+                                className="bg-destructive hover:bg-destructive/90"
+                            >
+                                Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </AppLayout>
     );
