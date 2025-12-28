@@ -236,7 +236,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                             <div className="p-4 bg-background border-b space-y-4 shrink-0">
                                 <div className="flex gap-2">
                                     <Input 
-                                        placeholder="Search venue (e.g. Docs Bar Watertown SD)" 
+                                        placeholder="Enter venue's name, city & state and/or zip" 
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && handleSearch()}
@@ -265,7 +265,7 @@ export const GigCreateWizard = ({ open, onClose, setlists }: GigCreateWizardProp
                                             ) : (
                                                 <div className="flex flex-col items-center justify-center h-40 text-muted-foreground/50">
                                                     <Globe className="w-12 h-12 mb-2" />
-                                                    <p>Enter the venue's name, city, state and/or zip code to search. e.g. Thirstys  Mitchell SD</p>
+                                                    <p>For best results, enter the venue's name along with the city & state and/or zip code. (e.g. Thirstys Bar Mitchell SD).</p>
                                                 </div>
                                             )}
                                         </div>
