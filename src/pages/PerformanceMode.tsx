@@ -270,32 +270,37 @@ const PerformanceMode = () => {
       }
   };
 
+  // -- Advance Logic --
+  const advanceToNextSong = () => {
+      if (!setlist) return;
+      const currentSet = sets[currentSetIndex];
+      if (!currentSet) return;
+
+      let nextSetIdx = currentSetIndex;
+      let nextSongIdx = currentSongIndex;
+
+      if (currentSongIndex < currentSet.songs.length - 1) {
+          nextSongIdx++;
+      } else if (currentSetIndex < sets.length - 1) {
+          nextSetIdx++;
+          nextSongIdx = 0;
+      }
+
+      setCurrentSetIndex(nextSetIdx);
+      setCurrentSongIndex(nextSongIdx);
+      
+      if (isLeader) broadcastState(nextSetIdx, nextSongIdx, null);
+  };
+
   // -- Navigation Handlers --
   const handleNext = () => {
+    // If we are in Ad-Hoc mode (tempSong), Next means "Return to set list at next position"
     if (tempSong) {
       setTempSong(null);
-      if (isLeader) broadcastState(currentSetIndex, currentSongIndex, null);
+      advanceToNextSong(); // Advance indices to move forward
       return;
     }
-    if (!setlist) return; 
-    
-    const currentSet = sets[currentSetIndex];
-    if (!currentSet) return;
-
-    let nextSetIdx = currentSetIndex;
-    let nextSongIdx = currentSongIndex;
-
-    if (currentSongIndex < currentSet.songs.length - 1) {
-      nextSongIdx++;
-    } else if (currentSetIndex < sets.length - 1) {
-      nextSetIdx++;
-      nextSongIdx = 0;
-    }
-
-    setCurrentSetIndex(nextSetIdx);
-    setCurrentSongIndex(nextSongIdx);
-    
-    if (isLeader) broadcastState(nextSetIdx, nextSongIdx, null);
+    advanceToNextSong();
   };
 
   const handlePrev = () => {
@@ -364,6 +369,19 @@ const PerformanceMode = () => {
   const [showLeaderRequest, setShowLeaderRequest] = useState(false);
   const [incomingRequest, setIncomingRequest] = useState<any>(null);
   const [showSetSongsDialog, setShowSetSongsDialog] = useState(false);
+
+  // -- Auto Scroll for Set Songs Dialog --
+  useEffect(() => {
+      if (showSetSongsDialog && !tempSong) {
+          // Allow time for dialog animation
+          setTimeout(() => {
+              const activeEl = document.getElementById(`dialog-set-song-${currentSongIndex}`);
+              if (activeEl) {
+                  activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+          }, 150);
+      }
+  }, [showSetSongsDialog, currentSongIndex, tempSong]);
 
   // -- Listen for Incoming Leadership Requests --
   useEffect(() => {
@@ -457,9 +475,22 @@ const PerformanceMode = () => {
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
   const showMetronome = !gigId;
 
-  // Next Song Calculation
+  // Next Song Calculation (Preview)
   const nextSong = useMemo(() => {
-      if (tempSong) return null; // Ad-hoc has no "next" in sequence
+      // In Ad-hoc, next is determined by index advancement in current set
+      if (tempSong) {
+          if (!currentSet) return null;
+          // Calculate what "Next" would be if we were at current index
+          if (currentSongIndex < currentSet.songs.length - 1) {
+              return currentSet.songs[currentSongIndex + 1].song;
+          }
+          if (currentSetIndex < sets.length - 1) {
+              const nextSet = sets[currentSetIndex + 1];
+              if (nextSet.songs.length > 0) return nextSet.songs[0].song;
+          }
+          return null;
+      }
+
       if (!currentSet) return null;
       if (currentSongIndex < currentSet.songs.length - 1) {
           return currentSet.songs[currentSongIndex + 1].song;
@@ -511,29 +542,33 @@ const PerformanceMode = () => {
       );
   }
 
-  // --- SIMPLE VIEW RENDERER ---
+  // --- SIMPLE VIEW RENDERER (Locked, No Scroll) ---
   const renderSimpleView = () => (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-12 touch-pan-y" {...bind()}>
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center space-y-4 md:space-y-8 overflow-hidden touch-pan-y" {...bind()}>
           {activeSong ? (
               <>
-                  <div className="space-y-4">
-                      <h2 className="text-5xl md:text-7xl font-bold leading-tight tracking-tight select-none">{activeSong.title}</h2>
-                      <p className="text-3xl md:text-4xl text-muted-foreground select-none">{activeSong.artist}</p>
+                  <div className="space-y-2 max-w-[90vw]">
+                      <h2 className="text-[7vw] md:text-[6vw] font-bold leading-tight tracking-tight select-none truncate">
+                          {activeSong.title}
+                      </h2>
+                      <p className="text-[4vw] md:text-[3vw] text-muted-foreground select-none truncate">
+                          {activeSong.artist}
+                      </p>
                   </div>
                   
-                  <div className="flex flex-wrap gap-8 justify-center">
-                      <div className="bg-secondary/30 p-6 rounded-2xl min-w-[160px] border border-border/50">
-                          <div className="text-xl text-muted-foreground uppercase font-semibold mb-2 select-none">Key</div>
-                          <div className="text-5xl font-bold select-none">{activeSong.key || "-"}</div>
+                  <div className="flex flex-wrap gap-4 md:gap-8 justify-center w-full">
+                      <div className="bg-secondary/30 p-4 rounded-2xl w-[35vw] max-w-[200px] border border-border/50 flex flex-col items-center justify-center aspect-square">
+                          <div className="text-[2vh] text-muted-foreground uppercase font-semibold select-none">Key</div>
+                          <div className="text-[6vh] font-bold select-none leading-none mt-2">{activeSong.key || "-"}</div>
                       </div>
-                      <div className="bg-secondary/30 p-6 rounded-2xl min-w-[160px] border border-border/50">
-                          <div className="text-xl text-muted-foreground uppercase font-semibold mb-2 select-none">Tempo</div>
-                          <div className="text-5xl font-bold select-none">{activeSong.tempo ? `${activeSong.tempo}` : "-"}</div>
+                      <div className="bg-secondary/30 p-4 rounded-2xl w-[35vw] max-w-[200px] border border-border/50 flex flex-col items-center justify-center aspect-square">
+                          <div className="text-[2vh] text-muted-foreground uppercase font-semibold select-none">Tempo</div>
+                          <div className="text-[6vh] font-bold select-none leading-none mt-2">{activeSong.tempo ? `${activeSong.tempo}` : "-"}</div>
                       </div>
                   </div>
 
                   {activeSong.note && (
-                      <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-8 py-4 rounded-xl text-2xl font-medium max-w-2xl select-none">
+                      <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-4 py-2 rounded-xl text-[2.5vh] font-medium max-w-[80vw] select-none truncate">
                           {activeSong.note}
                       </div>
                   )}
@@ -544,36 +579,74 @@ const PerformanceMode = () => {
       </div>
   );
 
-  // --- FULL VIEW RENDERER ---
+  // --- FULL VIEW RENDERER (Split: Fixed Header, Scrollable Lyrics) ---
   const renderFullView = () => (
-      <div className="p-4 md:p-8 max-w-4xl mx-auto min-h-full pb-32 touch-pan-y" {...bind()}>
-        {activeSong ? (
-          <div className="space-y-6">
-            {/* Title & Artist moved here */}
-            <div className="text-center border-b pb-4 mb-4">
-                <h2 className="text-3xl md:text-4xl font-bold leading-tight select-none">{activeSong.title}</h2>
-                <p className="text-xl text-muted-foreground select-none">{activeSong.artist}</p>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-6">
-                {activeSong.key && <Badge variant="secondary" className="text-sm select-none">Key: {activeSong.key}</Badge>}
-                {activeSong.tempo && <Badge variant="secondary" className="text-sm select-none">{activeSong.tempo} BPM</Badge>}
-                {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-1 rounded text-sm select-none">{activeSong.note}</div>}
+      <div className="flex flex-col h-full bg-background">
+        {/* Fixed Header Section */}
+        <div className="p-4 md:px-8 border-b bg-background/95 backdrop-blur shrink-0 z-10 select-none">
+            {activeSong ? (
+                <>
+                    <div className="text-center mb-3">
+                        <h2 className="text-3xl md:text-4xl font-bold leading-tight truncate">{activeSong.title}</h2>
+                        <p className="text-lg text-muted-foreground truncate">{activeSong.artist}</p>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 justify-center">
+                        {activeSong.key && <Badge variant="secondary" className="text-sm px-3 py-1">Key: {activeSong.key}</Badge>}
+                        {activeSong.tempo && <Badge variant="secondary" className="text-sm px-3 py-1">{activeSong.tempo} BPM</Badge>}
+                        {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-0.5 rounded text-sm font-medium">{activeSong.note}</div>}
+                    </div>
+                </>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
+                    <Music className="h-8 w-8 mb-2 opacity-20" />
+                    <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
+                </div>
+            )}
+        </div>
+
+        {/* Scrollable Lyrics Area */}
+        <div className="flex-1 overflow-hidden relative">
+            <ScrollArea className="h-full w-full">
+                {activeSong && (
+                    <div className="p-4 md:p-8 min-h-full pb-32 touch-pan-y" {...bind()}>
+                        <div 
+                            className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
+                            style={{ fontSize: `${fontSize}px` }}
+                        >
+                            {activeSong.lyrics || <div className="flex items-center justify-center h-40 text-muted-foreground italic text-base">No lyrics available.</div>}
+                        </div>
+                    </div>
+                )}
+            </ScrollArea>
+
+            {/* Overlays */}
+            {!tempSong && currentSet && (
+                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-20 pointer-events-none fade-in animate-in">
+                    {currentSet.name}
+                </div>
+            )}
+
+            {nextSong && (
+                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-20 pointer-events-none max-w-[200px] truncate fade-in animate-in">
+                    <span className="text-white/60 text-xs uppercase mr-1">Next:</span> {nextSong.title}
+                </div>
+            )}
+
+            {/* Zoom Controls (Full View Only) */}
+            <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-20 opacity-20 hover:opacity-100 transition-opacity">
+                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(2)}>
+                    <ZoomIn className="h-5 w-5" />
+                </Button>
+                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(-2)}>
+                    <ZoomOut className="h-5 w-5" />
+                </Button>
             </div>
 
-            <div 
-                className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
-                style={{ fontSize: `${fontSize}px` }}
-            >
-              {activeSong.lyrics || <span className="text-muted-foreground italic text-base">No lyrics available.</span>}
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground select-none">
-            <Music className="h-16 w-16 mb-4 opacity-20" />
-            <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
-          </div>
-        )}
+            {tempSong && (
+                <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse z-20">Ad-Hoc</div>
+            )}
+        </div>
       </div>
   );
 
@@ -647,7 +720,7 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
-      {/* --- Top Bar (Larger Height: h-16 / 4rem) --- */}
+      {/* --- Top Bar --- */}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm shrink-0 h-16 gap-3 relative z-40">
         <div className="flex-1 max-w-[280px] shrink-0 flex items-center gap-2">
           {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
@@ -670,11 +743,9 @@ const PerformanceMode = () => {
           )}
         </div>
         
-        {/* Spacer for potential center elements if needed, otherwise empty */}
         <div className="flex-1" />
 
         <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
-            {/* Blinker */}
             {isGigMode && activeSong?.tempo && blinkerEnabled && (
                 <TempoBlinker 
                     bpm={parseInt(activeSong.tempo)} 
@@ -683,7 +754,6 @@ const PerformanceMode = () => {
                 />
             )}
 
-            {/* Skip Button */}
             {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
                  <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-10" onClick={handleSkipSong}>
                      <Forward className="w-4 h-4 mr-2" /> Skip
@@ -705,41 +775,10 @@ const PerformanceMode = () => {
 
       {/* --- Main Content --- */}
       <div className="flex-1 overflow-hidden relative bg-background">
-        <ScrollArea className="h-full w-full">
-            {viewMode === 'simple' ? renderSimpleView() : renderFullView()}
-        </ScrollArea>
-        
-        {/* OVERLAYS */}
-        {/* Set Indicator */}
-        {!tempSong && currentSet && (
-            <div className="fixed top-20 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-30 pointer-events-none fade-in animate-in">
-                {currentSet.name}
-            </div>
-        )}
-
-        {/* Next Song Indicator */}
-        {nextSong && (
-            <div className="fixed bottom-20 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-30 pointer-events-none max-w-[200px] truncate fade-in animate-in">
-                <span className="text-white/60 text-xs uppercase mr-1">Next:</span> {nextSong.title}
-            </div>
-        )}
-
-        {/* Floating Zoom Controls (Only in Full View) */}
-        {viewMode === 'full' && (
-            <div className="absolute bottom-20 right-4 flex flex-col gap-2 z-30 opacity-20 hover:opacity-100 transition-opacity">
-                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(2)}>
-                    <ZoomIn className="h-5 w-5" />
-                </Button>
-                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(-2)}>
-                    <ZoomOut className="h-5 w-5" />
-                </Button>
-            </div>
-        )}
-
-        {tempSong && <div className="absolute top-4 right-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse z-30">Ad-Hoc</div>}
+        {viewMode === 'simple' ? renderSimpleView() : renderFullView()}
         
         {/* Metronome Overlay */}
-        {showMetronome && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-10"><MetronomeControls variant="embedded" /></div>}
+        {showMetronome && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-30"><MetronomeControls variant="embedded" /></div>}
       </div>
 
       {/* --- Footer Controls --- */}
@@ -803,23 +842,28 @@ const PerformanceMode = () => {
                   <DialogTitle>{currentSet?.name || "Set List"}</DialogTitle>
               </DialogHeader>
               <ScrollArea className="flex-1">
-                  <div className="divide-y">
+                  <div className="divide-y p-1">
                       {currentSet?.songs.map((item, idx) => {
                           const isActive = !tempSong && idx === currentSongIndex;
                           const isPast = !tempSong && idx < currentSongIndex;
                           return (
                               <div 
-                                key={item.id} 
+                                key={item.id}
+                                id={`dialog-set-song-${idx}`}
                                 className={cn(
-                                    "p-4 flex items-center gap-3",
+                                    "p-4 flex items-center gap-3 cursor-pointer",
                                     isActive ? "bg-primary/10 border-l-4 border-primary" : "hover:bg-accent",
                                     isPast ? "opacity-50" : ""
                                 )}
                                 onClick={() => {
                                     if(isLeader || !isGigMode) {
-                                        setTempSong(null);
-                                        setCurrentSongIndex(idx);
-                                        if(isLeader) broadcastState(currentSetIndex, idx, null);
+                                        // If clicking current, just close
+                                        if (isActive) {
+                                            setShowSetSongsDialog(false);
+                                            return;
+                                        }
+                                        // Otherwise load ad-hoc (preview mode)
+                                        if (item.song) handleAdHocSelect(item.song);
                                         setShowSetSongsDialog(false);
                                     }
                                 }}
