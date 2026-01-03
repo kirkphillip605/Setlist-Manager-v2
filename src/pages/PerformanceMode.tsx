@@ -63,6 +63,12 @@ const PerformanceMode = () => {
   // Recovery Dialogs
   const [recoveryData, setRecoveryData] = useState<{ type: 'leader' | 'follower', session: any } | null>(null);
 
+  // -- Header Scroll State --
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+
+  // -- Refs --
+  const wasOnBreak = useRef(false);
+
   // -- Keep Awake --
   useEffect(() => {
     const keepAwake = async () => {
@@ -101,6 +107,17 @@ const PerformanceMode = () => {
       });
   };
 
+  const handleLyricsScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const scrollTop = e.currentTarget.scrollTop;
+      const threshold = 40; // Pixels to scroll before collapsing
+      
+      if (scrollTop > threshold && !isHeaderCollapsed) {
+          setIsHeaderCollapsed(true);
+      } else if (scrollTop < threshold && isHeaderCollapsed) {
+          setIsHeaderCollapsed(false);
+      }
+  };
+
   // Determine effective mode for Logic
   const isGigMode = !!gigId && !isForcedStandalone;
 
@@ -108,7 +125,6 @@ const PerformanceMode = () => {
   const { sessionData, participants, isLeader, loading: sessionLoading, userId } = useGigSession(isGigMode ? gigId : null);
 
   // -- Permission Check --
-  // Users can navigate if they are the Leader OR if they are in Standalone/Practice mode
   const canNavigate = !isGigMode || isLeader;
 
   // Local State
@@ -121,10 +137,7 @@ const PerformanceMode = () => {
   const [showSetTransition, setShowSetTransition] = useState(false);
   const isOnBreak = sessionData?.is_on_break || false;
 
-  // -- Alert Logic State --
-  const wasOnBreak = useRef(false);
-
-  // Alert Logic Effect
+  // Alert Logic
   useEffect(() => {
       if (!isGigMode || isLeader || sessionLoading || !sessionData) {
           if (sessionData) wasOnBreak.current = sessionData.is_on_break;
@@ -138,15 +151,14 @@ const PerformanceMode = () => {
               duration: 5000
           });
           Haptics.notification({ type: NotificationType.Success });
-          // Play a sound (beep)
-          const audio = new Audio('/notification.mp3'); // Assuming file exists or fails gracefully
+          const audio = new Audio('/notification.mp3');
           audio.play().catch(e => console.log("Audio play failed", e));
       }
       
       wasOnBreak.current = sessionData.is_on_break;
   }, [sessionData, isGigMode, isLeader, sessionLoading]);
 
-  // -- Orphaned Session State (Heartbeat Monitor) --
+  // -- Orphaned Session State --
   const [isOrphaned, setIsOrphaned] = useState(false);
   
   useEffect(() => {
@@ -173,9 +185,6 @@ const PerformanceMode = () => {
   // -- Offline Failover Logic --
   useEffect(() => {
       let timer: number;
-      
-      // If On Break, don't failover due to inactivity/network as aggressively (or handle differently)
-      // But standard offline check applies. 
       if (isOnline || isForcedStandalone || !isLeader) {
           setOfflineCountdown(null);
           return;
@@ -285,6 +294,11 @@ const PerformanceMode = () => {
   // -- Sync Effect (Follower Logic) --
   useEffect(() => {
       if (isGigMode && sessionData && !isLeader) {
+          // Reset collapse state on song change
+          if (sessionData.current_song_index !== currentSongIndex || sessionData.current_set_index !== currentSetIndex) {
+              setIsHeaderCollapsed(false);
+          }
+
           setCurrentSetIndex(sessionData.current_set_index);
           setCurrentSongIndex(sessionData.current_song_index);
           if (sessionData.adhoc_song_id) {
@@ -311,13 +325,11 @@ const PerformanceMode = () => {
       
       const updates: any = { is_on_break: true };
 
-      // If we are triggered from the "Coming Up" screen, advance the set for when we resume
       if (showSetTransition) {
           const nextSetIdx = currentSetIndex + 1;
           if (nextSetIdx < sets.length) {
               updates.current_set_index = nextSetIdx;
               updates.current_song_index = 0;
-              // Update local state immediately to match
               setCurrentSetIndex(nextSetIdx);
               setCurrentSongIndex(0);
           }
@@ -343,25 +355,28 @@ const PerformanceMode = () => {
       if (nextSetIdx < sets.length) {
           setCurrentSetIndex(nextSetIdx);
           setCurrentSongIndex(0);
+          setIsHeaderCollapsed(false); // Reset
           setShowSetTransition(false);
           if (isLeader) broadcastState(nextSetIdx, 0, null);
       } else {
-          setShowSetTransition(false); // End of gig basically
+          setShowSetTransition(false);
       }
   };
 
   // -- Navigation Handlers --
   const handleNext = () => {
-    if (!canNavigate) return; // Guard: Only Leader or Standalone
+    if (!canNavigate) return;
 
     if (showSetTransition) {
         handleContinueToNextSet();
         return;
     }
 
+    // Reset scroll/header on nav
+    setIsHeaderCollapsed(false);
+
     if (tempSong) {
       setTempSong(null);
-      // Resume position logic
       const currentSet = sets[currentSetIndex];
       let nextSetIdx = currentSetIndex;
       let nextSongIdx = currentSongIndex;
@@ -369,7 +384,6 @@ const PerformanceMode = () => {
       if (currentSongIndex < currentSet.songs.length - 1) {
           nextSongIdx++;
       } else if (currentSetIndex < sets.length - 1) {
-          // Transition check not needed here as ad-hoc interruption implies return to flow
           nextSetIdx++;
           nextSongIdx = 0;
       }
@@ -384,38 +398,34 @@ const PerformanceMode = () => {
     const currentSet = sets[currentSetIndex];
     if (!currentSet) return;
 
-    // Check End of Set
     if (currentSongIndex >= currentSet.songs.length - 1) {
         if (currentSetIndex < sets.length - 1) {
-            // Show Interstitial if not already there
             if (isLeader) {
                 setShowSetTransition(true);
             } else {
-                // Standalone mode behavior
                 setCurrentSetIndex(currentSetIndex + 1);
                 setCurrentSongIndex(0);
             }
             return;
         } else {
-            // End of Setlist
             return;
         }
     }
 
-    // Normal Next
     const nextSongIdx = currentSongIndex + 1;
     setCurrentSongIndex(nextSongIdx);
     if (isLeader) broadcastState(currentSetIndex, nextSongIdx, null);
   };
 
   const handlePrev = () => {
-    if (!canNavigate) return; // Guard: Only Leader or Standalone
+    if (!canNavigate) return;
 
-    // If currently on Transition screen, go back to previous song
     if (showSetTransition) {
         setShowSetTransition(false);
         return;
     }
+
+    setIsHeaderCollapsed(false);
 
     if (tempSong) {
       setTempSong(null);
@@ -442,22 +452,24 @@ const PerformanceMode = () => {
   };
 
   const handleSetChange = (value: string) => {
-    if (!canNavigate) return; // Guard
+    if (!canNavigate) return;
 
     const index = parseInt(value);
     if (!isNaN(index)) {
       setTempSong(null);
       setCurrentSetIndex(index);
       setCurrentSongIndex(0);
+      setIsHeaderCollapsed(false);
       setShowSetTransition(false);
       if (isLeader) broadcastState(index, 0, null);
     }
   };
 
   const handleAdHocSelect = (song: Song) => {
-      if (!canNavigate) return; // Guard
+      if (!canNavigate) return;
 
       setTempSong(song);
+      setIsHeaderCollapsed(false);
       setIsSearchOpen(false);
       setSearchQuery("");
       setShowSetTransition(false);
@@ -465,14 +477,14 @@ const PerformanceMode = () => {
   };
 
   const handleSkipSong = async () => {
-      if (!gigId || !activeSong || !isLeader) return; // Guarded by UI too
+      if (!gigId || !activeSong || !isLeader) return;
       await addSkippedSong(gigId, activeSong.id);
       toast.info("Song skipped");
       handleNext();
   };
 
   const handleRestoreSkippedSong = async (song: Song) => {
-      if (!gigId || !canNavigate) return; // Guard
+      if (!gigId || !canNavigate) return;
       await removeSkippedSong(gigId, song.id);
       handleAdHocSelect(song);
       setShowSkippedSongs(false);
@@ -489,10 +501,8 @@ const PerformanceMode = () => {
   const [incomingRequest, setIncomingRequest] = useState<any>(null);
   const [showSetSongsDialog, setShowSetSongsDialog] = useState(false);
 
-  // -- Auto Scroll for Set Songs Dialog --
   useEffect(() => {
       if (showSetSongsDialog && !tempSong) {
-          // Allow time for dialog animation
           setTimeout(() => {
               const activeEl = document.getElementById(`dialog-set-song-${currentSongIndex}`);
               if (activeEl) {
@@ -502,7 +512,6 @@ const PerformanceMode = () => {
       }
   }, [showSetSongsDialog, currentSongIndex, tempSong]);
 
-  // -- Listen for Incoming Leadership Requests --
   useEffect(() => {
       if (!isLeader || !sessionData) return;
       const channel = supabase.channel(`leader_req:${sessionData.id}`)
@@ -517,7 +526,6 @@ const PerformanceMode = () => {
       return () => { supabase.removeChannel(channel); };
   }, [isLeader, sessionData]);
 
-  // -- Listen for Session End --
   const [sessionEndedInfo, setSessionEndedInfo] = useState<{ endedBy: string, at: string } | null>(null);
   
   useEffect(() => {
@@ -592,14 +600,11 @@ const PerformanceMode = () => {
   const currentSet = sets[currentSetIndex];
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
-  const showMetronome = !gigId || (gigId && isLeader) || (gigId && !isLeader && !isOnBreak); // Always allow metronome unless follower on break? Actually, follower on break usually doesn't need metronome.
+  const showMetronome = !gigId || (gigId && isLeader) || (gigId && !isLeader && !isOnBreak); 
 
-  // Next Song Calculation (Preview)
   const nextSong = useMemo(() => {
-      // In Ad-hoc, next is determined by index advancement in current set
       if (tempSong) {
           if (!currentSet) return null;
-          // Calculate what "Next" would be if we were at current index
           if (currentSongIndex < currentSet.songs.length - 1) {
               return currentSet.songs[currentSongIndex + 1].song;
           }
@@ -614,7 +619,6 @@ const PerformanceMode = () => {
       if (currentSongIndex < currentSet.songs.length - 1) {
           return currentSet.songs[currentSongIndex + 1].song;
       }
-      // End of set? check next set
       if (currentSetIndex < sets.length - 1) {
           const nextSet = sets[currentSetIndex + 1];
           if (nextSet.songs.length > 0) return nextSet.songs[0].song;
@@ -622,20 +626,16 @@ const PerformanceMode = () => {
       return null;
   }, [currentSet, currentSongIndex, currentSetIndex, sets, tempSong]);
 
-  // -- Gestures --
   const bind = useGesture({
     onPinch: ({ direction: [d] }) => {
         if (d > 0) handleZoom(1);
         if (d < 0) handleZoom(-1);
     },
     onDragEnd: ({ swipe: [swipeX] }) => {
-        // Only allow nav gestures if allowed
         if (!canNavigate) return;
-
-        // Horizontal swipe navigation
-        if (swipeX === -1) { // Swipe Left -> Next
+        if (swipeX === -1) { 
             handleNext();
-        } else if (swipeX === 1) { // Swipe Right -> Prev
+        } else if (swipeX === 1) { 
             handlePrev();
         }
     }
@@ -644,7 +644,7 @@ const PerformanceMode = () => {
       pinch: { scaleBounds: { min: 0.5, max: 3 } }
   });
 
-  // --- SIMPLE VIEW RENDERER (Locked, No Scroll) ---
+  // --- SIMPLE VIEW RENDERER ---
   const renderSimpleView = () => (
       <div className="flex flex-col items-center justify-center h-full p-4 text-center space-y-4 md:space-y-8 overflow-hidden touch-pan-y" {...bind()}>
           {activeSong ? (
@@ -681,62 +681,84 @@ const PerformanceMode = () => {
       </div>
   );
 
-  // --- FULL VIEW RENDERER (Split: Fixed Header, Scrollable Lyrics) ---
+  // --- FULL VIEW RENDERER (Collapsing Header) ---
   const renderFullView = () => (
       <div className="flex flex-col h-full bg-background">
         {/* Fixed Header Section */}
-        <div className="p-4 md:px-8 border-b bg-background/95 backdrop-blur shrink-0 z-10 select-none">
+        <div className={cn(
+            "border-b bg-background/95 backdrop-blur shrink-0 z-10 transition-all duration-300 ease-in-out overflow-hidden select-none",
+            isHeaderCollapsed ? "py-2 px-4" : "py-4 px-6"
+        )}>
             {activeSong ? (
-                <>
-                    <div className="text-center mb-3">
-                        <h2 className="text-3xl md:text-4xl font-bold leading-tight truncate">{activeSong.title}</h2>
-                        <p className="text-lg text-muted-foreground truncate">{activeSong.artist}</p>
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <h2 className={cn(
+                            "font-bold leading-tight truncate transition-all duration-300",
+                            isHeaderCollapsed ? "text-lg" : "text-2xl md:text-3xl"
+                        )}>
+                            {activeSong.title}
+                        </h2>
+
+                        {/* Meta Info (Key/Tempo) - Visible only when NOT collapsed OR moved inline? 
+                            Request: "Move key/tempo beside title... collapse showing only title" 
+                            So we show inline here, and hide/shrink when collapsed.
+                        */}
+                        <div className={cn(
+                            "flex items-center gap-2 transition-all duration-300 overflow-hidden",
+                            isHeaderCollapsed ? "w-0 opacity-0 scale-95" : "w-auto opacity-100 scale-100"
+                        )}>
+                            {activeSong.key && <Badge variant="secondary" className="px-2 py-0.5 text-sm">{activeSong.key}</Badge>}
+                            {activeSong.tempo && <Badge variant="secondary" className="px-2 py-0.5 text-sm">{activeSong.tempo} BPM</Badge>}
+                            {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-2 py-0.5 rounded text-sm font-medium">{activeSong.note}</div>}
+                        </div>
                     </div>
-                    
-                    <div className="flex flex-wrap gap-2 justify-center">
-                        {activeSong.key && <Badge variant="secondary" className="text-sm px-3 py-1">Key: {activeSong.key}</Badge>}
-                        {activeSong.tempo && <Badge variant="secondary" className="text-sm px-3 py-1">{activeSong.tempo} BPM</Badge>}
-                        {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-0.5 rounded text-sm font-medium">{activeSong.note}</div>}
-                    </div>
-                </>
+
+                    {/* Artist - Collapses away */}
+                    <p className={cn(
+                        "text-muted-foreground truncate transition-all duration-300 origin-top",
+                        isHeaderCollapsed ? "h-0 opacity-0" : "h-auto opacity-100 text-lg"
+                    )}>
+                        {activeSong.artist}
+                    </p>
+                </div>
             ) : (
-                <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
-                    <Music className="h-8 w-8 mb-2 opacity-20" />
+                <div className="flex flex-col items-center justify-center py-2 text-muted-foreground">
                     <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
                 </div>
             )}
         </div>
 
-        {/* Scrollable Lyrics Area */}
-        <div className="flex-1 overflow-hidden relative">
-            <ScrollArea className="h-full w-full">
-                {activeSong && (
-                    <div className="p-4 md:p-8 min-h-full pb-32 touch-pan-y" {...bind()}>
-                        <div 
-                            className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
-                            style={{ fontSize: `${fontSize}px` }}
-                        >
-                            {activeSong.lyrics || <div className="flex items-center justify-center h-40 text-muted-foreground italic text-base">No lyrics available.</div>}
-                        </div>
+        {/* Scrollable Lyrics Area - Replaced ScrollArea with native div for event handling */}
+        <div 
+            className="flex-1 overflow-y-auto relative overscroll-contain"
+            onScroll={handleLyricsScroll}
+        >
+            {activeSong && (
+                <div className="p-4 md:p-8 min-h-full pb-32 touch-pan-y" {...bind()}>
+                    <div 
+                        className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
+                        style={{ fontSize: `${fontSize}px` }}
+                    >
+                        {activeSong.lyrics || <div className="flex items-center justify-center h-40 text-muted-foreground italic text-base">No lyrics available.</div>}
                     </div>
-                )}
-            </ScrollArea>
+                </div>
+            )}
 
             {/* Overlays */}
             {!tempSong && currentSet && (
-                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-20 pointer-events-none fade-in animate-in">
+                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-20 pointer-events-none fade-in animate-in sticky float-right">
                     {currentSet.name}
                 </div>
             )}
 
             {nextSong && (
-                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-20 pointer-events-none max-w-[200px] truncate fade-in animate-in">
+                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-20 pointer-events-none max-w-[200px] truncate fade-in animate-in sticky float-right">
                     <span className="text-white/60 text-xs uppercase mr-1">Next:</span> {nextSong.title}
                 </div>
             )}
 
-            {/* Zoom Controls (Full View Only) */}
-            <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-20 opacity-20 hover:opacity-100 transition-opacity">
+            {/* Zoom Controls */}
+            <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-20 opacity-20 hover:opacity-100 transition-opacity sticky float-left">
                 <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(2)}>
                     <ZoomIn className="h-5 w-5" />
                 </Button>
@@ -746,7 +768,7 @@ const PerformanceMode = () => {
             </div>
 
             {tempSong && (
-                <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse z-20">Ad-Hoc</div>
+                <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse z-20 sticky float-left">Ad-Hoc</div>
             )}
         </div>
       </div>
