@@ -505,7 +505,6 @@ const PerformanceMode = () => {
   useEffect(() => {
       if (showSetSongsDialog && !tempSong) {
           setTimeout(() => {
-              // Ensure we target the correct song unique to the set
               const activeEl = document.getElementById(`dialog-song-${currentSetIndex}-${currentSongIndex}`);
               if (activeEl) {
                   activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1072,7 +1071,7 @@ const PerformanceMode = () => {
               <DialogHeader className="px-6 py-4 border-b">
                   <DialogTitle>Setlist Overview</DialogTitle>
               </DialogHeader>
-              <ScrollArea className="flex-1">
+              <div className="flex-1 overflow-y-auto min-h-0">
                   <div className="p-1">
                       {sets.map((set, setIdx) => (
                           <div key={set.id} className="mb-4">
@@ -1119,7 +1118,7 @@ const PerformanceMode = () => {
                           </div>
                       ))}
                   </div>
-              </ScrollArea>
+              </div>
               <DialogFooter className="p-2 border-t">
                   <Button variant="ghost" onClick={() => setShowSetSongsDialog(false)} className="w-full">Close</Button>
               </DialogFooter>
