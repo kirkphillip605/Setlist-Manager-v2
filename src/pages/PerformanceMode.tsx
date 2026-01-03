@@ -63,6 +63,9 @@ const PerformanceMode = () => {
   // Recovery Dialogs
   const [recoveryData, setRecoveryData] = useState<{ type: 'leader' | 'follower', session: any } | null>(null);
 
+  // -- Refs --
+  const wasOnBreak = useRef(false);
+
   // -- Keep Awake --
   useEffect(() => {
     const keepAwake = async () => {
@@ -102,10 +105,15 @@ const PerformanceMode = () => {
   };
 
   // Determine effective mode for Logic
+  // If isForcedStandalone is true, isGigMode becomes false, effectively making the user a leader of their local session
   const isGigMode = !!gigId && !isForcedStandalone;
 
   // -- Session Hook --
   const { sessionData, participants, isLeader, loading: sessionLoading, userId } = useGigSession(isGigMode ? gigId : null);
+
+  // -- Permission Check --
+  // Users can navigate if they are the Leader OR if they are in Standalone/Practice mode
+  const canNavigate = !isGigMode || isLeader;
 
   // Local State
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
@@ -117,10 +125,7 @@ const PerformanceMode = () => {
   const [showSetTransition, setShowSetTransition] = useState(false);
   const isOnBreak = sessionData?.is_on_break || false;
 
-  // -- Alert Logic State --
-  const wasOnBreak = useRef(false);
-
-  // Alert Logic Effect
+  // Alert Logic
   useEffect(() => {
       if (!isGigMode || isLeader || sessionLoading || !sessionData) {
           if (sessionData) wasOnBreak.current = sessionData.is_on_break;
@@ -317,7 +322,7 @@ const PerformanceMode = () => {
   };
 
   const handleContinueToNextSet = () => {
-      // Logic from `handleNext` but specifically for set transition
+      if (!canNavigate) return; // Guard
       if (!setlist) return;
       const nextSetIdx = currentSetIndex + 1;
       
@@ -333,6 +338,8 @@ const PerformanceMode = () => {
 
   // -- Navigation Handlers --
   const handleNext = () => {
+    if (!canNavigate) return; // Guard: Only Leader or Standalone
+
     if (showSetTransition) {
         handleContinueToNextSet();
         return;
@@ -388,6 +395,8 @@ const PerformanceMode = () => {
   };
 
   const handlePrev = () => {
+    if (!canNavigate) return; // Guard: Only Leader or Standalone
+
     if (showSetTransition) {
         setShowSetTransition(false);
         return;
@@ -418,6 +427,8 @@ const PerformanceMode = () => {
   };
 
   const handleSetChange = (value: string) => {
+    if (!canNavigate) return; // Guard
+
     const index = parseInt(value);
     if (!isNaN(index)) {
       setTempSong(null);
@@ -429,6 +440,8 @@ const PerformanceMode = () => {
   };
 
   const handleAdHocSelect = (song: Song) => {
+      if (!canNavigate) return; // Guard
+
       setTempSong(song);
       setIsSearchOpen(false);
       setSearchQuery("");
@@ -437,14 +450,14 @@ const PerformanceMode = () => {
   };
 
   const handleSkipSong = async () => {
-      if (!gigId || !activeSong) return;
+      if (!gigId || !activeSong || !isLeader) return; // Guarded by UI too
       await addSkippedSong(gigId, activeSong.id);
       toast.info("Song skipped");
       handleNext();
   };
 
   const handleRestoreSkippedSong = async (song: Song) => {
-      if (!gigId) return;
+      if (!gigId || !canNavigate) return; // Guard
       await removeSkippedSong(gigId, song.id);
       handleAdHocSelect(song);
       setShowSkippedSongs(false);
@@ -601,6 +614,9 @@ const PerformanceMode = () => {
         if (d < 0) handleZoom(-1);
     },
     onDragEnd: ({ swipe: [swipeX] }) => {
+        // Only allow nav gestures if allowed
+        if (!canNavigate) return;
+
         // Horizontal swipe navigation
         if (swipeX === -1) { // Swipe Left -> Next
             handleNext();
@@ -808,7 +824,7 @@ const PerformanceMode = () => {
               <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm shrink-0 h-16 gap-3 relative z-40">
                 <div className="flex-1 max-w-[280px] shrink-0 flex items-center gap-2">
                   {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
-                  {isLeader || !isGigMode ? (
+                  {canNavigate ? (
                       <div className="flex items-center gap-2 w-full">
                           <Select value={currentSetIndex.toString()} onValueChange={handleSetChange} disabled={!!tempSong}>
                             <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Select Set" /></SelectTrigger>
@@ -873,7 +889,7 @@ const PerformanceMode = () => {
 
               {/* --- Footer Controls --- */}
               <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3 z-20 relative">
-                {(isLeader || !isGigMode) ? (
+                {canNavigate ? (
                     <>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-6 w-6" /></Button></DropdownMenuTrigger>
