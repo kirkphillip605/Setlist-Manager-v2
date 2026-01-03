@@ -89,7 +89,7 @@ const Login = () => {
     }
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password
     });
 
@@ -103,7 +103,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     const { error } = await supabase.auth.signUp({
-      email,
+      email: email.trim(),
       password,
       options: { 
         emailRedirectTo: getRedirectUrl()
@@ -138,7 +138,7 @@ const Login = () => {
     if (!resetEmail) return;
     setResetLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
       redirectTo: `${window.location.origin}/update-password` 
     });
 
@@ -209,40 +209,40 @@ const Login = () => {
                         <Button type="submit" className="w-full" disabled={loading}>
                             Sign In
                         </Button>
-
-                        <div className="text-center">
-                            <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
-                                <DialogTrigger asChild>
-                                    <Button variant="link" className="px-0 h-auto text-xs font-normal text-muted-foreground">Forgot password?</Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader>
-                                        <DialogTitle>Reset Password</DialogTitle>
-                                        <DialogDescription>Enter your email address and we'll send you a link to reset your password.</DialogDescription>
-                                    </DialogHeader>
-                                    <form onSubmit={handleForgotPassword} className="space-y-4 py-2">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="reset-email">Email</Label>
-                                            <Input 
-                                                id="reset-email" 
-                                                type="email" 
-                                                value={resetEmail}
-                                                onChange={(e) => setResetEmail(e.target.value)}
-                                                required
-                                                autoComplete="email"
-                                            />
-                                        </div>
-                                        <DialogFooter>
-                                            <Button type="submit" disabled={resetLoading}>
-                                                {resetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                Send Reset Link
-                                            </Button>
-                                        </DialogFooter>
-                                    </form>
-                                </DialogContent>
-                            </Dialog>
-                        </div>
                     </form>
+
+                    <div className="text-center mt-4">
+                        <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="link" type="button" className="px-0 h-auto text-xs font-normal text-muted-foreground">Forgot password?</Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Reset Password</DialogTitle>
+                                    <DialogDescription>Enter your email address and we'll send you a link to reset your password.</DialogDescription>
+                                </DialogHeader>
+                                <form onSubmit={handleForgotPassword} className="space-y-4 py-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="reset-email">Email</Label>
+                                        <Input 
+                                            id="reset-email" 
+                                            type="email" 
+                                            value={resetEmail}
+                                            onChange={(e) => setResetEmail(e.target.value)}
+                                            required
+                                            autoComplete="email"
+                                        />
+                                    </div>
+                                    <DialogFooter>
+                                        <Button type="submit" disabled={resetLoading}>
+                                            {resetLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Send Reset Link
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </TabsContent>
 
                 <TabsContent value="register">
