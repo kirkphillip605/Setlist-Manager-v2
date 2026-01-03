@@ -448,21 +448,9 @@ const PerformanceMode = () => {
 
   // -- Gestures --
   const bind = useGesture({
-    onPinch: ({ offset: [d] }) => {
-        // d is basically zoom level. Default scale is 1.
-        // We map d to a reasonable font size change.
-        // Assume baseline 24px is at scale 1 (or offset 0 depending on config).
-        // Let's just use delta for simpler relative zooming
-    },
-    onPinchEnd: ({ offset: [d] }) => {
-        // Alternative: Use a ref to track pinch delta and apply to font size
-    },
-    // Simple pinch handler using delta
-    onPinchIn: ({ cancel }) => {
-       handleZoom(-2);
-    },
-    onPinchOut: ({ cancel }) => {
-       handleZoom(2);
+    onPinch: ({ direction: [d] }) => {
+        if (d > 0) handleZoom(1);
+        if (d < 0) handleZoom(-1);
     },
     onDragEnd: ({ swipe: [swipeX] }) => {
         // Horizontal swipe navigation
