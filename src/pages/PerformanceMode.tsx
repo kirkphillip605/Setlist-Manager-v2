@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { TempoBlinker } from "@/components/TempoBlinker";
 import { useAuth } from "@/context/AuthContext";
 import { useGesture } from "@use-gesture/react";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
@@ -60,6 +61,31 @@ const PerformanceMode = () => {
   
   // Recovery Dialogs
   const [recoveryData, setRecoveryData] = useState<{ type: 'leader' | 'follower', session: any } | null>(null);
+
+  // -- Keep Awake --
+  useEffect(() => {
+    const keepAwake = async () => {
+        try {
+            await KeepAwake.keepAwake();
+            console.log("Screen wake lock enabled");
+        } catch (err) {
+            // Fails silently on unsupported browsers
+            console.warn("KeepAwake not supported:", err);
+        }
+    };
+
+    keepAwake();
+
+    return () => {
+        const allowSleep = async () => {
+            try {
+                await KeepAwake.allowSleep();
+                console.log("Screen wake lock disabled");
+            } catch (err) {}
+        };
+        allowSleep();
+    };
+  }, []);
 
   // -- Zoom State --
   const [fontSize, setFontSize] = useState(() => {
