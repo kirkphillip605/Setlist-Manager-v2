@@ -501,17 +501,20 @@ const PerformanceMode = () => {
   const [incomingRequest, setIncomingRequest] = useState<any>(null);
   const [showSetSongsDialog, setShowSetSongsDialog] = useState(false);
 
+  // -- Auto Scroll for Set Songs Dialog --
   useEffect(() => {
       if (showSetSongsDialog && !tempSong) {
           setTimeout(() => {
-              const activeEl = document.getElementById(`dialog-set-song-${currentSongIndex}`);
+              // Ensure we target the correct song unique to the set
+              const activeEl = document.getElementById(`dialog-song-${currentSetIndex}-${currentSongIndex}`);
               if (activeEl) {
                   activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
           }, 150);
       }
-  }, [showSetSongsDialog, currentSongIndex, tempSong]);
+  }, [showSetSongsDialog, currentSetIndex, currentSongIndex, tempSong]);
 
+  // -- Listen for Incoming Leadership Requests --
   useEffect(() => {
       if (!isLeader || !sessionData) return;
       const channel = supabase.channel(`leader_req:${sessionData.id}`)
@@ -699,10 +702,6 @@ const PerformanceMode = () => {
                             {activeSong.title}
                         </h2>
 
-                        {/* Meta Info (Key/Tempo) - Visible only when NOT collapsed OR moved inline? 
-                            Request: "Move key/tempo beside title... collapse showing only title" 
-                            So we show inline here, and hide/shrink when collapsed.
-                        */}
                         <div className={cn(
                             "flex items-center gap-2 transition-all duration-300 overflow-hidden",
                             isHeaderCollapsed ? "w-0 opacity-0 scale-95" : "w-auto opacity-100 scale-100"
@@ -713,7 +712,6 @@ const PerformanceMode = () => {
                         </div>
                     </div>
 
-                    {/* Artist - Collapses away */}
                     <p className={cn(
                         "text-muted-foreground truncate transition-all duration-300 origin-top",
                         isHeaderCollapsed ? "h-0 opacity-0" : "h-auto opacity-100 text-lg"
@@ -728,7 +726,7 @@ const PerformanceMode = () => {
             )}
         </div>
 
-        {/* Scrollable Lyrics Area - Replaced ScrollArea with native div for event handling */}
+        {/* Scrollable Lyrics Area */}
         <div 
             className="flex-1 overflow-y-auto relative overscroll-contain"
             onScroll={handleLyricsScroll}
@@ -776,7 +774,6 @@ const PerformanceMode = () => {
 
   // --- CONTENT SWITCHER ---
   const renderContent = () => {
-      // 1. Session Ended
       if (isGigMode && sessionEndedInfo && !isForcedStandalone) {
           return (
               <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
@@ -793,7 +790,6 @@ const PerformanceMode = () => {
           );
       }
 
-      // 2. Break View
       if (isGigMode && isOnBreak) {
           return (
               <div className="flex flex-col items-center justify-center h-screen bg-amber-50 dark:bg-amber-950/20 text-center p-6 space-y-6">
@@ -825,7 +821,6 @@ const PerformanceMode = () => {
           );
       }
 
-      // 3. Interstitial View
       if (isGigMode && isLeader && showSetTransition) {
           const nextSet = sets[currentSetIndex + 1];
           return (
@@ -854,7 +849,6 @@ const PerformanceMode = () => {
           );
       }
 
-      // 4. Main View
       return (
           <div className="flex flex-col h-full">
               {/* --- Top Bar --- */}
@@ -919,8 +913,6 @@ const PerformanceMode = () => {
               {/* --- Main Content --- */}
               <div className="flex-1 overflow-hidden relative bg-background">
                 {viewMode === 'simple' ? renderSimpleView() : renderFullView()}
-                
-                {/* Metronome Overlay */}
                 {showMetronome && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-30"><MetronomeControls variant="embedded" /></div>}
               </div>
 
@@ -1078,44 +1070,54 @@ const PerformanceMode = () => {
       <Dialog open={showSetSongsDialog} onOpenChange={setShowSetSongsDialog}>
           <DialogContent className="max-h-[80vh] flex flex-col p-0 gap-0">
               <DialogHeader className="px-6 py-4 border-b">
-                  <DialogTitle>{currentSet?.name || "Set List"}</DialogTitle>
+                  <DialogTitle>Setlist Overview</DialogTitle>
               </DialogHeader>
               <ScrollArea className="flex-1">
-                  <div className="divide-y p-1">
-                      {currentSet?.songs.map((item, idx) => {
-                          const isActive = !tempSong && idx === currentSongIndex;
-                          const isPast = !tempSong && idx < currentSongIndex;
-                          return (
-                              <div 
-                                key={item.id}
-                                id={`dialog-set-song-${idx}`}
-                                className={cn(
-                                    "p-4 flex items-center gap-3 cursor-pointer",
-                                    isActive ? "bg-primary/10 border-l-4 border-primary" : "hover:bg-accent",
-                                    isPast ? "opacity-50" : ""
-                                )}
-                                onClick={() => {
-                                    if(isLeader || !isGigMode) {
-                                        // If clicking current, just close
-                                        if (isActive) {
-                                            setShowSetSongsDialog(false);
-                                            return;
-                                        }
-                                        // Otherwise load ad-hoc (preview mode)
-                                        if (item.song) handleAdHocSelect(item.song);
-                                        setShowSetSongsDialog(false);
-                                    }
-                                }}
-                              >
-                                  <div className="w-6 text-center text-sm text-muted-foreground font-mono">{idx + 1}</div>
-                                  <div className="flex-1">
-                                      <div className={cn("font-medium", isActive && "text-primary font-bold")}>{item.song?.title}</div>
-                                      <div className="text-xs text-muted-foreground">{item.song?.artist}</div>
-                                  </div>
-                                  {isActive && <Radio className="h-4 w-4 text-primary animate-pulse" />}
+                  <div className="p-1">
+                      {sets.map((set, setIdx) => (
+                          <div key={set.id} className="mb-4">
+                              <div className="sticky top-0 bg-muted/90 backdrop-blur p-2 text-sm font-bold border-b z-10 text-primary">
+                                  {set.name}
                               </div>
-                          );
-                      })}
+                              <div className="divide-y">
+                                  {set.songs.map((item, songIdx) => {
+                                      const isActive = !tempSong && setIdx === currentSetIndex && songIdx === currentSongIndex;
+                                      const isPast = !tempSong && (setIdx < currentSetIndex || (setIdx === currentSetIndex && songIdx < currentSongIndex));
+                                      
+                                      return (
+                                          <div 
+                                            key={item.id}
+                                            id={`dialog-song-${setIdx}-${songIdx}`}
+                                            className={cn(
+                                                "p-4 flex items-center gap-3 cursor-pointer transition-colors",
+                                                isActive ? "bg-primary/10 border-l-4 border-primary" : "hover:bg-accent",
+                                                isPast ? "opacity-50" : ""
+                                            )}
+                                            onClick={() => {
+                                                if(isLeader || !isGigMode) {
+                                                    // If clicking current, just close
+                                                    if (isActive) {
+                                                        setShowSetSongsDialog(false);
+                                                        return;
+                                                    }
+                                                    // Load ad-hoc (preview mode) from ANY set
+                                                    if (item.song) handleAdHocSelect(item.song);
+                                                    setShowSetSongsDialog(false);
+                                                }
+                                            }}
+                                          >
+                                              <div className="w-6 text-center text-sm text-muted-foreground font-mono">{songIdx + 1}</div>
+                                              <div className="flex-1">
+                                                  <div className={cn("font-medium", isActive && "text-primary font-bold")}>{item.song?.title}</div>
+                                                  <div className="text-xs text-muted-foreground">{item.song?.artist}</div>
+                                              </div>
+                                              {isActive && <Radio className="h-4 w-4 text-primary animate-pulse" />}
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      ))}
                   </div>
               </ScrollArea>
               <DialogFooter className="p-2 border-t">
