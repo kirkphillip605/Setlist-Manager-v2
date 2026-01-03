@@ -69,6 +69,7 @@ export interface GigSession {
   current_song_index: number;
   adhoc_song_id: string | null;
   is_active: boolean;
+  is_on_break: boolean;
   started_at: string;
   last_heartbeat: string;
   ended_at?: string | null;

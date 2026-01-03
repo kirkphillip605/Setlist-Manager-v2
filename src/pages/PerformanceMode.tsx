@@ -19,7 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History, ZoomIn, ZoomOut, List
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History, ZoomIn, ZoomOut, List, Coffee, Bell
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,6 +36,7 @@ import { TempoBlinker } from "@/components/TempoBlinker";
 import { useAuth } from "@/context/AuthContext";
 import { useGesture } from "@use-gesture/react";
 import { KeepAwake } from "@capacitor-community/keep-awake";
+import { Haptics, NotificationType } from '@capacitor/haptics';
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
@@ -69,7 +70,6 @@ const PerformanceMode = () => {
             await KeepAwake.keepAwake();
             console.log("Screen wake lock enabled");
         } catch (err) {
-            // Fails silently on unsupported browsers
             console.warn("KeepAwake not supported:", err);
         }
     };
@@ -111,12 +111,38 @@ const PerformanceMode = () => {
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [tempSong, setTempSong] = useState<Song | null>(null);
+  
+  // Break / Transition Logic
+  const [isBreakDialogOpen, setIsBreakDialogOpen] = useState(false);
+  const [showSetTransition, setShowSetTransition] = useState(false);
+  const isOnBreak = sessionData?.is_on_break || false;
+
+  // Alert Logic
+  useEffect(() => {
+      if (!isGigMode || isLeader || sessionLoading || !sessionData) return;
+      
+      const wasOnBreak = useRef(false);
+      
+      // Detect Resume
+      if (wasOnBreak.current && !sessionData.is_on_break) {
+          toast.success("Band is resuming!", {
+              icon: <Bell className="h-5 w-5 animate-bounce" />,
+              duration: 5000
+          });
+          Haptics.notification({ type: NotificationType.Success });
+          // Play a sound (beep)
+          const audio = new Audio('/notification.mp3'); // Assuming file exists or fails gracefully
+          audio.play().catch(e => console.log("Audio play failed", e));
+      }
+      
+      wasOnBreak.current = sessionData.is_on_break;
+  }, [sessionData, isGigMode, isLeader, sessionLoading]);
 
   // -- Orphaned Session State (Heartbeat Monitor) --
   const [isOrphaned, setIsOrphaned] = useState(false);
   
   useEffect(() => {
-      if (!isGigMode || isLeader || !sessionData) {
+      if (!isGigMode || isLeader || !sessionData || sessionData.is_on_break) {
           setIsOrphaned(false);
           return;
       }
@@ -140,6 +166,8 @@ const PerformanceMode = () => {
   useEffect(() => {
       let timer: number;
       
+      // If On Break, don't failover due to inactivity/network as aggressively (or handle differently)
+      // But standard offline check applies. 
       if (isOnline || isForcedStandalone || !isLeader) {
           setOfflineCountdown(null);
           return;
@@ -270,40 +298,97 @@ const PerformanceMode = () => {
       }
   };
 
-  // -- Advance Logic --
-  const advanceToNextSong = () => {
-      if (!setlist) return;
-      const currentSet = sets[currentSetIndex];
-      if (!currentSet) return;
+  const handleGoOnBreak = async () => {
+      if (!isGigMode || !isLeader || !sessionData) return;
+      await updateSessionState(sessionData.id, { is_on_break: true });
+      setIsBreakDialogOpen(false);
+      setShowSetTransition(false); // Hide interstitial if visible
+      toast.success("Session is now on break");
+  };
 
+  const handleResumeBreak = async () => {
+      if (!isGigMode || !isLeader || !sessionData) return;
+      await updateSessionState(sessionData.id, { is_on_break: false });
+      toast.success("Break ended. Session resumed.");
+  };
+
+  const handleContinueToNextSet = () => {
+      // Logic from `handleNext` but specifically for set transition
+      if (!setlist) return;
+      const nextSetIdx = currentSetIndex + 1;
+      
+      if (nextSetIdx < sets.length) {
+          setCurrentSetIndex(nextSetIdx);
+          setCurrentSongIndex(0);
+          setShowSetTransition(false);
+          if (isLeader) broadcastState(nextSetIdx, 0, null);
+      } else {
+          setShowSetTransition(false); // End of gig basically
+      }
+  };
+
+  // -- Navigation Handlers --
+  const handleNext = () => {
+    if (showSetTransition) {
+        handleContinueToNextSet();
+        return;
+    }
+
+    if (tempSong) {
+      setTempSong(null);
+      // Resume position logic
+      const currentSet = sets[currentSetIndex];
       let nextSetIdx = currentSetIndex;
       let nextSongIdx = currentSongIndex;
 
       if (currentSongIndex < currentSet.songs.length - 1) {
           nextSongIdx++;
       } else if (currentSetIndex < sets.length - 1) {
+          // Transition check not needed here as ad-hoc interruption implies return to flow
           nextSetIdx++;
           nextSongIdx = 0;
       }
-
+      
       setCurrentSetIndex(nextSetIdx);
       setCurrentSongIndex(nextSongIdx);
-      
       if (isLeader) broadcastState(nextSetIdx, nextSongIdx, null);
-  };
-
-  // -- Navigation Handlers --
-  const handleNext = () => {
-    // If we are in Ad-Hoc mode (tempSong), Next means "Return to set list at next position"
-    if (tempSong) {
-      setTempSong(null);
-      advanceToNextSong(); // Advance indices to move forward
       return;
     }
-    advanceToNextSong();
+
+    if (!setlist) return;
+    const currentSet = sets[currentSetIndex];
+    if (!currentSet) return;
+
+    // Check End of Set
+    if (currentSongIndex >= currentSet.songs.length - 1) {
+        if (currentSetIndex < sets.length - 1) {
+            // Show Interstitial if not already there
+            if (isLeader) {
+                setShowSetTransition(true);
+            } else {
+                // Standalone mode behavior
+                setCurrentSetIndex(currentSetIndex + 1);
+                setCurrentSongIndex(0);
+            }
+            return;
+        } else {
+            // End of Setlist
+            return;
+        }
+    }
+
+    // Normal Next
+    const nextSongIdx = currentSongIndex + 1;
+    setCurrentSongIndex(nextSongIdx);
+    if (isLeader) broadcastState(currentSetIndex, nextSongIdx, null);
   };
 
   const handlePrev = () => {
+    if (showSetTransition) {
+        setShowSetTransition(false);
+        return;
+    }
+
     if (tempSong) {
       setTempSong(null);
       if (isLeader) broadcastState(currentSetIndex, currentSongIndex, null);
@@ -334,6 +419,7 @@ const PerformanceMode = () => {
       setTempSong(null);
       setCurrentSetIndex(index);
       setCurrentSongIndex(0);
+      setShowSetTransition(false);
       if (isLeader) broadcastState(index, 0, null);
     }
   };
@@ -342,6 +428,7 @@ const PerformanceMode = () => {
       setTempSong(song);
       setIsSearchOpen(false);
       setSearchQuery("");
+      setShowSetTransition(false);
       if (isLeader) broadcastState(currentSetIndex, currentSongIndex, song.id);
   };
 
@@ -473,7 +560,7 @@ const PerformanceMode = () => {
   const currentSet = sets[currentSetIndex];
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
-  const showMetronome = !gigId;
+  const showMetronome = !gigId || (gigId && isLeader) || (gigId && !isLeader && !isOnBreak); // Always allow metronome unless follower on break? Actually, follower on break usually doesn't need metronome.
 
   // Next Song Calculation (Preview)
   const nextSong = useMemo(() => {
@@ -537,6 +624,67 @@ const PerformanceMode = () => {
               <div className="flex gap-4">
                   <Button onClick={() => navigate('/gigs')}>Go to Gigs</Button>
                   <Button variant="outline" onClick={() => navigate('/')}>Dashboard</Button>
+              </div>
+          </div>
+      );
+  }
+
+  // --- SPECIAL VIEWS (Break, Interstitial) ---
+
+  if (isGigMode && isOnBreak) {
+      return (
+          <div className="flex flex-col items-center justify-center h-screen bg-amber-50 dark:bg-amber-950/20 text-center p-6 space-y-6">
+              <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900 rounded-full flex items-center justify-center animate-pulse">
+                  <Coffee className="w-12 h-12 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="space-y-2">
+                  <h1 className="text-4xl font-bold text-amber-800 dark:text-amber-200">On Break</h1>
+                  <p className="text-lg text-amber-700/80 dark:text-amber-300/80">
+                      Grab a drink! We'll be back shortly.
+                  </p>
+              </div>
+              
+              {isLeader && (
+                  <Button size="lg" className="bg-amber-600 hover:bg-amber-700 text-white mt-8" onClick={handleResumeBreak}>
+                      <Radio className="mr-2 h-5 w-5 animate-pulse" /> Resume Gig
+                  </Button>
+              )}
+              
+              {!isLeader && (
+                  <div className="mt-8 flex flex-col gap-4 w-full max-w-xs">
+                      <Button variant="outline" onClick={handleFollowerExit}>
+                          Exit Session
+                      </Button>
+                      <p className="text-xs text-muted-foreground">You will be notified when the leader resumes.</p>
+                  </div>
+              )}
+          </div>
+      );
+  }
+
+  if (isGigMode && isLeader && showSetTransition) {
+      const nextSet = sets[currentSetIndex + 1];
+      return (
+          <div className="flex flex-col items-center justify-center h-screen bg-background text-center p-6 space-y-8" {...bind()}>
+              <div className="space-y-4">
+                  <div className="text-sm uppercase tracking-widest text-muted-foreground font-semibold">Coming Up</div>
+                  <h1 className="text-5xl font-bold text-primary">{nextSet?.name || "Next Set"}</h1>
+                  <div className="text-xl text-muted-foreground">{nextSet?.songs.length || 0} Songs</div>
+              </div>
+
+              <div className="flex flex-col gap-4 w-full max-w-sm">
+                  <Button size="lg" className="h-16 text-lg" onClick={handleContinueToNextSet}>
+                      Continue to {nextSet?.name} <ChevronRight className="ml-2 h-6 w-6" />
+                  </Button>
+                  
+                  <div className="relative py-2">
+                      <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                      <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or</span></div>
+                  </div>
+
+                  <Button variant="outline" size="lg" className="h-14 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => setIsBreakDialogOpen(true)}>
+                      <Coffee className="mr-2 h-5 w-5" /> Go On Break
+                  </Button>
               </div>
           </div>
       );
@@ -720,6 +868,23 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={isBreakDialogOpen} onOpenChange={setIsBreakDialogOpen}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+                      <Coffee className="h-5 w-5" /> Go On Break?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                      This will pause the gig session for everyone. Inactivity timers will be disabled until you resume.
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setIsBreakDialogOpen(false)}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleGoOnBreak} className="bg-amber-600 hover:bg-amber-700">Go On Break</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
       {/* --- Top Bar --- */}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm shrink-0 h-16 gap-3 relative z-40">
         <div className="flex-1 max-w-[280px] shrink-0 flex items-center gap-2">
@@ -746,6 +911,12 @@ const PerformanceMode = () => {
         <div className="flex-1" />
 
         <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
+            {isGigMode && isLeader && isOnline && (
+                <Button variant="outline" size="sm" onClick={() => setIsBreakDialogOpen(true)} className="h-10 text-amber-600 border-amber-200 hover:bg-amber-50">
+                    <Coffee className="w-4 h-4 mr-2" /> Break
+                </Button>
+            )}
+
             {isGigMode && activeSong?.tempo && blinkerEnabled && (
                 <TempoBlinker 
                     bpm={parseInt(activeSong.tempo)} 

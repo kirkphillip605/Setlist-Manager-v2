@@ -19,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { PendingApprovalNotifier } from "./PendingApprovalNotifier";
 import { MainMenu } from "./MainMenu";
 import { useImmersiveMode } from "@/context/ImmersiveModeContext";
+import { ActiveSessionBanner } from "./ActiveSessionBanner";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -126,6 +127,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   return (
     <div className={layoutContainerClass}>
       {isAdmin && <PendingApprovalNotifier />}
+      <ActiveSessionBanner />
 
       {/* Controlled Main Menu Sheet (Triggered by Settings) */}
       <MainMenu open={isSettingsOpen} onOpenChange={setIsSettingsOpen} trigger={<span/>} />

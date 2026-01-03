@@ -595,7 +595,7 @@ export const createGigSession = async (gigId: string, leaderId: string): Promise
 };
 
 export const endGigSession = async (sessionId: string) => {
-    await supabase.from('gig_sessions').update({ is_active: false, ended_at: new Date().toISOString() }).eq('id', sessionId);
+    await supabase.from('gig_sessions').update({ is_active: false, is_on_break: false, ended_at: new Date().toISOString() }).eq('id', sessionId);
 };
 
 export const endAllSessions = async () => {
@@ -633,7 +633,7 @@ export const sendHeartbeat = async (sessionId: string, userId: string, isLeader:
     }
 };
 
-export const updateSessionState = async (sessionId: string, state: { current_set_index?: number, current_song_index?: number, adhoc_song_id?: string | null }) => {
+export const updateSessionState = async (sessionId: string, state: { current_set_index?: number, current_song_index?: number, adhoc_song_id?: string | null, is_on_break?: boolean }) => {
     await supabase.from('gig_sessions').update(state).eq('id', sessionId);
 };
 
