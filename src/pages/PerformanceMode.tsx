@@ -609,9 +609,113 @@ const PerformanceMode = () => {
       pinch: { scaleBounds: { min: 0.5, max: 3 } }
   });
 
-  if (!setlist || (isGigMode && sessionLoading)) {
-    return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  }
+  // --- SIMPLE VIEW RENDERER (Locked, No Scroll) ---
+  const renderSimpleView = () => (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center space-y-4 md:space-y-8 overflow-hidden touch-pan-y" {...bind()}>
+          {activeSong ? (
+              <>
+                  <div className="space-y-2 max-w-[90vw]">
+                      <h2 className="text-[7vw] md:text-[6vw] font-bold leading-tight tracking-tight select-none truncate">
+                          {activeSong.title}
+                      </h2>
+                      <p className="text-[4vw] md:text-[3vw] text-muted-foreground select-none truncate">
+                          {activeSong.artist}
+                      </p>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-4 md:gap-8 justify-center w-full">
+                      <div className="bg-secondary/30 p-4 rounded-2xl w-[35vw] max-w-[200px] border border-border/50 flex flex-col items-center justify-center aspect-square">
+                          <div className="text-[2vh] text-muted-foreground uppercase font-semibold select-none">Key</div>
+                          <div className="text-[6vh] font-bold select-none leading-none mt-2">{activeSong.key || "-"}</div>
+                      </div>
+                      <div className="bg-secondary/30 p-4 rounded-2xl w-[35vw] max-w-[200px] border border-border/50 flex flex-col items-center justify-center aspect-square">
+                          <div className="text-[2vh] text-muted-foreground uppercase font-semibold select-none">Tempo</div>
+                          <div className="text-[6vh] font-bold select-none leading-none mt-2">{activeSong.tempo ? `${activeSong.tempo}` : "-"}</div>
+                      </div>
+                  </div>
+
+                  {activeSong.note && (
+                      <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-4 py-2 rounded-xl text-[2.5vh] font-medium max-w-[80vw] select-none truncate">
+                          {activeSong.note}
+                      </div>
+                  )}
+              </>
+          ) : (
+              <div className="text-muted-foreground text-2xl select-none">Waiting for song...</div>
+          )}
+      </div>
+  );
+
+  // --- FULL VIEW RENDERER (Split: Fixed Header, Scrollable Lyrics) ---
+  const renderFullView = () => (
+      <div className="flex flex-col h-full bg-background">
+        {/* Fixed Header Section */}
+        <div className="p-4 md:px-8 border-b bg-background/95 backdrop-blur shrink-0 z-10 select-none">
+            {activeSong ? (
+                <>
+                    <div className="text-center mb-3">
+                        <h2 className="text-3xl md:text-4xl font-bold leading-tight truncate">{activeSong.title}</h2>
+                        <p className="text-lg text-muted-foreground truncate">{activeSong.artist}</p>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 justify-center">
+                        {activeSong.key && <Badge variant="secondary" className="text-sm px-3 py-1">Key: {activeSong.key}</Badge>}
+                        {activeSong.tempo && <Badge variant="secondary" className="text-sm px-3 py-1">{activeSong.tempo} BPM</Badge>}
+                        {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-0.5 rounded text-sm font-medium">{activeSong.note}</div>}
+                    </div>
+                </>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
+                    <Music className="h-8 w-8 mb-2 opacity-20" />
+                    <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
+                </div>
+            )}
+        </div>
+
+        {/* Scrollable Lyrics Area */}
+        <div className="flex-1 overflow-hidden relative">
+            <ScrollArea className="h-full w-full">
+                {activeSong && (
+                    <div className="p-4 md:p-8 min-h-full pb-32 touch-pan-y" {...bind()}>
+                        <div 
+                            className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
+                            style={{ fontSize: `${fontSize}px` }}
+                        >
+                            {activeSong.lyrics || <div className="flex items-center justify-center h-40 text-muted-foreground italic text-base">No lyrics available.</div>}
+                        </div>
+                    </div>
+                )}
+            </ScrollArea>
+
+            {/* Overlays */}
+            {!tempSong && currentSet && (
+                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-20 pointer-events-none fade-in animate-in">
+                    {currentSet.name}
+                </div>
+            )}
+
+            {nextSong && (
+                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-20 pointer-events-none max-w-[200px] truncate fade-in animate-in">
+                    <span className="text-white/60 text-xs uppercase mr-1">Next:</span> {nextSong.title}
+                </div>
+            )}
+
+            {/* Zoom Controls (Full View Only) */}
+            <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-20 opacity-20 hover:opacity-100 transition-opacity">
+                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(2)}>
+                    <ZoomIn className="h-5 w-5" />
+                </Button>
+                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(-2)}>
+                    <ZoomOut className="h-5 w-5" />
+                </Button>
+            </div>
+
+            {tempSong && (
+                <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse z-20">Ad-Hoc</div>
+            )}
+        </div>
+      </div>
+  );
 
   // --- CONTENT SWITCHER ---
   const renderContent = () => {
@@ -818,113 +922,9 @@ const PerformanceMode = () => {
       );
   };
 
-  // --- SIMPLE VIEW RENDERER (Locked, No Scroll) ---
-  const renderSimpleView = () => (
-      <div className="flex flex-col items-center justify-center h-full p-4 text-center space-y-4 md:space-y-8 overflow-hidden touch-pan-y" {...bind()}>
-          {activeSong ? (
-              <>
-                  <div className="space-y-2 max-w-[90vw]">
-                      <h2 className="text-[7vw] md:text-[6vw] font-bold leading-tight tracking-tight select-none truncate">
-                          {activeSong.title}
-                      </h2>
-                      <p className="text-[4vw] md:text-[3vw] text-muted-foreground select-none truncate">
-                          {activeSong.artist}
-                      </p>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-4 md:gap-8 justify-center w-full">
-                      <div className="bg-secondary/30 p-4 rounded-2xl w-[35vw] max-w-[200px] border border-border/50 flex flex-col items-center justify-center aspect-square">
-                          <div className="text-[2vh] text-muted-foreground uppercase font-semibold select-none">Key</div>
-                          <div className="text-[6vh] font-bold select-none leading-none mt-2">{activeSong.key || "-"}</div>
-                      </div>
-                      <div className="bg-secondary/30 p-4 rounded-2xl w-[35vw] max-w-[200px] border border-border/50 flex flex-col items-center justify-center aspect-square">
-                          <div className="text-[2vh] text-muted-foreground uppercase font-semibold select-none">Tempo</div>
-                          <div className="text-[6vh] font-bold select-none leading-none mt-2">{activeSong.tempo ? `${activeSong.tempo}` : "-"}</div>
-                      </div>
-                  </div>
-
-                  {activeSong.note && (
-                      <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-4 py-2 rounded-xl text-[2.5vh] font-medium max-w-[80vw] select-none truncate">
-                          {activeSong.note}
-                      </div>
-                  )}
-              </>
-          ) : (
-              <div className="text-muted-foreground text-2xl select-none">Waiting for song...</div>
-          )}
-      </div>
-  );
-
-  // --- FULL VIEW RENDERER (Split: Fixed Header, Scrollable Lyrics) ---
-  const renderFullView = () => (
-      <div className="flex flex-col h-full bg-background">
-        {/* Fixed Header Section */}
-        <div className="p-4 md:px-8 border-b bg-background/95 backdrop-blur shrink-0 z-10 select-none">
-            {activeSong ? (
-                <>
-                    <div className="text-center mb-3">
-                        <h2 className="text-3xl md:text-4xl font-bold leading-tight truncate">{activeSong.title}</h2>
-                        <p className="text-lg text-muted-foreground truncate">{activeSong.artist}</p>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2 justify-center">
-                        {activeSong.key && <Badge variant="secondary" className="text-sm px-3 py-1">Key: {activeSong.key}</Badge>}
-                        {activeSong.tempo && <Badge variant="secondary" className="text-sm px-3 py-1">{activeSong.tempo} BPM</Badge>}
-                        {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-0.5 rounded text-sm font-medium">{activeSong.note}</div>}
-                    </div>
-                </>
-            ) : (
-                <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
-                    <Music className="h-8 w-8 mb-2 opacity-20" />
-                    <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
-                </div>
-            )}
-        </div>
-
-        {/* Scrollable Lyrics Area */}
-        <div className="flex-1 overflow-hidden relative">
-            <ScrollArea className="h-full w-full">
-                {activeSong && (
-                    <div className="p-4 md:p-8 min-h-full pb-32 touch-pan-y" {...bind()}>
-                        <div 
-                            className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
-                            style={{ fontSize: `${fontSize}px` }}
-                        >
-                            {activeSong.lyrics || <div className="flex items-center justify-center h-40 text-muted-foreground italic text-base">No lyrics available.</div>}
-                        </div>
-                    </div>
-                )}
-            </ScrollArea>
-
-            {/* Overlays */}
-            {!tempSong && currentSet && (
-                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-20 pointer-events-none fade-in animate-in">
-                    {currentSet.name}
-                </div>
-            )}
-
-            {nextSong && (
-                <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-20 pointer-events-none max-w-[200px] truncate fade-in animate-in">
-                    <span className="text-white/60 text-xs uppercase mr-1">Next:</span> {nextSong.title}
-                </div>
-            )}
-
-            {/* Zoom Controls (Full View Only) */}
-            <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-20 opacity-20 hover:opacity-100 transition-opacity">
-                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(2)}>
-                    <ZoomIn className="h-5 w-5" />
-                </Button>
-                <Button variant="secondary" size="icon" className="h-10 w-10 shadow-lg rounded-full" onClick={() => handleZoom(-2)}>
-                    <ZoomOut className="h-5 w-5" />
-                </Button>
-            </div>
-
-            {tempSong && (
-                <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse z-20">Ad-Hoc</div>
-            )}
-        </div>
-      </div>
-  );
+  if (!setlist || (isGigMode && sessionLoading)) {
+    return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   return (
     <div className="fixed inset-0 bg-background text-foreground flex flex-col z-50">
