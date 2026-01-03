@@ -613,82 +613,210 @@ const PerformanceMode = () => {
     return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
-  if (isGigMode && sessionEndedInfo && !isForcedStandalone) {
-      return (
-          <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
-              <Radio className="h-16 w-16 text-muted-foreground mb-4" />
-              <h2 className="text-2xl font-bold mb-2">Session Ended</h2>
-              <p className="text-muted-foreground mb-6">
-                  Performance ended by <span className="font-bold">{sessionEndedInfo.endedBy}</span> at {sessionEndedInfo.at}.
-              </p>
-              <div className="flex gap-4">
-                  <Button onClick={() => navigate('/gigs')}>Go to Gigs</Button>
-                  <Button variant="outline" onClick={() => navigate('/')}>Dashboard</Button>
-              </div>
-          </div>
-      );
-  }
-
-  // --- SPECIAL VIEWS (Break, Interstitial) ---
-
-  if (isGigMode && isOnBreak) {
-      return (
-          <div className="flex flex-col items-center justify-center h-screen bg-amber-50 dark:bg-amber-950/20 text-center p-6 space-y-6">
-              <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900 rounded-full flex items-center justify-center animate-pulse">
-                  <Coffee className="w-12 h-12 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="space-y-2">
-                  <h1 className="text-4xl font-bold text-amber-800 dark:text-amber-200">On Break</h1>
-                  <p className="text-lg text-amber-700/80 dark:text-amber-300/80">
-                      Grab a drink! We'll be back shortly.
+  // --- CONTENT SWITCHER ---
+  const renderContent = () => {
+      // 1. Session Ended
+      if (isGigMode && sessionEndedInfo && !isForcedStandalone) {
+          return (
+              <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
+                  <Radio className="h-16 w-16 text-muted-foreground mb-4" />
+                  <h2 className="text-2xl font-bold mb-2">Session Ended</h2>
+                  <p className="text-muted-foreground mb-6">
+                      Performance ended by <span className="font-bold">{sessionEndedInfo.endedBy}</span> at {sessionEndedInfo.at}.
                   </p>
-              </div>
-              
-              {isLeader && (
-                  <Button size="lg" className="bg-amber-600 hover:bg-amber-700 text-white mt-8" onClick={handleResumeBreak}>
-                      <Radio className="mr-2 h-5 w-5 animate-pulse" /> Resume Gig
-                  </Button>
-              )}
-              
-              {!isLeader && (
-                  <div className="mt-8 flex flex-col gap-4 w-full max-w-xs">
-                      <Button variant="outline" onClick={handleFollowerExit}>
-                          Exit Session
-                      </Button>
-                      <p className="text-xs text-muted-foreground">You will be notified when the leader resumes.</p>
+                  <div className="flex gap-4">
+                      <Button onClick={() => navigate('/gigs')}>Go to Gigs</Button>
+                      <Button variant="outline" onClick={() => navigate('/')}>Dashboard</Button>
                   </div>
-              )}
-          </div>
-      );
-  }
-
-  if (isGigMode && isLeader && showSetTransition) {
-      const nextSet = sets[currentSetIndex + 1];
-      return (
-          <div className="flex flex-col items-center justify-center h-screen bg-background text-center p-6 space-y-8" {...bind()}>
-              <div className="space-y-4">
-                  <div className="text-sm uppercase tracking-widest text-muted-foreground font-semibold">Coming Up</div>
-                  <h1 className="text-5xl font-bold text-primary">{nextSet?.name || "Next Set"}</h1>
-                  <div className="text-xl text-muted-foreground">{nextSet?.songs.length || 0} Songs</div>
               </div>
+          );
+      }
 
-              <div className="flex flex-col gap-4 w-full max-w-sm">
-                  <Button size="lg" className="h-16 text-lg" onClick={handleContinueToNextSet}>
-                      Continue to {nextSet?.name} <ChevronRight className="ml-2 h-6 w-6" />
-                  </Button>
+      // 2. Break View
+      if (isGigMode && isOnBreak) {
+          return (
+              <div className="flex flex-col items-center justify-center h-screen bg-amber-50 dark:bg-amber-950/20 text-center p-6 space-y-6">
+                  <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900 rounded-full flex items-center justify-center animate-pulse">
+                      <Coffee className="w-12 h-12 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="space-y-2">
+                      <h1 className="text-4xl font-bold text-amber-800 dark:text-amber-200">On Break</h1>
+                      <p className="text-lg text-amber-700/80 dark:text-amber-300/80">
+                          Grab a drink! We'll be back shortly.
+                      </p>
+                  </div>
                   
-                  <div className="relative py-2">
-                      <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-                      <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or</span></div>
+                  {isLeader && (
+                      <Button size="lg" className="bg-amber-600 hover:bg-amber-700 text-white mt-8" onClick={handleResumeBreak}>
+                          <Radio className="mr-2 h-5 w-5 animate-pulse" /> Resume Gig
+                      </Button>
+                  )}
+                  
+                  {!isLeader && (
+                      <div className="mt-8 flex flex-col gap-4 w-full max-w-xs">
+                          <Button variant="outline" onClick={handleFollowerExit}>
+                              Exit Session
+                          </Button>
+                          <p className="text-xs text-muted-foreground">You will be notified when the leader resumes.</p>
+                      </div>
+                  )}
+              </div>
+          );
+      }
+
+      // 3. Interstitial View
+      if (isGigMode && isLeader && showSetTransition) {
+          const nextSet = sets[currentSetIndex + 1];
+          return (
+              <div className="flex flex-col items-center justify-center h-screen bg-background text-center p-6 space-y-8" {...bind()}>
+                  <div className="space-y-4">
+                      <div className="text-sm uppercase tracking-widest text-muted-foreground font-semibold">Coming Up</div>
+                      <h1 className="text-5xl font-bold text-primary">{nextSet?.name || "Next Set"}</h1>
+                      <div className="text-xl text-muted-foreground">{nextSet?.songs.length || 0} Songs</div>
                   </div>
 
-                  <Button variant="outline" size="lg" className="h-14 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => setIsBreakDialogOpen(true)}>
-                      <Coffee className="mr-2 h-5 w-5" /> Go On Break
-                  </Button>
+                  <div className="flex flex-col gap-4 w-full max-w-sm">
+                      <Button size="lg" className="h-16 text-lg" onClick={handleContinueToNextSet}>
+                          Continue to {nextSet?.name} <ChevronRight className="ml-2 h-6 w-6" />
+                      </Button>
+                      
+                      <div className="relative py-2">
+                          <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                          <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or</span></div>
+                      </div>
+
+                      <Button variant="outline" size="lg" className="h-14 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => setIsBreakDialogOpen(true)}>
+                          <Coffee className="mr-2 h-5 w-5" /> Go On Break
+                      </Button>
+                  </div>
+              </div>
+          );
+      }
+
+      // 4. Main View
+      return (
+          <div className="flex flex-col h-full">
+              {/* --- Top Bar --- */}
+              <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm shrink-0 h-16 gap-3 relative z-40">
+                <div className="flex-1 max-w-[280px] shrink-0 flex items-center gap-2">
+                  {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
+                  {isLeader || !isGigMode ? (
+                      <div className="flex items-center gap-2 w-full">
+                          <Select value={currentSetIndex.toString()} onValueChange={handleSetChange} disabled={!!tempSong}>
+                            <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Select Set" /></SelectTrigger>
+                            <SelectContent>
+                              {sets.map((set, idx) => <SelectItem key={set.id} value={idx.toString()}>{set.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => setShowSetSongsDialog(true)}>
+                              <List className="h-5 w-5" />
+                          </Button>
+                      </div>
+                  ) : (
+                      <div className="bg-muted px-3 py-2 rounded text-sm font-medium flex items-center gap-2">
+                          <Radio className="h-3 w-3 text-green-500 animate-pulse" /> Following
+                      </div>
+                  )}
+                </div>
+                
+                <div className="flex-1" />
+
+                <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
+                    {isGigMode && isLeader && isOnline && (
+                        <Button variant="outline" size="sm" onClick={() => setIsBreakDialogOpen(true)} className="h-10 text-amber-600 border-amber-200 hover:bg-amber-50">
+                            <Coffee className="w-4 h-4 mr-2" /> Break
+                        </Button>
+                    )}
+
+                    {isGigMode && activeSong?.tempo && blinkerEnabled && (
+                        <TempoBlinker 
+                            bpm={parseInt(activeSong.tempo)} 
+                            color={blinkerColor}
+                            className="w-6 h-6 mr-3 shrink-0" 
+                        />
+                    )}
+
+                    {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
+                        <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-10" onClick={handleSkipSong}>
+                            <Forward className="w-4 h-4 mr-2" /> Skip
+                        </Button>
+                    )}
+                    
+                    {isGigMode && isLeader ? (
+                        <Button variant="ghost" size="sm" onClick={() => setShowExitConfirm(true)} className="h-10 text-destructive hover:text-destructive">
+                            <span className="mr-2 hidden sm:inline">End Gig</span>
+                            <LogOut className="h-5 w-5" />
+                        </Button>
+                    ) : (
+                        <Button variant="ghost" size="sm" onClick={handleFollowerExit} className="h-10">
+                            Exit <Minimize2 className="h-5 w-5 ml-2" />
+                        </Button>
+                    )}
+                </div>
+              </div>
+
+              {/* --- Main Content --- */}
+              <div className="flex-1 overflow-hidden relative bg-background">
+                {viewMode === 'simple' ? renderSimpleView() : renderFullView()}
+                
+                {/* Metronome Overlay */}
+                {showMetronome && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-30"><MetronomeControls variant="embedded" /></div>}
+              </div>
+
+              {/* --- Footer Controls --- */}
+              <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3 z-20 relative">
+                {(isLeader || !isGigMode) ? (
+                    <>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-6 w-6" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-56 mb-2">
+                                {showMetronome && (
+                                    <DropdownMenuItem onClick={() => isMetronomeOpen ? closeMetronome() : openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120)} className="py-3">
+                                        <Timer className="mr-2 h-4 w-4" /> Metronome
+                                    </DropdownMenuItem>
+                                )}
+                                
+                                <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3"><Search className="mr-2 h-4 w-4" /> Quick Find Song</DropdownMenuItem>
+                                
+                                {isGigMode && isLeader && skippedSongs.length > 0 && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => setShowSkippedSongs(true)} className="py-3 text-orange-600">
+                                            <History className="mr-2 h-4 w-4" /> Skipped Songs ({skippedSongs.length})
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+
+                                {isGigMode && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => setShowParticipants(true)} className="py-3"><Users className="mr-2 h-4 w-4" /> Participants</DropdownMenuItem>
+                                    </>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <Button variant="outline" className="flex-1 h-12 text-lg" onClick={handlePrev} disabled={!tempSong && (currentSetIndex === 0 && currentSongIndex === 0)}>
+                            <ChevronLeft className="mr-1 h-5 w-5" /> Prev
+                        </Button>
+                        <Button className={cn("flex-[1.5] h-12 text-lg", tempSong ? "bg-orange-600 hover:bg-orange-700" : "")} onClick={handleNext}>
+                            {tempSong ? "Resume Set" : "Next"} <ChevronRight className="ml-1 h-5 w-5" />
+                        </Button>
+                    </>
+                ) : (
+                    <>
+                        <Button variant="outline" className="flex-1 h-12" onClick={() => setShowParticipants(true)}>
+                            <Users className="mr-2 h-4 w-4" /> In Session
+                        </Button>
+                        <Button variant="secondary" className="flex-1 h-12" onClick={() => setShowLeaderRequest(true)}>
+                            <Crown className="mr-2 h-4 w-4" /> Become Leader
+                        </Button>
+                    </>
+                )}
               </div>
           </div>
       );
-  }
+  };
 
   // --- SIMPLE VIEW RENDERER (Locked, No Scroll) ---
   const renderSimpleView = () => (
@@ -885,124 +1013,7 @@ const PerformanceMode = () => {
           </AlertDialogContent>
       </AlertDialog>
 
-      {/* --- Top Bar --- */}
-      <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm shrink-0 h-16 gap-3 relative z-40">
-        <div className="flex-1 max-w-[280px] shrink-0 flex items-center gap-2">
-          {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
-          {isLeader || !isGigMode ? (
-              <div className="flex items-center gap-2 w-full">
-                  <Select value={currentSetIndex.toString()} onValueChange={handleSetChange} disabled={!!tempSong}>
-                    <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Select Set" /></SelectTrigger>
-                    <SelectContent>
-                      {sets.map((set, idx) => <SelectItem key={set.id} value={idx.toString()}>{set.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => setShowSetSongsDialog(true)}>
-                      <List className="h-5 w-5" />
-                  </Button>
-              </div>
-          ) : (
-              <div className="bg-muted px-3 py-2 rounded text-sm font-medium flex items-center gap-2">
-                  <Radio className="h-3 w-3 text-green-500 animate-pulse" /> Following
-              </div>
-          )}
-        </div>
-        
-        <div className="flex-1" />
-
-        <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
-            {isGigMode && isLeader && isOnline && (
-                <Button variant="outline" size="sm" onClick={() => setIsBreakDialogOpen(true)} className="h-10 text-amber-600 border-amber-200 hover:bg-amber-50">
-                    <Coffee className="w-4 h-4 mr-2" /> Break
-                </Button>
-            )}
-
-            {isGigMode && activeSong?.tempo && blinkerEnabled && (
-                <TempoBlinker 
-                    bpm={parseInt(activeSong.tempo)} 
-                    color={blinkerColor}
-                    className="w-6 h-6 mr-3 shrink-0" 
-                />
-            )}
-
-            {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
-                 <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-10" onClick={handleSkipSong}>
-                     <Forward className="w-4 h-4 mr-2" /> Skip
-                 </Button>
-            )}
-            
-            {isGigMode && isLeader ? (
-                <Button variant="ghost" size="sm" onClick={() => setShowExitConfirm(true)} className="h-10 text-destructive hover:text-destructive">
-                    <span className="mr-2 hidden sm:inline">End Gig</span>
-                    <LogOut className="h-5 w-5" />
-                </Button>
-            ) : (
-                <Button variant="ghost" size="sm" onClick={handleFollowerExit} className="h-10">
-                    Exit <Minimize2 className="h-5 w-5 ml-2" />
-                </Button>
-            )}
-        </div>
-      </div>
-
-      {/* --- Main Content --- */}
-      <div className="flex-1 overflow-hidden relative bg-background">
-        {viewMode === 'simple' ? renderSimpleView() : renderFullView()}
-        
-        {/* Metronome Overlay */}
-        {showMetronome && isMetronomeOpen && <div className="absolute bottom-0 left-0 right-0 z-30"><MetronomeControls variant="embedded" /></div>}
-      </div>
-
-      {/* --- Footer Controls --- */}
-      <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3 z-20 relative">
-        {(isLeader || !isGigMode) ? (
-            <>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-6 w-6" /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-56 mb-2">
-                        {showMetronome && (
-                            <DropdownMenuItem onClick={() => isMetronomeOpen ? closeMetronome() : openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120)} className="py-3">
-                                <Timer className="mr-2 h-4 w-4" /> Metronome
-                            </DropdownMenuItem>
-                        )}
-                        
-                        <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3"><Search className="mr-2 h-4 w-4" /> Quick Find Song</DropdownMenuItem>
-                        
-                        {isGigMode && isLeader && skippedSongs.length > 0 && (
-                            <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setShowSkippedSongs(true)} className="py-3 text-orange-600">
-                                    <History className="mr-2 h-4 w-4" /> Skipped Songs ({skippedSongs.length})
-                                </DropdownMenuItem>
-                            </>
-                        )}
-
-                        {isGigMode && (
-                            <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setShowParticipants(true)} className="py-3"><Users className="mr-2 h-4 w-4" /> Participants</DropdownMenuItem>
-                            </>
-                        )}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Button variant="outline" className="flex-1 h-12 text-lg" onClick={handlePrev} disabled={!tempSong && (currentSetIndex === 0 && currentSongIndex === 0)}>
-                    <ChevronLeft className="mr-1 h-5 w-5" /> Prev
-                </Button>
-                <Button className={cn("flex-[1.5] h-12 text-lg", tempSong ? "bg-orange-600 hover:bg-orange-700" : "")} onClick={handleNext}>
-                    {tempSong ? "Resume Set" : "Next"} <ChevronRight className="ml-1 h-5 w-5" />
-                </Button>
-            </>
-        ) : (
-            <>
-                <Button variant="outline" className="flex-1 h-12" onClick={() => setShowParticipants(true)}>
-                    <Users className="mr-2 h-4 w-4" /> In Session
-                </Button>
-                <Button variant="secondary" className="flex-1 h-12" onClick={() => setShowLeaderRequest(true)}>
-                    <Crown className="mr-2 h-4 w-4" /> Become Leader
-                </Button>
-            </>
-        )}
-      </div>
+      {renderContent()}
 
       {/* --- Dialogs --- */}
       
