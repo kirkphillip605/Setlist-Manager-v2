@@ -63,9 +63,6 @@ const PerformanceMode = () => {
   // Recovery Dialogs
   const [recoveryData, setRecoveryData] = useState<{ type: 'leader' | 'follower', session: any } | null>(null);
 
-  // -- Refs --
-  const wasOnBreak = useRef(false);
-
   // -- Keep Awake --
   useEffect(() => {
     const keepAwake = async () => {
@@ -105,7 +102,6 @@ const PerformanceMode = () => {
   };
 
   // Determine effective mode for Logic
-  // If isForcedStandalone is true, isGigMode becomes false, effectively making the user a leader of their local session
   const isGigMode = !!gigId && !isForcedStandalone;
 
   // -- Session Hook --
@@ -125,7 +121,10 @@ const PerformanceMode = () => {
   const [showSetTransition, setShowSetTransition] = useState(false);
   const isOnBreak = sessionData?.is_on_break || false;
 
-  // Alert Logic
+  // -- Alert Logic State --
+  const wasOnBreak = useRef(false);
+
+  // Alert Logic Effect
   useEffect(() => {
       if (!isGigMode || isLeader || sessionLoading || !sessionData) {
           if (sessionData) wasOnBreak.current = sessionData.is_on_break;
@@ -309,9 +308,24 @@ const PerformanceMode = () => {
 
   const handleGoOnBreak = async () => {
       if (!isGigMode || !isLeader || !sessionData) return;
-      await updateSessionState(sessionData.id, { is_on_break: true });
+      
+      const updates: any = { is_on_break: true };
+
+      // If we are triggered from the "Coming Up" screen, advance the set for when we resume
+      if (showSetTransition) {
+          const nextSetIdx = currentSetIndex + 1;
+          if (nextSetIdx < sets.length) {
+              updates.current_set_index = nextSetIdx;
+              updates.current_song_index = 0;
+              // Update local state immediately to match
+              setCurrentSetIndex(nextSetIdx);
+              setCurrentSongIndex(0);
+          }
+      }
+
+      await updateSessionState(sessionData.id, updates);
       setIsBreakDialogOpen(false);
-      setShowSetTransition(false); // Hide interstitial if visible
+      setShowSetTransition(false); 
       toast.success("Session is now on break");
   };
 
@@ -397,6 +411,7 @@ const PerformanceMode = () => {
   const handlePrev = () => {
     if (!canNavigate) return; // Guard: Only Leader or Standalone
 
+    // If currently on Transition screen, go back to previous song
     if (showSetTransition) {
         setShowSetTransition(false);
         return;
