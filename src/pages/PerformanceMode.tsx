@@ -648,7 +648,10 @@ const PerformanceMode = () => {
 
   // --- SIMPLE VIEW RENDERER ---
   const renderSimpleView = () => (
-      <div className="flex flex-col items-center justify-center h-full p-4 text-center space-y-4 md:space-y-8 overflow-hidden touch-pan-y" {...bind()}>
+      <div 
+        className="flex flex-col items-center justify-center h-full p-4 text-center space-y-4 md:space-y-8 overflow-hidden touch-pan-y" 
+        {...bind()}
+      >
           {activeSong ? (
               <>
                   <div className="space-y-2 max-w-[90vw]">
@@ -727,11 +730,12 @@ const PerformanceMode = () => {
 
         {/* Scrollable Lyrics Area */}
         <div 
-            className="flex-1 overflow-y-auto relative overscroll-contain"
+            className="flex-1 overflow-y-auto relative overscroll-contain touch-pan-y"
             onScroll={handleLyricsScroll}
+            {...bind()}
         >
             {activeSong && (
-                <div className="p-4 md:p-8 min-h-full pb-32 touch-pan-y" {...bind()}>
+                <div className="p-4 md:p-8 min-h-full pb-32">
                     <div 
                         className="whitespace-pre-wrap font-mono leading-relaxed transition-all duration-200 select-none"
                         style={{ fontSize: `${fontSize}px` }}
