@@ -117,11 +117,15 @@ const PerformanceMode = () => {
   const [showSetTransition, setShowSetTransition] = useState(false);
   const isOnBreak = sessionData?.is_on_break || false;
 
-  // Alert Logic
+  // -- Alert Logic State --
+  const wasOnBreak = useRef(false);
+
+  // Alert Logic Effect
   useEffect(() => {
-      if (!isGigMode || isLeader || sessionLoading || !sessionData) return;
-      
-      const wasOnBreak = useRef(false);
+      if (!isGigMode || isLeader || sessionLoading || !sessionData) {
+          if (sessionData) wasOnBreak.current = sessionData.is_on_break;
+          return;
+      }
       
       // Detect Resume
       if (wasOnBreak.current && !sessionData.is_on_break) {
