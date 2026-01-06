@@ -23,6 +23,10 @@ export interface SetSong {
   id: string;
   position: number;
   songId: string;
+  // Included for raw DB compatibility
+  song_id?: string;
+  set_id: string;
+  
   song?: Song; // Hydrated song data
   created_by?: string;
   deleted_at?: string | null;
@@ -34,6 +38,7 @@ export interface Set {
   id: string;
   name: string;
   position: number;
+  setlist_id: string;
   songs: SetSong[];
   created_by?: string;
   deleted_at?: string | null;

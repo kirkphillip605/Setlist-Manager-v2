@@ -4,7 +4,6 @@ import { useEffect, useMemo, useCallback } from "react";
 import { getAllSkippedSongs } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import { Song, Setlist, Gig } from "@/types";
 
 // --- Sync Coordination ---
 
@@ -58,6 +57,8 @@ export const useSyncManager = () => {
 
     const channel = supabase.channel('global_sync_v3')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+          console.log("Realtime change detected:", payload.table);
+          
           // Process cached tables via store
           processRealtimeUpdate(payload);
 
@@ -114,26 +115,32 @@ export const useSyncedSetlists = () => {
     
     return rawSetlists.map(list => {
         // Find sets for this list
+        // Cast to 'any' to access raw DB properties that might not match domain types perfectly yet
         const listSets = Object.values(setsMap)
-            .filter(s => s.setlist_id === list.id && !s.deleted_at)
+            .filter((s: any) => s.setlist_id === list.id && !s.deleted_at)
             .sort((a, b) => a.position - b.position);
 
         const hydratedSets = listSets.map(set => {
             // Find songs for this set
             const listSetSongs = Object.values(setSongsMap)
-                .filter(ss => ss.set_id === set.id && !ss.deleted_at)
+                .filter((ss: any) => ss.set_id === set.id && !ss.deleted_at)
                 .sort((a, b) => a.position - b.position);
 
-            const songs = listSetSongs.map(ss => ({
+            const songs = listSetSongs.map((ss: any) => ({
                 id: ss.id,
                 position: ss.position,
-                songId: ss.song_id,
-                song: songsMap[ss.song_id] || undefined
+                // Handle raw snake_case from DB or camelCase from type
+                songId: ss.song_id || ss.songId,
+                set_id: ss.set_id, // Pass this through
+                song_id: ss.song_id, // Pass this through
+                song: songsMap[ss.song_id || ss.songId] || undefined,
+                version: ss.version || 0 // Default for older records or optimistic
             }));
 
             return {
                 ...set,
-                songs
+                songs,
+                version: set.version || 0
             };
         });
 
