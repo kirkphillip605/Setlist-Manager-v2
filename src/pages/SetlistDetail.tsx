@@ -138,17 +138,15 @@ const SetlistDetail = () => {
                   id: newSetId,
                   name: "Encore",
                   position: position,
-                  songs: [],
-                  version: 0
-              });
+                  songs: []
+              } as SetType);
           } else {
-              const newSet: SetType = {
+              const newSet = {
                   id: newSetId,
                   name: `Set ${currentCount + 1}`,
                   position: 0, 
-                  songs: [],
-                  version: 0
-              };
+                  songs: []
+              } as SetType;
 
               if (encoreIndex !== -1) {
                   draft.sets.splice(encoreIndex, 0, newSet);
@@ -204,8 +202,7 @@ const SetlistDetail = () => {
                   id: `temp-song-${Date.now()}-${idx}`,
                   position: targetSet.songs.length + idx + 1,
                   songId: sid,
-                  song: songData,
-                  version: 0
+                  song: songData
               } as SetSong;
           });
 
@@ -227,8 +224,7 @@ const SetlistDetail = () => {
                       id: `temp-song-split-a-${idx}`,
                       position: targetSet.songs.length + idx + 1,
                       songId: sid,
-                      song: availableSongs.find(s => s.id === sid),
-                      version: 0
+                      song: availableSongs.find(s => s.id === sid)
                   } as SetSong));
                   targetSet.songs.push(...newSongs);
               }
@@ -237,7 +233,7 @@ const SetlistDetail = () => {
           const newSetId = `temp-set-split-${Date.now()}`;
           const encoreIndex = draft.sets.findIndex(s => s.name === "Encore");
           
-          const newSet: SetType = {
+          const newSet = {
               id: newSetId,
               name: "New Set", 
               position: 0,
@@ -245,11 +241,9 @@ const SetlistDetail = () => {
                   id: `temp-song-split-b-${i}`,
                   songId: sid,
                   song: availableSongs.find(s => s.id === sid),
-                  position: i + 1,
-                  version: 0
-          } as SetSong)),
-              version: 0
-          };
+                  position: i + 1
+              } as SetSong))
+          } as SetType;
 
           if (encoreIndex !== -1) {
               draft.sets.splice(encoreIndex, 0, newSet);

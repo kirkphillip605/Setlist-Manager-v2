@@ -109,7 +109,7 @@ const SongEdit = () => {
         fetchAudioFeatures(result.id)
       ]);
 
-      const newSongData: Song = {
+      const newSongData: Partial<Song> = {
         id: "", // Empty ID for new song
         title: result.title,
         artist: result.artist,
@@ -119,11 +119,10 @@ const SongEdit = () => {
         key: features.key || "",
         tempo: features.tempo || "",
         duration: features.duration || result.duration || "", 
-        note: "",
-        version: 0
+        note: ""
       };
 
-      reset(newSongData);
+      reset(newSongData as Song);
       toast.success("Song details loaded", { id: toastId });
       setMode('edit');
     } catch (error) {
