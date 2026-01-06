@@ -138,14 +138,16 @@ const SetlistDetail = () => {
                   id: newSetId,
                   name: "Encore",
                   position: position,
-                  songs: []
+                  songs: [],
+                  version: 0
               });
           } else {
               const newSet: SetType = {
                   id: newSetId,
                   name: `Set ${currentCount + 1}`,
                   position: 0, 
-                  songs: []
+                  songs: [],
+                  version: 0
               };
 
               if (encoreIndex !== -1) {
@@ -202,7 +204,8 @@ const SetlistDetail = () => {
                   id: `temp-song-${Date.now()}-${idx}`,
                   position: targetSet.songs.length + idx + 1,
                   songId: sid,
-                  song: songData
+                  song: songData,
+                  version: 0
               } as SetSong;
           });
 
@@ -224,7 +227,8 @@ const SetlistDetail = () => {
                       id: `temp-song-split-a-${idx}`,
                       position: targetSet.songs.length + idx + 1,
                       songId: sid,
-                      song: availableSongs.find(s => s.id === sid)
+                      song: availableSongs.find(s => s.id === sid),
+                      version: 0
                   } as SetSong));
                   targetSet.songs.push(...newSongs);
               }
@@ -241,8 +245,10 @@ const SetlistDetail = () => {
                   id: `temp-song-split-b-${i}`,
                   songId: sid,
                   song: availableSongs.find(s => s.id === sid),
-                  position: i + 1
-          } as SetSong))
+                  position: i + 1,
+                  version: 0
+          } as SetSong)),
+              version: 0
           };
 
           if (encoreIndex !== -1) {

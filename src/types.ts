@@ -14,6 +14,9 @@ export interface Song {
   last_updated_by?: string;
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }
 
 export interface SetSong {
@@ -22,6 +25,9 @@ export interface SetSong {
   songId: string;
   song?: Song; // Hydrated song data
   created_by?: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }
 
 export interface Set {
@@ -30,6 +36,9 @@ export interface Set {
   position: number;
   songs: SetSong[];
   created_by?: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }
 
 export interface Setlist {
@@ -42,6 +51,9 @@ export interface Setlist {
   created_by?: string;
   last_updated_by?: string;
   sets: Set[];
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }
 
 export interface Gig {
@@ -59,6 +71,9 @@ export interface Gig {
   zip?: string;
   created_by?: string;
   last_updated_by?: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }
 
 export interface GigSession {
@@ -73,6 +88,9 @@ export interface GigSession {
   started_at: string;
   last_heartbeat: string;
   ended_at?: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }
 
 export interface GigSessionParticipant {
@@ -84,7 +102,9 @@ export interface GigSessionParticipant {
     first_name: string;
     last_name: string;
     position: string;
-  }
+  };
+  deleted_at?: string | null;
+  version: number;
 }
 
 export type UserRole = 'admin' | 'manager' | 'standard';
@@ -106,4 +126,7 @@ export interface Profile {
   has_password: boolean;
   avatar_url?: string;
   preferences?: UserPreferences;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  version: number;
 }

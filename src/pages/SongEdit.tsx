@@ -119,7 +119,8 @@ const SongEdit = () => {
         key: features.key || "",
         tempo: features.tempo || "",
         duration: features.duration || result.duration || "", 
-        note: ""
+        note: "",
+        version: 0
       };
 
       reset(newSongData);
