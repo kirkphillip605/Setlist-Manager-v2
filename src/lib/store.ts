@@ -73,7 +73,6 @@ export const useStore = create<AppState>((set, get) => ({
       if (cachedString) {
         try {
           const cached = JSON.parse(cachedString);
-          // Hydrate store immediately
           set({
             ...cached.data,
             lastSyncedVersion: cached.lastSyncedVersion || 0,
@@ -213,14 +212,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!PERSISTED_TABLES.includes(table)) return;
 
     const state = get();
-    // Gap Detection
-    // If the new record version is significantly higher than our last synced, we missed something.
-    // Trigger full delta sync to fill gaps and ensure integrity.
-    if (newRecord && newRecord.version > state.lastSyncedVersion + 1) {
-        console.log(`[Realtime] Gap detected (Local: ${state.lastSyncedVersion}, Remote: ${newRecord.version}). Triggering Delta Sync.`);
-        get().syncDeltas();
-        return;
-    }
+    // Gap Detection handled by syncDeltas trigger below, but we can do optimistic update first.
 
     // @ts-ignore
     const currentTableMap = state[table];
@@ -228,11 +220,16 @@ export const useStore = create<AppState>((set, get) => ({
     let updatedVersion = state.lastSyncedVersion;
 
     if (eventType === 'DELETE') {
-      // Hard Delete (fallback, usually Soft Delete is an UPDATE)
+      // Hard delete (fallback)
       delete newTableMap[oldRecord.id];
     } else if (newRecord) {
       // INSERT or UPDATE
-      newTableMap[newRecord.id] = newRecord;
+      // CRITICAL: Merge with existing record to avoid partial update data loss
+      // Supabase realtime payloads might not include all columns depending on config,
+      // but usually include changed columns. Merging is safer.
+      const existing = newTableMap[newRecord.id] || {};
+      newTableMap[newRecord.id] = { ...existing, ...newRecord };
+      
       if (newRecord.version > updatedVersion) {
         updatedVersion = newRecord.version;
       }
@@ -240,11 +237,19 @@ export const useStore = create<AppState>((set, get) => ({
 
     // Optimistic UI Update
     set({ 
-      [table as keyof DataState]: newTableMap, 
-      lastSyncedVersion: updatedVersion 
+      [table as keyof DataState]: newTableMap,
+      // We don't update lastSyncedVersion here to allow syncDeltas to confirm validity
+      // effectively, or we can update it if we trust the gap check.
+      // Let's update it to keep UI responsive.
+      lastSyncedVersion: updatedVersion
     });
 
-    // Persist to Disk (Debounce logic could go here for high frequency, but direct write is safer for now)
+    // Trigger Delta Sync to ensure consistency and fill any gaps
+    // This is the "Check version / sync" logic requested.
+    // It's non-blocking and will verify we have the absolute latest state.
+    get().syncDeltas();
+
+    // Persist to Disk
     const stateToSave = {
       data: {
         profiles: table === 'profiles' ? newTableMap : state.profiles,

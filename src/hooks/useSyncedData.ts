@@ -55,9 +55,12 @@ export const useSyncManager = () => {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase.channel('global_sync_v4')
+    // Use a unique channel name to avoid conflicts with previous versions
+    const channel = supabase.channel('global_sync_v5')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-          // Process cached tables via store (Optimistic Update + Gap Check)
+          // console.log("RT Event:", payload.table, payload.eventType);
+          
+          // Process cached tables via store (Optimistic Update + Trigger Sync)
           processRealtimeUpdate(payload);
 
           // Handle non-cached tables via React Query Invalidation
@@ -113,7 +116,6 @@ export const useSyncedSetlists = () => {
     
     return rawSetlists.map(list => {
         // Find sets for this list
-        // Cast to 'any' to access raw DB properties that might not match domain types perfectly yet
         const listSets = Object.values(setsMap)
             .filter((s: any) => s.setlist_id === list.id && !s.deleted_at)
             .sort((a, b) => a.position - b.position);
