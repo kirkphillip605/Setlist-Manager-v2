@@ -1,100 +1,154 @@
+import { useStore } from "@/lib/store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useCallback, useRef } from "react";
-import { getSongs, getSetlists, getGigs, getAllSkippedSongs } from "@/lib/api";
+import { useEffect, useMemo, useCallback } from "react";
+import { getAllSkippedSongs } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import { SyncEngine } from "@/lib/syncEngine";
-import { toast } from "sonner";
+import { Song, Setlist, Gig } from "@/types";
 
 // --- Sync Coordination ---
 
 export const useSyncManager = () => {
-  const queryClient = useQueryClient();
-  const engine = useMemo(() => new SyncEngine(queryClient), [queryClient]);
-  const isSyncingRef = useRef(false);
+  const initialize = useStore(state => state.initialize);
+  const syncDeltas = useStore(state => state.syncDeltas);
+  const processRealtimeUpdate = useStore(state => state.processRealtimeUpdate);
+  const setOnlineStatus = useStore(state => state.setOnlineStatus);
   const { user } = useAuth();
+  
+  const queryClient = useQueryClient();
 
-  const runDeltaSync = useCallback(async () => {
-    if (isSyncingRef.current || !user) return;
-    isSyncingRef.current = true;
+  // Setup Listeners
+  useEffect(() => {
+    // 1. Online/Offline
+    const handleOnline = () => {
+        setOnlineStatus(true);
+        syncDeltas();
+    };
+    const handleOffline = () => setOnlineStatus(false);
     
-    try {
-        // Parallel sync of independent tables
-        // Note: gig_skipped_songs, gig_sessions, etc are realtime-only and handled via invalidation or specific subscriptions
-        await Promise.all([
-            engine.syncTable('songs', ['songs']),
-            engine.syncTable('gigs', ['gigs']),
-        ]);
-        
-        // For setlists, we invalidate to guarantee consistency due to complex nested structure
-        queryClient.invalidateQueries({ queryKey: ['setlists'] });
-        
-    } catch (e) {
-        console.error("Delta Sync Failed", e);
-    } finally {
-        isSyncingRef.current = false;
-    }
-  }, [engine, user, queryClient]);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
-  // Realtime Listeners
+    // 2. Visibility
+    const handleVisibility = () => {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
+            syncDeltas();
+        }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // 3. Polling Fallback (5 min)
+    const interval = setInterval(() => {
+        if (navigator.onLine && document.visibilityState === 'visible') {
+            syncDeltas();
+        }
+    }, 5 * 60 * 1000);
+
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+        document.removeEventListener("visibilitychange", handleVisibility);
+        clearInterval(interval);
+    };
+  }, [syncDeltas, setOnlineStatus]);
+
+  // 4. Realtime Subscription
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase.channel('global_sync_trigger')
+    const channel = supabase.channel('global_sync_v3')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-          console.log("Realtime change detected:", payload.table);
-          
-          // 1. Versioned Tables -> Delta Sync
-          if (['songs', 'gigs'].includes(payload.table)) {
-              runDeltaSync();
-          } 
-          // 2. Complex Nested Tables -> Invalidate
-          else if (['setlists', 'sets', 'set_songs'].includes(payload.table)) {
-              queryClient.invalidateQueries({ queryKey: ['setlists'] });
-          }
-          // 3. Realtime/Session Tables -> Simple Invalidation (No version sync)
-          else if (payload.table === 'gig_skipped_songs') {
+          // Process cached tables via store
+          processRealtimeUpdate(payload);
+
+          // Handle non-cached tables via React Query Invalidation
+          if (['gig_skipped_songs'].includes(payload.table)) {
               queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
           }
-          // Note: gig_sessions and participants are handled by specific hooks (useGigSession)
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user, runDeltaSync, queryClient]);
+  }, [user, processRealtimeUpdate, queryClient]);
 
-  return { runDeltaSync };
+  return { runDeltaSync: syncDeltas, initialize };
 };
 
-// --- DATA HOOKS ---
+// --- DATA HOOKS (Store Selectors) ---
 
-// Songs: Cached, Delta Synced
+// Helper to filter deleted items
+const activeFilter = (item: any) => !item.deleted_at;
+
 export const useSyncedSongs = () => {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['songs'],
-    // Initial fetch: Get all active songs. 
-    // Subsequent updates handled via Delta Sync (setQueryData).
-    queryFn: getSongs, 
-    enabled: !!user,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
+  const songsMap = useStore(state => state.songs);
+  const data = useMemo(() => Object.values(songsMap).filter(activeFilter).sort((a,b) => a.title.localeCompare(b.title)), [songsMap]);
+  return { data, isLoading: false }; // Store is always "loaded" after init
 };
 
-// Gigs: Cached, Delta Synced
 export const useSyncedGigs = () => {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['gigs'],
-    queryFn: getGigs,
-    enabled: !!user,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
+  const gigsMap = useStore(state => state.gigs);
+  const setlistsMap = useStore(state => state.setlists); // For joining name
+  
+  const data = useMemo(() => {
+      return Object.values(gigsMap)
+        .filter(activeFilter)
+        .map(gig => ({
+            ...gig,
+            setlist: gig.setlist_id ? setlistsMap[gig.setlist_id] : undefined
+        }))
+        .sort((a,b) => a.start_time.localeCompare(b.start_time));
+  }, [gigsMap, setlistsMap]);
+
+  return { data, isLoading: false };
 };
 
-// Skipped Songs: Standard Query (Invalidated by realtime)
+// Complex Selector: Reconstruct Setlist Tree
+export const useSyncedSetlists = () => {
+  const setlistsMap = useStore(state => state.setlists);
+  const setsMap = useStore(state => state.sets);
+  const setSongsMap = useStore(state => state.set_songs);
+  const songsMap = useStore(state => state.songs);
+
+  const data = useMemo(() => {
+    const rawSetlists = Object.values(setlistsMap).filter(activeFilter);
+    
+    return rawSetlists.map(list => {
+        // Find sets for this list
+        const listSets = Object.values(setsMap)
+            .filter(s => s.setlist_id === list.id && !s.deleted_at)
+            .sort((a, b) => a.position - b.position);
+
+        const hydratedSets = listSets.map(set => {
+            // Find songs for this set
+            const listSetSongs = Object.values(setSongsMap)
+                .filter(ss => ss.set_id === set.id && !ss.deleted_at)
+                .sort((a, b) => a.position - b.position);
+
+            const songs = listSetSongs.map(ss => ({
+                id: ss.id,
+                position: ss.position,
+                songId: ss.song_id,
+                song: songsMap[ss.song_id] || undefined
+            }));
+
+            return {
+                ...set,
+                songs
+            };
+        });
+
+        return {
+            ...list,
+            sets: hydratedSets
+        };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+  }, [setlistsMap, setsMap, setSongsMap, songsMap]);
+
+  return { data, isLoading: false };
+};
+
+// Skipped Songs: Still uses React Query (Not cached persistently in store)
 export const useSyncedSkippedSongs = () => {
   const { user } = useAuth();
   return useQuery({
@@ -106,74 +160,37 @@ export const useSyncedSkippedSongs = () => {
   });
 };
 
-// Setlists: Cached, Re-fetched on change (Structure is too complex for simple delta patch without full normalization)
-export const useSyncedSetlists = () => {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: ['setlists'],
-    queryFn: getSetlists,
-    enabled: !!user,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-};
-
 // --- HYDRATION HELPERS ---
 
 export const useSetlistWithSongs = (setlistId?: string) => {
-  const { data: allSongs = [] } = useSyncedSongs();
-  const { data: allSetlists = [] } = useSyncedSetlists();
-
+  const { data: setlists } = useSyncedSetlists();
   return useMemo(() => {
-    if (!setlistId) return null;
-
-    const setlist = allSetlists.find(s => s.id === setlistId);
-    if (!setlist) return null;
-
-    // Deep clone and hydrate
-    const hydratedSets = setlist.sets.map(set => ({
-      ...set,
-      songs: set.songs.map(setSong => {
-        const fullSongDetails = allSongs.find(s => s.id === setSong.songId);
-        return {
-          ...setSong,
-          song: fullSongDetails || setSong.song 
-        };
-      })
-    }));
-
-    return {
-      ...setlist,
-      sets: hydratedSets
-    };
-  }, [setlistId, allSetlists, allSongs]);
+      if (!setlistId) return null;
+      return setlists.find(s => s.id === setlistId) || null;
+  }, [setlistId, setlists]);
 };
 
 export const useSongFromCache = (songId?: string) => {
-  const { data: allSongs = [] } = useSyncedSongs();
-  return useMemo(() => {
-    return allSongs.find(s => s.id === songId) || null;
-  }, [songId, allSongs]);
+  const songsMap = useStore(state => state.songs);
+  return useMemo(() => songsMap[songId!] || null, [songId, songsMap]);
 };
 
 // --- SYNC STATUS HELPER ---
 export const useSyncStatus = () => {
-    const { runDeltaSync } = useSyncManager();
+    const isSyncing = useStore(state => state.isLoading && state.loadingMessage === 'Syncing changes...');
+    const lastSyncedAtTime = useStore(state => state.lastSyncedAt);
+    const syncDeltas = useStore(state => state.syncDeltas);
     const queryClient = useQueryClient();
-    const isFetching = queryClient.isFetching() > 0;
-    
-    // We can expose the sync trigger
+
     const refreshAll = useCallback(async () => {
-        await runDeltaSync();
-        // Force setlists refresh too
-        queryClient.invalidateQueries({ queryKey: ['setlists'] });
-        // Force skipped songs refresh
+        await syncDeltas();
+        // Also refresh non-cached queries
         queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
-    }, [runDeltaSync, queryClient]);
+    }, [syncDeltas, queryClient]);
 
     return { 
-        isSyncing: isFetching, 
-        lastSyncedAt: Date.now(), // Simplified, ideally track actual timestamp
+        isSyncing, 
+        lastSyncedAt: lastSyncedAtTime ? new Date(lastSyncedAtTime).getTime() : 0, 
         refreshAll 
     };
 };

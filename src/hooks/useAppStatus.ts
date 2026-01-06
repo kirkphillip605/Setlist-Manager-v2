@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
@@ -23,6 +23,8 @@ export const useAppStatus = () => {
 
   const queryClient = useQueryClient();
   const { refreshAll } = useSyncStatus();
+  const lastFetchTime = useRef<number>(0);
+  const fetchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Helper to determine environment
   const getEnvironment = (): string => {
@@ -43,9 +45,7 @@ export const useAppStatus = () => {
 
     try {
       const info = await App.getInfo();
-      // Handle build number parsing carefully as it can vary by platform config
       const currentBuild = parseInt(info.build) || 0; 
-      
       if (status.min_version_code && currentBuild < status.min_version_code) {
         return true;
       }
@@ -57,73 +57,77 @@ export const useAppStatus = () => {
   };
 
   const fetchStatus = useCallback(async () => {
+    // Debounce: prevent fetching more than once every 10 seconds
+    const now = Date.now();
+    if (now - lastFetchTime.current < 10000) return;
+    lastFetchTime.current = now;
+
     const env = getEnvironment();
     const platform = getPlatform();
     
-    // Fetch matching status rows
-    const { data, error } = await supabase
-      .from('app_statuses')
-      .select('*')
-      .eq('environment', env)
-      .in('platform', ['any', platform]);
+    try {
+        const { data, error } = await supabase
+        .from('app_statuses')
+        .select('*')
+        .eq('environment', env)
+        .in('platform', ['any', platform]);
 
-    if (error) {
-      console.error("Failed to fetch app status", error);
-      // Don't block app on error, assume safe
-      setState(prev => ({ ...prev, loading: false }));
-      return;
-    }
-
-    if (!data || data.length === 0) {
-      setState({ 
-        isMaintenance: false, 
-        isUpdateRequired: false, 
-        statusData: null, 
-        loading: false 
-      });
-      return;
-    }
-
-    // Prioritize specific platform over 'any'
-    const specific = data.find(d => d.platform === platform);
-    const generic = data.find(d => d.platform === 'any');
-    const effectiveStatus = (specific || generic) as AppStatus;
-
-    const updateNeeded = await checkVersion(effectiveStatus);
-
-    // Detect lifting of maintenance mode to trigger sync
-    setState(prev => {
-        if (!prev.loading && prev.isMaintenance && !effectiveStatus.is_maintenance) {
-            console.log("Maintenance lifted! Triggering full re-sync...");
-            queryClient.clear(); 
-            refreshAll();
+        if (error) {
+            // Silent fail to prevent log spam if offline
+            setState(prev => ({ ...prev, loading: false }));
+            return;
         }
-        return {
-            isMaintenance: effectiveStatus.is_maintenance,
-            isUpdateRequired: updateNeeded,
-            statusData: effectiveStatus,
-            loading: false
-        };
-    });
-  }, [queryClient, refreshAll]);
+
+        if (!data || data.length === 0) {
+            setState({ 
+                isMaintenance: false, 
+                isUpdateRequired: false, 
+                statusData: null, 
+                loading: false 
+            });
+            return;
+        }
+
+        const specific = data.find(d => d.platform === platform);
+        const generic = data.find(d => d.platform === 'any');
+        const effectiveStatus = (specific || generic) as AppStatus;
+
+        const updateNeeded = await checkVersion(effectiveStatus);
+
+        setState(prev => {
+            if (!prev.loading && prev.isMaintenance && !effectiveStatus.is_maintenance) {
+                // Maintenance lifted
+                refreshAll();
+            }
+            return {
+                isMaintenance: effectiveStatus.is_maintenance,
+                isUpdateRequired: updateNeeded,
+                statusData: effectiveStatus,
+                loading: false
+            };
+        });
+    } catch (e) {
+        // Catch network errors silently
+        setState(prev => ({ ...prev, loading: false }));
+    }
+  }, [refreshAll]);
 
   useEffect(() => {
     fetchStatus();
 
-    // 1. Realtime Subscription
     const channel = supabase
       .channel('app_status_changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'app_statuses' },
         () => {
-          console.log("App status update received via Realtime");
-          fetchStatus();
+            // Debounce realtime updates too
+            if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
+            fetchTimeout.current = setTimeout(fetchStatus, 2000);
         }
       )
       .subscribe();
 
-    // 2. Window Focus / Visibility Listener (Catch-up mechanism)
     const handleFocus = () => {
         if (document.visibilityState === 'visible') {
             fetchStatus();
@@ -137,6 +141,7 @@ export const useAppStatus = () => {
       supabase.removeChannel(channel);
       window.removeEventListener('visibilitychange', handleFocus);
       window.removeEventListener('focus', handleFocus);
+      if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
     };
   }, [fetchStatus]);
 
