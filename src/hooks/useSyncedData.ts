@@ -20,18 +20,13 @@ export const useSyncManager = () => {
     
     try {
         // Parallel sync of independent tables
+        // Note: gig_skipped_songs, gig_sessions, etc are realtime-only and handled via invalidation or specific subscriptions
         await Promise.all([
             engine.syncTable('songs', ['songs']),
             engine.syncTable('gigs', ['gigs']),
-            engine.syncTable('gig_skipped_songs', ['skipped_songs_all']),
-            // Setlists are complex. We might need a specialized sync strategy or
-            // fallback to invalidation if structure changes are too complex to patch locally easily.
-            // For now, we will attempt to sync the 'setlists' table metadata.
-            // Deep structural changes might still require refetch for safety until 
-            // a full normalized cache is implemented.
         ]);
         
-        // For setlists, we invalidate for now to guarantee consistency
+        // For setlists, we invalidate to guarantee consistency due to complex nested structure
         queryClient.invalidateQueries({ queryKey: ['setlists'] });
         
     } catch (e) {
@@ -47,14 +42,21 @@ export const useSyncManager = () => {
 
     const channel = supabase.channel('global_sync_trigger')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-          // Trigger Delta Sync on any change
           console.log("Realtime change detected:", payload.table);
-          if (['songs', 'gigs', 'gig_skipped_songs'].includes(payload.table)) {
+          
+          // 1. Versioned Tables -> Delta Sync
+          if (['songs', 'gigs'].includes(payload.table)) {
               runDeltaSync();
-          } else if (['setlists', 'sets', 'set_songs'].includes(payload.table)) {
-              // For setlists, we invalidate for now to guarantee consistency
+          } 
+          // 2. Complex Nested Tables -> Invalidate
+          else if (['setlists', 'sets', 'set_songs'].includes(payload.table)) {
               queryClient.invalidateQueries({ queryKey: ['setlists'] });
           }
+          // 3. Realtime/Session Tables -> Simple Invalidation (No version sync)
+          else if (payload.table === 'gig_skipped_songs') {
+              queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
+          }
+          // Note: gig_sessions and participants are handled by specific hooks (useGigSession)
       })
       .subscribe();
 
@@ -92,7 +94,7 @@ export const useSyncedGigs = () => {
   });
 };
 
-// Skipped Songs: Cached, Delta Synced
+// Skipped Songs: Standard Query (Invalidated by realtime)
 export const useSyncedSkippedSongs = () => {
   const { user } = useAuth();
   return useQuery({
@@ -157,7 +159,7 @@ export const useSongFromCache = (songId?: string) => {
 // --- SYNC STATUS HELPER ---
 export const useSyncStatus = () => {
     const { runDeltaSync } = useSyncManager();
-    const queryClient = useQueryClient(); // FIX: Call hook at top level
+    const queryClient = useQueryClient();
     const isFetching = queryClient.isFetching() > 0;
     
     // We can expose the sync trigger
@@ -165,6 +167,8 @@ export const useSyncStatus = () => {
         await runDeltaSync();
         // Force setlists refresh too
         queryClient.invalidateQueries({ queryKey: ['setlists'] });
+        // Force skipped songs refresh
+        queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
     }, [runDeltaSync, queryClient]);
 
     return { 
