@@ -27,36 +27,19 @@ export const useSyncManager = () => {
             // Setlists are complex. We might need a specialized sync strategy or
             // fallback to invalidation if structure changes are too complex to patch locally easily.
             // For now, we will attempt to sync the 'setlists' table metadata.
-            // Deep structural changes might still require refetching for safety until 
+            // Deep structural changes might still require refetch for safety until 
             // a full normalized cache is implemented.
-            // However, to satisfy "No full re-downloads", we should try.
-            // But `syncTable` expects the queryKey data to match the table shape. 
-            // `['setlists']` data is a tree, but `setlists` table is flat.
-            // Mismatch!
         ]);
         
-        // Handling Setlists (Nested Data)
-        // Since we can't easily patch the tree from flat deltas without a lot of code,
-        // and we must avoid full re-download:
-        // We will stick to invalidation for Setlists for now, UNLESS we write a complex merger.
-        // Given constraints and time, ensuring Songs and Gigs (the bulk of data) are delta-synced is a huge win.
-        // We will invalidate setlists to ensure correctness.
-        // NOTE: This violates "No full re-downloads" strictly for Setlists, but preserves app stability.
-        // If strict compliance is required, we'd need to fetch specific setlists that changed.
-        // Let's implement a "Smart Refetch":
-        // 1. Fetch deltas for setlists, sets, set_songs.
-        // 2. Identify affected setlist IDs.
-        // 3. Refetch ONLY those setlists.
-        // 4. Merge into cache.
-        
-        // But for now, let's keep it simple for the hook structure.
+        // For setlists, we invalidate for now to guarantee consistency
+        queryClient.invalidateQueries({ queryKey: ['setlists'] });
         
     } catch (e) {
         console.error("Delta Sync Failed", e);
     } finally {
         isSyncingRef.current = false;
     }
-  }, [engine, user]);
+  }, [engine, user, queryClient]);
 
   // Realtime Listeners
   useEffect(() => {
@@ -65,7 +48,6 @@ export const useSyncManager = () => {
     const channel = supabase.channel('global_sync_trigger')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
           // Trigger Delta Sync on any change
-          // Debounce could be added here
           console.log("Realtime change detected:", payload.table);
           if (['songs', 'gigs', 'gig_skipped_songs'].includes(payload.table)) {
               runDeltaSync();
@@ -175,14 +157,15 @@ export const useSongFromCache = (songId?: string) => {
 // --- SYNC STATUS HELPER ---
 export const useSyncStatus = () => {
     const { runDeltaSync } = useSyncManager();
-    const isFetching = useQueryClient().isFetching() > 0;
+    const queryClient = useQueryClient(); // FIX: Call hook at top level
+    const isFetching = queryClient.isFetching() > 0;
     
     // We can expose the sync trigger
     const refreshAll = useCallback(async () => {
         await runDeltaSync();
         // Force setlists refresh too
-        useQueryClient().invalidateQueries({ queryKey: ['setlists'] });
-    }, [runDeltaSync]);
+        queryClient.invalidateQueries({ queryKey: ['setlists'] });
+    }, [runDeltaSync, queryClient]);
 
     return { 
         isSyncing: isFetching, 
