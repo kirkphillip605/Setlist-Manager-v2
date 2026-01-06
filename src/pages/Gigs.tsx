@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { deleteGig } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, MoreVertical, Clock, ChevronRight } from "lucide-react";
+import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, Clock, ChevronRight } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,9 +13,6 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
 import { useSyncedGigs, useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -23,6 +20,57 @@ import { LoadingDialog } from "@/components/LoadingDialog";
 import { format, parseISO } from "date-fns";
 import { GigCreateWizard } from "@/components/GigCreateWizard";
 import { useAuth } from "@/context/AuthContext";
+
+const GigList = ({ list }: { list: Gig[] }) => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {list.map(gig => (
+            <div key={gig.id} className="relative group">
+                <Link to={`/gigs/${gig.id}`} className="block">
+                    <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full relative overflow-hidden">
+                        {/* Only hide chevron on desktop initially (md:opacity-0). Visible on mobile to avoid double-tap issues. */}
+                        <div className="absolute top-0 right-0 p-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <CardHeader className="flex flex-row items-start justify-between pb-2 pr-10">
+                            <div className="space-y-1">
+                                <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
+                                <div className="flex flex-col text-sm text-muted-foreground gap-1">
+                                    <div className="flex items-center">
+                                        <Calendar className="mr-1.5 h-3.5 w-3.5" />
+                                        {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
+                                    </div>
+                                    <div className="flex items-center">
+                                        <Clock className="mr-1.5 h-3.5 w-3.5" />
+                                        {format(parseISO(gig.start_time), "h:mm a")} 
+                                    </div>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {gig.venue_name && (
+                                <div className="text-sm text-muted-foreground flex items-center gap-1.5">
+                                    <MapPin className="h-3.5 w-3.5" /> 
+                                    <span className="truncate">{gig.venue_name}</span>
+                                </div>
+                            )}
+
+                            {gig.setlist ? (
+                                <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded border border-primary/10">
+                                    <ListMusic className="h-4 w-4" />
+                                    <span className="truncate">{gig.setlist.name}</span>
+                                </div>
+                            ) : (
+                                <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-transparent">
+                                    No setlist attached
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </Link>
+            </div>
+        ))}
+    </div>
+);
 
 const Gigs = () => {
     const navigate = useNavigate();
@@ -65,64 +113,6 @@ const Gigs = () => {
         }
         setIsCreateOpen(true);
     };
-
-    const handleDeleteRequest = (id: string) => {
-        if (!isOnline) {
-            toast.error("Offline: Cannot delete gigs");
-            return;
-        }
-        setDeleteId(id);
-    };
-
-    const GigList = ({ list }: { list: Gig[] }) => (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {list.map(gig => (
-                <div key={gig.id} className="relative group">
-                    <Link to={`/gigs/${gig.id}`} className="block">
-                        <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                            </div>
-                            <CardHeader className="flex flex-row items-start justify-between pb-2 pr-10">
-                                <div className="space-y-1">
-                                    <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
-                                    <div className="flex flex-col text-sm text-muted-foreground gap-1">
-                                        <div className="flex items-center">
-                                            <Calendar className="mr-1.5 h-3.5 w-3.5" />
-                                            {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
-                                        </div>
-                                        <div className="flex items-center">
-                                            <Clock className="mr-1.5 h-3.5 w-3.5" />
-                                            {format(parseISO(gig.start_time), "h:mm a")} 
-                                        </div>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                {gig.venue_name && (
-                                    <div className="text-sm text-muted-foreground flex items-center gap-1.5">
-                                        <MapPin className="h-3.5 w-3.5" /> 
-                                        <span className="truncate">{gig.venue_name}</span>
-                                    </div>
-                                )}
-
-                                {gig.setlist ? (
-                                    <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded border border-primary/10">
-                                        <ListMusic className="h-4 w-4" />
-                                        <span className="truncate">{gig.setlist.name}</span>
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-transparent">
-                                        No setlist attached
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </Link>
-                </div>
-            ))}
-        </div>
-    );
 
     return (
         <AppLayout>
