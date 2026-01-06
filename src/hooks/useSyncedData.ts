@@ -55,9 +55,9 @@ export const useSyncManager = () => {
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase.channel('global_sync_v3')
+    const channel = supabase.channel('global_sync_v4')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-          // Process cached tables via store
+          // Process cached tables via store (Optimistic Update + Gap Check)
           processRealtimeUpdate(payload);
 
           // Handle non-cached tables via React Query Invalidation

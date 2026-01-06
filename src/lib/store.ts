@@ -51,8 +51,8 @@ export const useStore = create<AppState>((set, get) => ({
   lastSyncedVersion: 0,
   lastSyncedAt: null,
   isInitialized: false,
-  isLoading: true,
-  isSyncing: false,
+  isLoading: true, // Only true during initial boot
+  isSyncing: false, // True during background syncs
   isOnline: navigator.onLine,
   loadingMessage: 'Initializing...',
   loadingProgress: 0,
@@ -73,6 +73,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (cachedString) {
         try {
           const cached = JSON.parse(cachedString);
+          // Hydrate store immediately
           set({
             ...cached.data,
             lastSyncedVersion: cached.lastSyncedVersion || 0,
@@ -84,18 +85,24 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // If we have data, unblock UI immediately
+      // 2. Unblock UI Immediately if we have data (Optimistic Load)
       if (hasData) {
           set({ isInitialized: true, isLoading: false });
       }
 
-      // 2. Sync Deltas if online (Background or Blocking depending on hasData)
+      // 3. Trigger Background Sync if online
       if (get().isOnline) {
-        await get().syncDeltas();
+        // This runs in background, updating store as it goes
+        get().syncDeltas().then(() => {
+            // Ensure we mark initialized if we weren't already (e.g. fresh install)
+            if (!get().isInitialized) {
+                set({ isInitialized: true, isLoading: false });
+            }
+        });
+      } else {
+          // Offline and no data? Or offline and data loaded?
+          set({ isInitialized: true, isLoading: false });
       }
-
-      // Finalize init if not already done
-      set({ isInitialized: true, isLoading: false });
 
     } catch (error) {
       console.error("Initialization failed:", error);
@@ -109,27 +116,24 @@ export const useStore = create<AppState>((set, get) => ({
 
   syncDeltas: async () => {
     if (!get().isOnline) return;
-    
-    // Prevent overlapping syncs
-    if (get().isSyncing) return;
+    if (get().isSyncing) return; // Prevent overlap
 
     set({ isSyncing: true });
 
     try {
         const currentVersion = get().lastSyncedVersion;
         
-        // 1. Check if newer data exists
+        // 1. Smart Check: Compare versions before fetching
         const globalVersion = await getCurrentGlobalVersion();
         
-        // If local version matches or exceeds global, we are up to date.
-        // Also handle the edge case where local version is 0 (first sync)
         if (currentVersion > 0 && currentVersion >= globalVersion) {
-            console.log("Local data is up to date.");
-            set({ isSyncing: false, loadingMessage: '' });
+            // Local is up to date
+            set({ isSyncing: false });
             return;
         }
 
         let maxVersionFound = currentVersion;
+        // Shallow clone state for mutation
         const newState: DataState = {
             profiles: { ...get().profiles },
             songs: { ...get().songs },
@@ -139,6 +143,7 @@ export const useStore = create<AppState>((set, get) => ({
             set_songs: { ...get().set_songs },
         };
 
+        // Only show message if we are in the "Blocking" phase (fresh install)
         if (get().isLoading) {
             set({ loadingMessage: 'Syncing changes...' });
         }
@@ -147,7 +152,6 @@ export const useStore = create<AppState>((set, get) => ({
         const totalSteps = PERSISTED_TABLES.length;
 
         for (const table of PERSISTED_TABLES) {
-            // Update progress only if blocking loading
             if (get().isLoading) {
                 progressStep++;
                 set({ loadingProgress: Math.round((progressStep / totalSteps) * 100) });
@@ -166,8 +170,7 @@ export const useStore = create<AppState>((set, get) => ({
 
             if (data && data.length > 0) {
                 data.forEach((row: any) => {
-                    // Apply Update
-                    // @ts-ignore - Dynamic access
+                    // @ts-ignore
                     newState[table][row.id] = row;
                     if (row.version > maxVersionFound) {
                         maxVersionFound = row.version;
@@ -176,18 +179,22 @@ export const useStore = create<AppState>((set, get) => ({
             }
         }
 
-        // 3. Persist
+        // 3. Persist & Update State
         if (maxVersionFound > currentVersion) {
+            const timestamp = new Date().toISOString();
+            
+            // Update Store
             set({
                 ...newState,
                 lastSyncedVersion: maxVersionFound,
-                lastSyncedAt: new Date().toISOString()
+                lastSyncedAt: timestamp
             });
             
+            // Persist to Disk
             await storageAdapter.setItem(DB_KEY, JSON.stringify({
                 data: newState,
                 lastSyncedVersion: maxVersionFound,
-                lastSyncedAt: new Date().toISOString()
+                lastSyncedAt: timestamp
             }));
             
             console.log(`[Sync] Updated to version ${maxVersionFound}`);
@@ -206,30 +213,38 @@ export const useStore = create<AppState>((set, get) => ({
     if (!PERSISTED_TABLES.includes(table)) return;
 
     const state = get();
+    // Gap Detection
+    // If the new record version is significantly higher than our last synced, we missed something.
+    // Trigger full delta sync to fill gaps and ensure integrity.
+    if (newRecord && newRecord.version > state.lastSyncedVersion + 1) {
+        console.log(`[Realtime] Gap detected (Local: ${state.lastSyncedVersion}, Remote: ${newRecord.version}). Triggering Delta Sync.`);
+        get().syncDeltas();
+        return;
+    }
+
     // @ts-ignore
     const currentTableMap = state[table];
     const newTableMap = { ...currentTableMap };
     let updatedVersion = state.lastSyncedVersion;
 
     if (eventType === 'DELETE') {
-      // Hard delete (shouldn't happen with current arch, but good safety)
+      // Hard Delete (fallback, usually Soft Delete is an UPDATE)
       delete newTableMap[oldRecord.id];
     } else if (newRecord) {
-      // INSERT or UPDATE (includes soft deletes where deleted_at is set)
+      // INSERT or UPDATE
       newTableMap[newRecord.id] = newRecord;
       if (newRecord.version > updatedVersion) {
         updatedVersion = newRecord.version;
       }
     }
 
-    // Update state
+    // Optimistic UI Update
     set({ 
       [table as keyof DataState]: newTableMap, 
       lastSyncedVersion: updatedVersion 
     });
 
-    // Debounced persist could go here, but for now we write on update to be safe
-    // We only construct the payload for storage
+    // Persist to Disk (Debounce logic could go here for high frequency, but direct write is safer for now)
     const stateToSave = {
       data: {
         profiles: table === 'profiles' ? newTableMap : state.profiles,
@@ -247,6 +262,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   reset: async () => {
+    console.log("[Store] Clearing local data");
     await storageAdapter.removeItem(DB_KEY);
     set({ ...initialDataState, lastSyncedVersion: 0, isInitialized: false, isLoading: true });
   }

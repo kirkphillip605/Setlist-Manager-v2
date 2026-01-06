@@ -7,6 +7,7 @@ import { Profile, Setlist } from "@/types";
 import { clear as clearIdb } from "idb-keyval";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { useStore } from "@/lib/store";
 
 interface AuthContextType {
   session: Session | null;
@@ -40,6 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const queryClient = useQueryClient();
+  const resetStore = useStore(state => state.reset);
 
   const checkSession = useCallback(async () => {
     try {
@@ -86,6 +88,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             localStorage.clear(); 
         }
 
+        // Reset the Zustard store (Songs, Setlists, etc.)
+        await resetStore();
+
         setSession(null);
     } catch (e) {
         console.warn("Failed to clear local cache during signout", e);
@@ -116,6 +121,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (event === 'SIGNED_OUT') {
             queryClient.clear();
             setSession(null);
+            await resetStore(); // Ensure cleanup on auto-logout events too
         } else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
             setSession(newSession);
         }
@@ -142,7 +148,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [queryClient, checkSession]);
+  }, [queryClient, checkSession, resetStore]);
 
   const { data: profile, isLoading: profileLoading, refetch } = useQuery({
     queryKey: ['profile', session?.user?.id],
