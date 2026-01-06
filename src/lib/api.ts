@@ -14,6 +14,15 @@ export const fetchDeltas = async (table: string, lastVersion: number) => {
   return data;
 };
 
+export const getCurrentGlobalVersion = async (): Promise<number> => {
+  const { data, error } = await supabase.rpc('get_current_global_version');
+  if (error) {
+      console.warn("Failed to get global version, defaulting to fetch-all strategy", error);
+      return Number.MAX_SAFE_INTEGER; // Force sync if check fails
+  }
+  return data as number;
+};
+
 // --- Songs ---
 
 export const getSongs = async (): Promise<Song[]> => {

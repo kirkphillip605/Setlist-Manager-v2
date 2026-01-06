@@ -57,8 +57,6 @@ export const useSyncManager = () => {
 
     const channel = supabase.channel('global_sync_v3')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-          console.log("Realtime change detected:", payload.table);
-          
           // Process cached tables via store
           processRealtimeUpdate(payload);
 
@@ -184,16 +182,16 @@ export const useSongFromCache = (songId?: string) => {
 
 // --- SYNC STATUS HELPER ---
 export const useSyncStatus = () => {
-    const isSyncing = useStore(state => state.isLoading && state.loadingMessage === 'Syncing changes...');
+    const { runDeltaSync } = useSyncManager();
+    const isSyncing = useStore(state => state.isSyncing);
     const lastSyncedAtTime = useStore(state => state.lastSyncedAt);
-    const syncDeltas = useStore(state => state.syncDeltas);
     const queryClient = useQueryClient();
 
     const refreshAll = useCallback(async () => {
-        await syncDeltas();
+        await runDeltaSync();
         // Also refresh non-cached queries
         queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
-    }, [syncDeltas, queryClient]);
+    }, [runDeltaSync, queryClient]);
 
     return { 
         isSyncing, 

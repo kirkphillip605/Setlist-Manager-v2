@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { storageAdapter } from '@/lib/storageAdapter';
 import { Song, Setlist, Gig, Set as SetType, SetSong, Profile } from '@/types';
+import { getCurrentGlobalVersion } from '@/lib/api';
 
 // Constants
 const DB_KEY = 'setlist-pro-v1';
@@ -22,6 +23,7 @@ interface AppState extends DataState {
   lastSyncedAt: string | null;
   isInitialized: boolean;
   isLoading: boolean;
+  isSyncing: boolean;
   isOnline: boolean;
   loadingMessage: string;
   loadingProgress: number;
@@ -50,6 +52,7 @@ export const useStore = create<AppState>((set, get) => ({
   lastSyncedAt: null,
   isInitialized: false,
   isLoading: true,
+  isSyncing: false,
   isOnline: navigator.onLine,
   loadingMessage: 'Initializing...',
   loadingProgress: 0,
@@ -65,6 +68,8 @@ export const useStore = create<AppState>((set, get) => ({
 
       // 1. Load from Local Storage
       const cachedString = await storageAdapter.getItem(DB_KEY);
+      let hasData = false;
+
       if (cachedString) {
         try {
           const cached = JSON.parse(cachedString);
@@ -73,16 +78,23 @@ export const useStore = create<AppState>((set, get) => ({
             lastSyncedVersion: cached.lastSyncedVersion || 0,
             lastSyncedAt: cached.lastSyncedAt,
           });
+          hasData = true;
         } catch (e) {
           console.error("Failed to parse cached data", e);
         }
       }
 
-      // 2. Sync Deltas if online
+      // If we have data, unblock UI immediately
+      if (hasData) {
+          set({ isInitialized: true, isLoading: false });
+      }
+
+      // 2. Sync Deltas if online (Background or Blocking depending on hasData)
       if (get().isOnline) {
         await get().syncDeltas();
       }
 
+      // Finalize init if not already done
       set({ isInitialized: true, isLoading: false });
 
     } catch (error) {
@@ -97,75 +109,94 @@ export const useStore = create<AppState>((set, get) => ({
 
   syncDeltas: async () => {
     if (!get().isOnline) return;
+    
+    // Prevent overlapping syncs
+    if (get().isSyncing) return;
 
-    const currentVersion = get().lastSyncedVersion;
-    let maxVersionFound = currentVersion;
-    const newState: DataState = {
-      profiles: { ...get().profiles },
-      songs: { ...get().songs },
-      gigs: { ...get().gigs },
-      setlists: { ...get().setlists },
-      sets: { ...get().sets },
-      set_songs: { ...get().set_songs },
-    };
-
-    let progressStep = 0;
-    const totalSteps = PERSISTED_TABLES.length;
+    set({ isSyncing: true });
 
     try {
-      set({ loadingMessage: 'Syncing changes...' });
-
-      for (const table of PERSISTED_TABLES) {
-        // Update progress
-        progressStep++;
-        set({ loadingProgress: Math.round((progressStep / totalSteps) * 100) });
-
-        const { data, error } = await supabase
-          .from(table)
-          .select('*')
-          .gt('version', currentVersion)
-          .order('version', { ascending: true });
-
-        if (error) {
-          console.error(`Error syncing ${table}:`, error);
-          continue; 
+        const currentVersion = get().lastSyncedVersion;
+        
+        // 1. Check if newer data exists
+        const globalVersion = await getCurrentGlobalVersion();
+        
+        // If local version matches or exceeds global, we are up to date.
+        // Also handle the edge case where local version is 0 (first sync)
+        if (currentVersion > 0 && currentVersion >= globalVersion) {
+            console.log("Local data is up to date.");
+            set({ isSyncing: false, loadingMessage: '' });
+            return;
         }
 
-        if (data && data.length > 0) {
-          // console.log(`[Sync] ${table}: ${data.length} updates`);
-          
-          data.forEach((row: any) => {
-            // Apply Update
-            // @ts-ignore - Dynamic access
-            newState[table][row.id] = row;
-            if (row.version > maxVersionFound) {
-              maxVersionFound = row.version;
+        let maxVersionFound = currentVersion;
+        const newState: DataState = {
+            profiles: { ...get().profiles },
+            songs: { ...get().songs },
+            gigs: { ...get().gigs },
+            setlists: { ...get().setlists },
+            sets: { ...get().sets },
+            set_songs: { ...get().set_songs },
+        };
+
+        if (get().isLoading) {
+            set({ loadingMessage: 'Syncing changes...' });
+        }
+
+        let progressStep = 0;
+        const totalSteps = PERSISTED_TABLES.length;
+
+        for (const table of PERSISTED_TABLES) {
+            // Update progress only if blocking loading
+            if (get().isLoading) {
+                progressStep++;
+                set({ loadingProgress: Math.round((progressStep / totalSteps) * 100) });
             }
-          });
-        }
-      }
 
-      // 3. Persist
-      if (maxVersionFound > currentVersion) {
-        set({
-          ...newState,
-          lastSyncedVersion: maxVersionFound,
-          lastSyncedAt: new Date().toISOString()
-        });
-        
-        await storageAdapter.setItem(DB_KEY, JSON.stringify({
-          data: newState,
-          lastSyncedVersion: maxVersionFound,
-          lastSyncedAt: new Date().toISOString()
-        }));
-        
-        console.log(`[Sync] Updated to version ${maxVersionFound}`);
-      }
+            const { data, error } = await supabase
+            .from(table)
+            .select('*')
+            .gt('version', currentVersion)
+            .order('version', { ascending: true });
+
+            if (error) {
+                console.error(`Error syncing ${table}:`, error);
+                continue; 
+            }
+
+            if (data && data.length > 0) {
+                data.forEach((row: any) => {
+                    // Apply Update
+                    // @ts-ignore - Dynamic access
+                    newState[table][row.id] = row;
+                    if (row.version > maxVersionFound) {
+                        maxVersionFound = row.version;
+                    }
+                });
+            }
+        }
+
+        // 3. Persist
+        if (maxVersionFound > currentVersion) {
+            set({
+                ...newState,
+                lastSyncedVersion: maxVersionFound,
+                lastSyncedAt: new Date().toISOString()
+            });
+            
+            await storageAdapter.setItem(DB_KEY, JSON.stringify({
+                data: newState,
+                lastSyncedVersion: maxVersionFound,
+                lastSyncedAt: new Date().toISOString()
+            }));
+            
+            console.log(`[Sync] Updated to version ${maxVersionFound}`);
+        }
 
     } catch (err) {
       console.error("Sync failed", err);
     } finally {
-      set({ loadingMessage: '', loadingProgress: 100 });
+      set({ isSyncing: false, loadingMessage: '', loadingProgress: 100 });
     }
   },
 
@@ -217,6 +248,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   reset: async () => {
     await storageAdapter.removeItem(DB_KEY);
-    set({ ...initialDataState, lastSyncedVersion: 0, isInitialized: false });
+    set({ ...initialDataState, lastSyncedVersion: 0, isInitialized: false, isLoading: true });
   }
 }));
