@@ -17,7 +17,7 @@ export const PendingApprovalNotifier = () => {
   const [isDisabled, setIsDisabled] = useState(false);
 
   const fetchPending = async () => {
-      const { data } = await supabase.from('profiles').select('*').eq('is_approved', false);
+      const { data } = await supabase.from('profiles').select('*').eq('is_approved', false).is('deleted_at', null);
       if (data) {
           setPendingUsers(data);
           setPendingCount(data.length);
@@ -40,7 +40,7 @@ export const PendingApprovalNotifier = () => {
   const handleAction = async (action: 'approve' | 'deny', userId: string, email?: string) => {
       try {
           if (action === 'approve') {
-              // Direct DB Update (Allowed by RLS)
+              // Direct DB Update
               const { error } = await supabase
                 .from('profiles')
                 .update({ is_approved: true })
@@ -50,27 +50,33 @@ export const PendingApprovalNotifier = () => {
               toast.success("User Approved");
           } 
           else {
-              // Deny = Ban & Delete
-              if (!email) throw new Error("Email required for ban");
+              // Deny = Ban & Delete via Edge Function
+              if (!email) {
+                  // Fallback: try to fetch email if not in profile, though for pending users profile might not have email synced yet if using OAuth
+                  // But usually we sync emails.
+                  const { data } = await supabase.from('profiles').select('email').eq('id', userId).single();
+                  email = data?.email;
+              }
               
-              // 1. Insert Ban (Allowed by RLS)
-              const { error: banError } = await supabase.from('banned_users').insert({
-                  email, 
-                  reason: 'Denied via quick action',
-                  banned_by: session?.user?.id
-              });
-              if (banError) throw banError;
+              if (!email) throw new Error("Could not find email for user to ban");
 
-              // 2. Delete Auth (Edge Function)
-              const { error: funcError } = await supabase.functions.invoke('admin-actions', { 
-                  body: { action: 'delete_user_auth', userId } 
+              const { error } = await supabase.functions.invoke('admin-actions', { 
+                  body: { 
+                      action: 'ban_user_and_delete', 
+                      userId, 
+                      email,
+                      reason: 'Denied via Quick Action'
+                  } 
               });
-              if (funcError) throw funcError;
-
+              
+              if (error) throw error;
               toast.success("User Denied & Blocked");
           }
+          // Optimistic update
+          setPendingUsers(prev => prev.filter(u => u.id !== userId));
+          setPendingCount(prev => prev - 1);
       } catch (e: any) {
-          toast.error("Action failed: " + e.message);
+          toast.error("Action failed: " + (e.message || "Unknown error"));
       }
   };
 
@@ -119,7 +125,7 @@ export const PendingApprovalNotifier = () => {
                     <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
                         <div className="min-w-0 flex-1 mr-2">
                             <p className="font-medium truncate">{user.first_name} {user.last_name}</p>
-                            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                            <p className="text-xs text-muted-foreground truncate">{user.email || "No email"}</p>
                             <p className="text-[10px] text-muted-foreground mt-0.5">{user.position || "No position set"}</p>
                         </div>
                         <div className="flex gap-2 shrink-0">
