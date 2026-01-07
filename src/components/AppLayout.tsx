@@ -62,13 +62,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   useLayoutEffect(() => {
     const calculateItems = () => {
       const h = window.innerHeight;
-      // Fixed areas: 
-      // Top Header: ~80px (Logo/Icon area)
-      // Bottom Metronome: ~100px
-      // Collapse button: ~30px
-      // Reserved: ~220px
       const reservedSpace = 220;
-      const itemHeight = 48; // Approx px per item (40px height + 8px gap)
+      const itemHeight = 48;
       
       const availableHeight = h - reservedSpace;
       const possibleItems = Math.floor(availableHeight / itemHeight);
@@ -85,7 +80,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const overflowItems = mainNavItems.slice(maxVisibleItems);
   const showMoreButton = overflowItems.length > 0;
   
-  // If showing "More" button takes up a slot, we slice to maxVisibleItems - 1 to make room.
   const finalVisibleItems = showMoreButton ? mainNavItems.slice(0, maxVisibleItems - 1) : mainNavItems;
   const finalOverflowItems = showMoreButton ? mainNavItems.slice(maxVisibleItems - 1) : [];
 
@@ -98,10 +92,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   };
 
   // --- Styles Logic ---
-  // When immersive is TRUE, we assume system bars are hidden, so safe-area-insets are 0 or ignored.
-  // We remove the explicit padding so content flows edge-to-edge.
   const headerClass = cn(
-      "md:hidden fixed top-0 left-0 right-0 z-40 border-b bg-background/80 backdrop-blur-md px-4 flex items-center justify-between box-border",
+      "md:hidden fixed top-0 left-0 right-0 z-40 border-b px-4 flex items-center justify-between box-border glass transition-all duration-300",
       isImmersive ? "pt-0 h-[var(--app-header-h)]" : "pt-[env(safe-area-inset-top)] h-[calc(var(--app-header-h)+env(safe-area-inset-top))]"
   );
 
@@ -111,14 +103,13 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   );
 
   const bottomNavClass = cn(
-      "md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t z-50",
+      "md:hidden fixed bottom-0 left-0 right-0 border-t z-50 glass",
       isImmersive ? "pb-0" : "pb-[env(safe-area-inset-bottom)]"
   );
 
   const layoutContainerClass = cn(
-      "min-h-dvh bg-background text-foreground transition-all duration-300",
+      "min-h-dvh text-foreground transition-all duration-300",
       isSidebarCollapsed ? "md:pl-[80px]" : "md:pl-64",
-      // Mobile bottom padding logic
       isImmersive 
         ? "pb-[90px] md:pb-0" 
         : "pb-[calc(90px+env(safe-area-inset-bottom))] md:pb-0"
@@ -134,7 +125,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
       {/* Desktop Sidebar */}
       <aside className={cn(
-        "hidden md:flex fixed left-0 top-0 h-dvh flex-col border-r bg-card/50 backdrop-blur-xl z-20 transition-all duration-300",
+        "hidden md:flex fixed left-0 top-0 h-dvh flex-col border-r z-20 transition-all duration-300 glass",
         isSidebarCollapsed ? "w-[80px]" : "w-64"
       )}>
         {/* Collapse Button */}
@@ -151,7 +142,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
         <div className={cn("flex flex-col mb-2 pt-6 transition-all shrink-0", isSidebarCollapsed ? "items-center px-0" : "px-4")}>
           <div className={cn("flex items-center gap-3 mb-4 transition-all h-10", isSidebarCollapsed ? "justify-center" : "justify-start")}>
-             <img src={iconPath} alt="Icon" className="w-8 h-8 shrink-0" />
+             <img src={iconPath} alt="Icon" className="w-8 h-8 shrink-0 drop-shadow-md" />
              {!isSidebarCollapsed && (
                  <span className="font-bold text-sm tracking-tight truncate">Setlist Manager Pro</span>
              )}
@@ -167,8 +158,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                 "flex w-full items-center gap-3 rounded-lg transition-all duration-200 font-medium",
                 isSidebarCollapsed ? "justify-center p-3" : "px-3 py-2.5 text-sm",
                 location.pathname === item.path || (item.id === 'settings' && isSettingsOpen)
-                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                  : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                  : "hover:bg-accent/50 hover:text-accent-foreground text-muted-foreground"
               )}
               title={isSidebarCollapsed ? item.label : undefined}
             >
@@ -182,7 +173,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                   <DropdownMenuTrigger asChild>
                     <button
                         className={cn(
-                            "flex w-full items-center gap-3 rounded-lg transition-all duration-200 font-medium hover:bg-accent hover:text-accent-foreground text-muted-foreground",
+                            "flex w-full items-center gap-3 rounded-lg transition-all duration-200 font-medium hover:bg-accent/50 hover:text-accent-foreground text-muted-foreground",
                             isSidebarCollapsed ? "justify-center p-3" : "px-3 py-2.5 text-sm"
                         )}
                     >
@@ -202,13 +193,13 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           )}
         </nav>
 
-        {!isSidebarCollapsed && <MetronomeControls variant="desktop" />}
+        {!isSidebarCollapsed && <MetronomeControls variant="desktop" className="bg-transparent border-t border-white/10" />}
       </aside>
 
       {/* Mobile Header */}
       <header className={headerClass}>
          <div className="flex items-center gap-2">
-            <img src={iconPath} alt="Icon" className="w-6 h-6" />
+            <img src={iconPath} alt="Icon" className="w-6 h-6 drop-shadow-sm" />
             <span className="font-bold text-sm">Setlist Manager Pro</span>
          </div>
          {/* Use MainMenu normally here for mobile */}
@@ -229,7 +220,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
 
       {/* Mobile Metronome - Above Nav */}
       <div className="md:hidden">
-        <MetronomeControls variant="mobile" className={isImmersive ? "bottom-[90px]" : "bottom-[calc(90px+env(safe-area-inset-bottom))]"} />
+        <MetronomeControls variant="mobile" className={cn(isImmersive ? "bottom-[90px]" : "bottom-[calc(90px+env(safe-area-inset-bottom))]", "glass border-x-0 border-b-0")} />
       </div>
 
       {/* Mobile Bottom Navigation (Floating FAB Style) */}
@@ -243,7 +234,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                     to={item.path!}
                     className={cn(
                         "flex flex-col items-center justify-center gap-1 flex-1 h-full pb-2 transition-colors",
-                        location.pathname === item.path ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                        location.pathname === item.path ? "text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.3)]" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
                     <item.icon className="w-5 h-5" />
@@ -261,7 +252,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                     to={item.path!}
                     className={cn(
                         "flex flex-col items-center justify-center gap-1 flex-1 h-full pb-2 transition-colors",
-                        location.pathname === item.path ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                        location.pathname === item.path ? "text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.3)]" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
                     <item.icon className="w-5 h-5" />
@@ -273,7 +264,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <div className="absolute left-1/2 -top-6 -translate-x-1/2">
                 <Link to="/performance">
                     <div className={cn(
-                        "w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 border-4 border-background",
+                        "w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-primary/20 transition-transform active:scale-95 border-4 border-background",
                         location.pathname === "/performance" 
                             ? "bg-primary text-primary-foreground" 
                             : "bg-primary text-primary-foreground"
