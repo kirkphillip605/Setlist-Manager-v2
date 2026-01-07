@@ -168,15 +168,16 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
     }
   };
 
-  const previewSound = (soundType: 'click1' | 'click2' | 'click3' | 'click4' | 'click5') => {
+  const previewSound = async (soundType: 'click1' | 'click2' | 'click3' | 'click4' | 'click5') => {
     if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     if (audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume();
+        await audioContextRef.current.resume();
     }
 
-    const now = audioContextRef.current.currentTime;
+    // Add 0.1s buffer to ensure we schedule in the future, avoiding jitter
+    const now = audioContextRef.current.currentTime + 0.1;
     const beatLen = 0.5; // 120 BPM equivalent
 
     // Schedule 4 clicks
