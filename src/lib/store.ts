@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { storageAdapter } from '@/lib/storageAdapter';
 import { Song, Setlist, Gig, Set as SetType, SetSong, Profile } from '@/types';
 import { getCurrentGlobalVersion } from '@/lib/api';
+import { RealtimeChannel } from '@supabase/supabase-js';
+import { queryClient } from '@/lib/queryClient';
 
 // Constants
 const DB_KEY = 'setlist-pro-v1';
@@ -27,6 +29,7 @@ interface AppState extends DataState {
   isOnline: boolean;
   loadingMessage: string;
   loadingProgress: number;
+  subscription: RealtimeChannel | null;
 
   // Actions
   initialize: () => Promise<void>;
@@ -56,16 +59,40 @@ export const useStore = create<AppState>((set, get) => ({
   isOnline: navigator.onLine,
   loadingMessage: 'Initializing...',
   loadingProgress: 0,
+  subscription: null,
 
   setOnlineStatus: (status) => set({ isOnline: status }),
 
   initialize: async () => {
+    // Prevent double init and subscription
     if (get().isInitialized) return;
 
     try {
       set({ isLoading: true, loadingMessage: 'Loading local data...' });
 
-      // 1. Load from Local Storage
+      // 1. Setup Realtime Subscription (Singleton)
+      if (!get().subscription) {
+        console.log("[Store] Setting up Realtime Subscription");
+        const channel = supabase.channel('global_store_sync')
+          .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+            // A. Handle Store Data (Optimistic + Gap Check)
+            get().processRealtimeUpdate(payload);
+
+            // B. Handle Non-Persisted Data (React Query)
+            if (payload.table === 'gig_skipped_songs') {
+                queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
+            }
+          })
+          .subscribe((status) => {
+             if (status === 'SUBSCRIBED') {
+                 console.log("[Store] Connected to Realtime Changes");
+             }
+          });
+        
+        set({ subscription: channel });
+      }
+
+      // 2. Load from Local Storage
       const cachedString = await storageAdapter.getItem(DB_KEY);
       let hasData = false;
 
@@ -83,12 +110,12 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // 2. Optimistic UI unblock
+      // 3. Unblock UI Immediately if we have data (Optimistic Load)
       if (hasData) {
           set({ isInitialized: true, isLoading: false });
       }
 
-      // 3. Background Sync
+      // 4. Trigger Background Sync if online
       if (get().isOnline) {
         get().syncDeltas().then(() => {
             if (!get().isInitialized) {
@@ -101,7 +128,11 @@ export const useStore = create<AppState>((set, get) => ({
 
     } catch (error) {
       console.error("Initialization failed:", error);
-      set({ isLoading: false, isInitialized: true, loadingMessage: 'Offline Mode' });
+      set({ 
+        isLoading: false, 
+        isInitialized: true, 
+        loadingMessage: 'Offline Mode' 
+      });
     }
   },
 
@@ -188,11 +219,12 @@ export const useStore = create<AppState>((set, get) => ({
   processRealtimeUpdate: async (payload: any) => {
     try {
         const { table, eventType, new: newRecord, old: oldRecord } = payload;
+        
         if (!PERSISTED_TABLES.includes(table)) return;
 
         const state = get();
         
-        // Gap Detection: Trigger full sync if we missed versions
+        // Gap Detection
         if (newRecord && newRecord.version > state.lastSyncedVersion + 1) {
             console.log(`[Realtime] Gap detected. Triggering Delta Sync.`);
             get().syncDeltas();
@@ -207,7 +239,6 @@ export const useStore = create<AppState>((set, get) => ({
         if (eventType === 'DELETE') {
             delete newTableMap[oldRecord.id];
         } else if (newRecord) {
-            // MERGE to preserve fields if payload is partial (though usually full in supabase)
             const existing = newTableMap[newRecord.id] || {};
             newTableMap[newRecord.id] = { ...existing, ...newRecord };
             
@@ -220,10 +251,11 @@ export const useStore = create<AppState>((set, get) => ({
         set({ 
             [table as keyof DataState]: newTableMap,
             lastSyncedVersion: updatedVersion,
+            // We update timestamp immediately for UI feedback
             lastSyncedAt: new Date().toISOString()
         });
 
-        // Trigger verification sync (non-blocking) to ensure consistency
+        // Trigger verification sync (non-blocking)
         get().syncDeltas();
 
         // Persist
@@ -243,14 +275,23 @@ export const useStore = create<AppState>((set, get) => ({
 
     } catch (e) {
         console.error("Error processing realtime update:", e);
-        // Fallback to safe sync
         get().syncDeltas();
     }
   },
 
   reset: async () => {
-    console.log("[Store] Clearing local data");
+    console.log("[Store] Resetting store and clearing subscription");
+    const sub = get().subscription;
+    if (sub) {
+        supabase.removeChannel(sub);
+    }
     await storageAdapter.removeItem(DB_KEY);
-    set({ ...initialDataState, lastSyncedVersion: 0, isInitialized: false, isLoading: true });
+    set({ 
+        ...initialDataState, 
+        lastSyncedVersion: 0, 
+        isInitialized: false, 
+        isLoading: true,
+        subscription: null 
+    });
   }
 }));

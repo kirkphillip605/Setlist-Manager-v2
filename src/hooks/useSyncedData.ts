@@ -1,23 +1,16 @@
 import { useStore } from "@/lib/store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useCallback, useRef } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { getAllSkippedSongs } from "@/lib/api";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 
 // --- Sync Coordination ---
 
 export const useSyncManager = () => {
-  const syncDeltas = useStore(state => state.syncDeltas);
-  const processRealtimeUpdate = useStore(state => state.processRealtimeUpdate);
-  const setOnlineStatus = useStore(state => state.setOnlineStatus);
   const initialize = useStore(state => state.initialize);
+  const syncDeltas = useStore(state => state.syncDeltas);
+  const setOnlineStatus = useStore(state => state.setOnlineStatus);
   
-  const { user } = useAuth();
-  const userId = user?.id; // Extract ID for stable dependency
-  
-  const queryClient = useQueryClient();
-
   // 1. Connectivity & Visibility Listeners
   useEffect(() => {
     const handleOnline = () => {
@@ -35,12 +28,13 @@ export const useSyncManager = () => {
 
     const handleVisibility = () => {
         if (document.visibilityState === 'visible' && navigator.onLine) {
+            console.log("[Sync] App Visible - Checking for updates");
             syncDeltas();
         }
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // Polling Fallback (5 min) to catch missed events if socket dies silently
+    // Polling Fallback (5 min) to catch missed events
     const interval = setInterval(() => {
         if (navigator.onLine && document.visibilityState === 'visible') {
             syncDeltas();
@@ -53,48 +47,12 @@ export const useSyncManager = () => {
         document.removeEventListener("visibilitychange", handleVisibility);
         clearInterval(interval);
     };
-  }, []); // Static listeners, run once
-
-  // 2. Realtime Subscription
-  // We use a ref to track if we are already subscribed to avoid double-firing in strict mode or rapid re-renders
-  useEffect(() => {
-    if (!userId) return;
-
-    console.log("[Sync] Initializing Realtime Subscription...");
-    
-    const channel = supabase.channel('global_data_sync')
-      .on(
-        'postgres_changes', 
-        { event: '*', schema: 'public' }, 
-        (payload) => {
-          // 1. Update Local Store (Optimistic) + Trigger Delta Sync (Verification)
-          processRealtimeUpdate(payload);
-
-          // 2. Handle React Query Cache (Non-persisted data)
-          if (payload.table === 'gig_skipped_songs') {
-              queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
-          }
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-            console.log("[Sync] Channel Subscribed");
-        } else if (status === 'CHANNEL_ERROR') {
-            console.error("[Sync] Channel Connection Error - Retrying in background");
-        }
-      });
-
-    return () => { 
-        console.log("[Sync] Cleaning up subscription");
-        supabase.removeChannel(channel); 
-    };
-    // DEPENDENCY FIX: Only re-run if userId changes. 
-    // internal store functions are stable, queryClient is stable.
-  }, [userId]); 
+  }, [syncDeltas, setOnlineStatus]);
 
   return { runDeltaSync: syncDeltas, initialize };
 };
 
-// --- DATA SELECTORS (Hooks) ---
+// --- DATA SELECTORS ---
 
 const activeFilter = (item: any) => !item.deleted_at;
 
@@ -187,7 +145,7 @@ export const useSyncedSkippedSongs = () => {
   });
 };
 
-// --- LEGACY ALIASES (Migration Support) ---
+// --- LEGACY ALIASES ---
 export const useAllSongs = useSyncedSongs;
 export const useAllSetlists = useSyncedSetlists;
 
