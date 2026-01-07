@@ -1,25 +1,25 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { 
   addSkippedSong, removeSkippedSong, updateSessionState, 
   endGigSession, requestLeadership, forceLeadership, resolveLeadershipRequest,
   leaveGigSession, getGigSession, joinGigSession
 } from "@/lib/api";
-import { Song, GigSession } from "@/types";
+import { Song } from "@/types";
 import { Button } from "@/components/ui/button";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription 
 } from "@/components/ui/dialog";
 import { 
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator 
-} from "@/components/ui/dropdown-menu";
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { 
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History, ZoomIn, ZoomOut, List, Coffee, Bell
+  ChevronLeft, ChevronRight, Search, Loader2, Music, Minimize2, Menu, Timer, Edit, Forward, Check, CloudOff, Users, Crown, Radio, LogOut, AlertTriangle, Wifi, WifiOff, History, ZoomIn, ZoomOut, List, Coffee, Bell, X, Activity, Music2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,6 +37,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useGesture } from "@use-gesture/react";
 import { KeepAwake } from "@capacitor-community/keep-awake";
 import { Haptics, NotificationType } from '@capacitor/haptics';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const PerformanceMode = () => {
   const { id } = useParams(); // Setlist ID
@@ -338,6 +339,7 @@ const PerformanceMode = () => {
       await updateSessionState(sessionData.id, updates);
       setIsBreakDialogOpen(false);
       setShowSetTransition(false); 
+      setMenuOpen(false);
       toast.success("Session is now on break");
   };
 
@@ -496,10 +498,13 @@ const PerformanceMode = () => {
   const [showSkippedSongs, setShowSkippedSongs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [showParticipants, setShowParticipants] = useState(false);
   const [showLeaderRequest, setShowLeaderRequest] = useState(false);
   const [incomingRequest, setIncomingRequest] = useState<any>(null);
   const [showSetSongsDialog, setShowSetSongsDialog] = useState(false);
+  
+  // Slide Out Menu State
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
 
   // -- Auto Scroll for Set Songs Dialog --
   useEffect(() => {
@@ -698,44 +703,58 @@ const PerformanceMode = () => {
       </div>
   );
 
-  // --- FULL VIEW RENDERER (Collapsing Header) ---
+  // --- FULL VIEW RENDERER (Updated Design) ---
   const renderFullView = () => (
       <div className="flex flex-col h-full bg-background">
-        {/* Fixed Header Section */}
+        {/* Sticky Secondary Header */}
         <div className={cn(
-            "border-b bg-background/95 backdrop-blur shrink-0 z-10 transition-all duration-300 ease-in-out overflow-hidden select-none",
-            isHeaderCollapsed ? "py-2 px-4" : "py-4 px-6"
+            "border-b bg-background/95 backdrop-blur shrink-0 z-10 transition-all duration-300 ease-in-out px-4 flex items-center justify-between",
+            isHeaderCollapsed ? "py-2" : "py-4"
         )}>
             {activeSong ? (
-                <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <h2 className={cn(
-                            "font-bold leading-tight truncate transition-all duration-300",
-                            isHeaderCollapsed ? "text-lg" : "text-2xl md:text-3xl"
-                        )}>
-                            {activeSong.title}
-                        </h2>
-
-                        <div className={cn(
-                            "flex items-center gap-2 transition-all duration-300 overflow-hidden",
-                            isHeaderCollapsed ? "w-0 opacity-0 scale-95" : "w-auto opacity-100 scale-100"
-                        )}>
-                            {activeSong.key && <Badge variant="secondary" className="px-2 py-0.5 text-sm">{activeSong.key}</Badge>}
-                            {activeSong.tempo && <Badge variant="secondary" className="px-2 py-0.5 text-sm">{activeSong.tempo} BPM</Badge>}
-                            {activeSong.note && <div className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-2 py-0.5 rounded text-sm font-medium">{activeSong.note}</div>}
-                        </div>
+                <div className="flex-1 min-w-0 pr-4">
+                    {/* Line 1: Title */}
+                    <div className={cn(
+                        "font-bold leading-tight truncate transition-all duration-300",
+                        isHeaderCollapsed ? "text-lg" : "text-2xl"
+                    )}>
+                        {activeSong.title}
                     </div>
 
-                    <p className={cn(
-                        "text-muted-foreground truncate transition-all duration-300 origin-top",
-                        isHeaderCollapsed ? "h-0 opacity-0" : "h-auto opacity-100 text-lg"
+                    {/* Line 2: Artist (Hidden when collapsed) */}
+                    <div className={cn(
+                        "text-muted-foreground truncate transition-all duration-300 origin-top text-sm font-medium",
+                        isHeaderCollapsed ? "h-0 opacity-0" : "h-auto opacity-100 mt-1"
                     )}>
                         {activeSong.artist}
-                    </p>
+                    </div>
+
+                    {/* Line 3: Note (Hidden when collapsed) */}
+                    {activeSong.note && (
+                        <div className={cn(
+                            "transition-all duration-300 origin-top overflow-hidden",
+                            isHeaderCollapsed ? "h-0 opacity-0" : "h-auto opacity-100 mt-1"
+                        )}>
+                            <span className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-xs font-semibold inline-block truncate max-w-full">
+                                {activeSong.note}
+                            </span>
+                        </div>
+                    )}
                 </div>
             ) : (
-                <div className="flex flex-col items-center justify-center py-2 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center py-2 text-muted-foreground w-full">
                     <p>{isLeader || initialStandalone || isForcedStandalone ? "Select a song to begin" : "Waiting for leader..."}</p>
+                </div>
+            )}
+
+            {/* Right Side: Tempo Blinker (Vertically Centered) */}
+            {isGigMode && activeSong?.tempo && blinkerEnabled && (
+                <div className="shrink-0 flex items-center justify-center h-full">
+                    <TempoBlinker 
+                        bpm={parseInt(activeSong.tempo)} 
+                        color={blinkerColor}
+                        className="w-8 h-8 shrink-0" 
+                    />
                 </div>
             )}
         </div>
@@ -758,12 +777,6 @@ const PerformanceMode = () => {
             )}
 
             {/* Overlays */}
-            {!tempSong && currentSet && (
-                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/10 z-20 pointer-events-none fade-in animate-in sticky float-right">
-                    {currentSet.name}
-                </div>
-            )}
-
             {nextSong && (
                 <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-lg text-sm font-medium border border-white/10 z-20 pointer-events-none max-w-[200px] truncate fade-in animate-in sticky float-right">
                     <span className="text-white/60 text-xs uppercase mr-1">Next:</span> {nextSong.title}
@@ -868,12 +881,12 @@ const PerformanceMode = () => {
           <div className="flex flex-col h-full">
               {/* --- Top Bar --- */}
               <div className="flex items-center justify-between px-4 py-2 border-b bg-card shadow-sm shrink-0 h-16 gap-3 relative z-40">
-                <div className="flex-1 max-w-[280px] shrink-0 flex items-center gap-2">
-                  {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground" />}
+                <div className="flex-1 flex items-center gap-2 overflow-hidden">
+                  {!isOnline && <CloudOff className="h-4 w-4 text-muted-foreground shrink-0" />}
                   {canNavigate ? (
-                      <div className="flex items-center gap-2 w-full">
+                      <div className="flex items-center gap-2 w-full max-w-[300px]">
                           <Select value={currentSetIndex.toString()} onValueChange={handleSetChange} disabled={!!tempSong}>
-                            <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Select Set" /></SelectTrigger>
+                            <SelectTrigger className="h-10 w-full truncate"><SelectValue placeholder="Select Set" /></SelectTrigger>
                             <SelectContent>
                               {sets.map((set, idx) => <SelectItem key={set.id} value={idx.toString()}>{set.name}</SelectItem>)}
                             </SelectContent>
@@ -883,45 +896,123 @@ const PerformanceMode = () => {
                           </Button>
                       </div>
                   ) : (
-                      <div className="bg-muted px-3 py-2 rounded text-sm font-medium flex items-center gap-2">
-                          <Radio className="h-3 w-3 text-green-500 animate-pulse" /> Following
+                      <div className="bg-muted px-3 py-2 rounded text-sm font-medium flex items-center gap-2 truncate">
+                          <Radio className="h-3 w-3 text-green-500 animate-pulse shrink-0" /> <span className="truncate">Following</span>
                       </div>
                   )}
                 </div>
                 
-                <div className="flex-1" />
+                <div className="flex items-center justify-end shrink-0">
+                    <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+                        <SheetTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-10 w-10">
+                                <Menu className="h-6 w-6" />
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="right" className="w-[300px] sm:w-[400px] flex flex-col">
+                            <SheetHeader className="mb-4 text-left">
+                                <SheetTitle className="flex items-center gap-2">
+                                    <List className="h-5 w-5" /> Session Menu
+                                </SheetTitle>
+                            </SheetHeader>
+                            
+                            <div className="flex-1 overflow-y-auto space-y-6">
+                                {/* Set Info */}
+                                <div className="space-y-4">
+                                    <div className="bg-muted/30 p-4 rounded-lg border">
+                                        <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Current Set</div>
+                                        <div className="text-2xl font-bold">{currentSet?.name || "Ad-hoc"}</div>
+                                    </div>
 
-                <div className="flex items-center justify-end gap-2 flex-1 shrink-0">
-                    {isGigMode && isLeader && isOnline && (
-                        <Button variant="outline" size="sm" onClick={() => setIsBreakDialogOpen(true)} className="h-10 text-amber-600 border-amber-200 hover:bg-amber-50">
-                            <Coffee className="w-4 h-4 mr-2" /> Break
-                        </Button>
-                    )}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-muted/30 p-4 rounded-lg border text-center">
+                                            <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Key</div>
+                                            <div className="text-3xl font-bold text-primary">{activeSong?.key || "-"}</div>
+                                        </div>
+                                        <div className="bg-muted/30 p-4 rounded-lg border text-center">
+                                            <div className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1">Tempo</div>
+                                            <div className="text-3xl font-bold text-primary">{activeSong?.tempo || "-"}</div>
+                                        </div>
+                                    </div>
+                                </div>
 
-                    {isGigMode && activeSong?.tempo && blinkerEnabled && (
-                        <TempoBlinker 
-                            bpm={parseInt(activeSong.tempo)} 
-                            color={blinkerColor}
-                            className="w-6 h-6 mr-3 shrink-0" 
-                        />
-                    )}
+                                {/* Actions */}
+                                <div className="space-y-2">
+                                    <h4 className="text-sm font-medium text-muted-foreground mb-2 px-1">Actions</h4>
+                                    
+                                    {isMetronomeOpen ? (
+                                        <Button variant="outline" className="w-full justify-start h-12 gap-3" onClick={closeMetronome}>
+                                            <Timer className="h-5 w-5" /> Stop Metronome
+                                        </Button>
+                                    ) : (
+                                        <Button variant="outline" className="w-full justify-start h-12 gap-3" onClick={() => { setMenuOpen(false); openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120); }}>
+                                            <Timer className="h-5 w-5" /> Start Metronome
+                                        </Button>
+                                    )}
 
-                    {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
-                        <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-10" onClick={handleSkipSong}>
-                            <Forward className="w-4 h-4 mr-2" /> Skip
-                        </Button>
-                    )}
-                    
-                    {isGigMode && isLeader ? (
-                        <Button variant="ghost" size="sm" onClick={() => setShowExitConfirm(true)} className="h-10 text-destructive hover:text-destructive">
-                            <span className="mr-2 hidden sm:inline">End Gig</span>
-                            <LogOut className="h-5 w-5" />
-                        </Button>
-                    ) : (
-                        <Button variant="ghost" size="sm" onClick={handleFollowerExit} className="h-10">
-                            Exit <Minimize2 className="h-5 w-5 ml-2" />
-                        </Button>
-                    )}
+                                    {isGigMode && isLeader && isOnline && (
+                                        <Button variant="outline" className="w-full justify-start h-12 gap-3 text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => setIsBreakDialogOpen(true)}>
+                                            <Coffee className="h-5 w-5" /> Go On Break
+                                        </Button>
+                                    )}
+
+                                    {isLeader && isGigMode && skippedSongs.length > 0 && (
+                                        <Button variant="outline" className="w-full justify-start h-12 gap-3 text-orange-600 border-orange-200" onClick={() => { setMenuOpen(false); setShowSkippedSongs(true); }}>
+                                            <History className="h-5 w-5" /> Skipped Songs ({skippedSongs.length})
+                                        </Button>
+                                    )}
+                                </div>
+
+                                {/* Participants Section */}
+                                {isGigMode && (
+                                    <Collapsible open={participantsOpen} onOpenChange={setParticipantsOpen} className="border rounded-lg bg-card">
+                                        <CollapsibleTrigger asChild>
+                                            <Button variant="ghost" className="w-full justify-between p-4 h-auto font-normal">
+                                                <div className="flex items-center gap-3">
+                                                    <Users className="h-5 w-5 text-muted-foreground" />
+                                                    <span className="font-medium">Participants</span>
+                                                </div>
+                                                <span className="bg-muted px-2 py-0.5 rounded text-xs font-bold">{participants.length}</span>
+                                            </Button>
+                                        </CollapsibleTrigger>
+                                        <CollapsibleContent className="px-4 pb-4 border-t">
+                                            <div className="space-y-2 mt-3 max-h-[200px] overflow-y-auto">
+                                                {participants.map(p => {
+                                                    const isPLeader = sessionData?.leader_id === p.user_id;
+                                                    return (
+                                                        <div key={p.id} className="flex items-center justify-between p-2 rounded bg-muted/20">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="bg-primary/10 w-8 h-8 rounded-full flex items-center justify-center text-primary font-bold text-xs">
+                                                                    {p.profile?.first_name?.[0] || "?"}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-medium text-sm">{p.profile?.first_name} {p.profile?.last_name}</div>
+                                                                    <div className="text-[10px] text-muted-foreground">{p.profile?.position}</div>
+                                                                </div>
+                                                            </div>
+                                                            {isPLeader && <Badge className="text-[10px] h-5">Leader</Badge>}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </CollapsibleContent>
+                                    </Collapsible>
+                                )}
+                            </div>
+
+                            <SheetFooter className="mt-auto border-t pt-4">
+                                {isGigMode && isLeader ? (
+                                    <Button variant="destructive" className="w-full gap-2" onClick={() => setShowExitConfirm(true)}>
+                                        <LogOut className="h-4 w-4" /> End Gig Session
+                                    </Button>
+                                ) : (
+                                    <Button variant="destructive" className="w-full gap-2" onClick={handleFollowerExit}>
+                                        <Minimize2 className="h-4 w-4" /> Exit Performance Mode
+                                    </Button>
+                                )}
+                            </SheetFooter>
+                        </SheetContent>
+                    </Sheet>
                 </div>
               </div>
 
@@ -932,52 +1023,56 @@ const PerformanceMode = () => {
               </div>
 
               {/* --- Footer Controls --- */}
-              <div className="h-16 border-t bg-card shrink-0 flex items-center px-4 gap-3 z-20 relative">
+              <div className="h-20 border-t bg-card shrink-0 flex items-center px-4 gap-4 z-20 relative pb-[env(safe-area-inset-bottom)]">
                 {canNavigate ? (
                     <>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 shrink-0"><Menu className="h-6 w-6" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-56 mb-2">
-                                {showMetronome && (
-                                    <DropdownMenuItem onClick={() => isMetronomeOpen ? closeMetronome() : openMetronome(activeSong?.tempo ? parseInt(activeSong.tempo) : 120)} className="py-3">
-                                        <Timer className="mr-2 h-4 w-4" /> Metronome
-                                    </DropdownMenuItem>
-                                )}
-                                
-                                <DropdownMenuItem onClick={() => setIsSearchOpen(true)} className="py-3"><Search className="mr-2 h-4 w-4" /> Quick Find Song</DropdownMenuItem>
-                                
-                                {isGigMode && isLeader && skippedSongs.length > 0 && (
-                                    <>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => setShowSkippedSongs(true)} className="py-3 text-orange-600">
-                                            <History className="mr-2 h-4 w-4" /> Skipped Songs ({skippedSongs.length})
-                                        </DropdownMenuItem>
-                                    </>
-                                )}
-
-                                {isGigMode && (
-                                    <>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => setShowParticipants(true)} className="py-3"><Users className="mr-2 h-4 w-4" /> Participants</DropdownMenuItem>
-                                    </>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        <Button variant="outline" className="flex-1 h-12 text-lg" onClick={handlePrev} disabled={!tempSong && (currentSetIndex === 0 && currentSongIndex === 0)}>
-                            <ChevronLeft className="mr-1 h-5 w-5" /> Prev
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            className="h-12 w-12 shrink-0 rounded-full" 
+                            onClick={() => setIsSearchOpen(true)}
+                        >
+                            <Search className="h-6 w-6" />
                         </Button>
-                        <Button className={cn("flex-[1.5] h-12 text-lg", tempSong ? "bg-orange-600 hover:bg-orange-700" : "")} onClick={handleNext}>
-                            {tempSong ? "Resume Set" : "Next"} <ChevronRight className="ml-1 h-5 w-5" />
-                        </Button>
+
+                        <div className="flex-1 flex gap-3 h-14">
+                            <Button 
+                                variant="outline" 
+                                className="flex-1 h-full text-lg rounded-xl" 
+                                onClick={handlePrev} 
+                                disabled={!tempSong && (currentSetIndex === 0 && currentSongIndex === 0)}
+                            >
+                                <ChevronLeft className="mr-1 h-6 w-6" /> Prev
+                            </Button>
+                            
+                            <Button 
+                                className={cn("flex-[2] h-full text-xl font-bold rounded-xl shadow-lg", tempSong ? "bg-orange-600 hover:bg-orange-700" : "")} 
+                                onClick={handleNext}
+                            >
+                                {tempSong ? "Resume Set" : "Next"} <ChevronRight className="ml-1 h-7 w-7" />
+                            </Button>
+                        </div>
+
+                        {/* Skip Button (Leader Only) */}
+                        {isLeader && isGigMode && activeSong && !tempSong && isOnline && (
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-12 w-12 shrink-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-full" 
+                                onClick={handleSkipSong}
+                                title="Skip Song"
+                            >
+                                <Forward className="h-6 w-6" />
+                            </Button>
+                        )}
                     </>
                 ) : (
                     <>
-                        <Button variant="outline" className="flex-1 h-12" onClick={() => setShowParticipants(true)}>
-                            <Users className="mr-2 h-4 w-4" /> In Session
+                        <Button variant="outline" className="flex-1 h-14 text-lg" onClick={() => setMenuOpen(true)}>
+                            <Users className="mr-2 h-5 w-5" /> View Participants
                         </Button>
-                        <Button variant="secondary" className="flex-1 h-12" onClick={() => setShowLeaderRequest(true)}>
-                            <Crown className="mr-2 h-4 w-4" /> Become Leader
+                        <Button variant="secondary" className="flex-1 h-14 text-lg" onClick={() => setShowLeaderRequest(true)}>
+                            <Crown className="mr-2 h-5 w-5" /> Become Leader
                         </Button>
                     </>
                 )}
@@ -1247,33 +1342,6 @@ const PerformanceMode = () => {
               </AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
-
-      <Dialog open={showParticipants} onOpenChange={setShowParticipants}>
-          <DialogContent>
-              <DialogHeader><DialogTitle>In Session</DialogTitle></DialogHeader>
-              <ScrollArea className="h-[300px]">
-                  <div className="space-y-2">
-                      {participants.map(p => {
-                          const isPLeader = sessionData?.leader_id === p.user_id;
-                          return (
-                              <div key={p.id} className="flex items-center justify-between p-2 rounded hover:bg-accent">
-                                  <div className="flex items-center gap-3">
-                                      <div className="bg-primary/10 w-8 h-8 rounded-full flex items-center justify-center text-primary font-bold">
-                                          {p.profile?.first_name?.[0] || "?"}
-                                      </div>
-                                      <div>
-                                          <div className="font-medium">{p.profile?.first_name} {p.profile?.last_name}</div>
-                                          <div className="text-xs text-muted-foreground">{p.profile?.position}</div>
-                                      </div>
-                                  </div>
-                                  {isPLeader && <Badge>Leader</Badge>}
-                              </div>
-                          );
-                      })}
-                  </div>
-              </ScrollArea>
-          </DialogContent>
-      </Dialog>
     </div>
   );
 };
