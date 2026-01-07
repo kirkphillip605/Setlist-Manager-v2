@@ -18,7 +18,7 @@ import {
 import { createSetlist, deleteSetlist, cloneSetlist, getSetlistUsage, convertSetlistToBand } from "@/lib/api";
 import { 
   Plus, Trash2, Loader2, Copy, MoreVertical, 
-  Lock, Globe, Filter, AlertTriangle, Users, CloudOff, RefreshCw
+  Lock, Globe, Filter, AlertTriangle, Users, CloudOff, RefreshCw, Printer
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ import { useSyncedSetlists } from "@/hooks/useSyncedData";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LoadingDialog } from "@/components/LoadingDialog";
 import { useAuth } from "@/context/AuthContext";
+import { SetlistPrintDialog } from "@/components/SetlistPrintDialog";
 
 const Setlists = () => {
   const navigate = useNavigate();
@@ -48,9 +49,10 @@ const Setlists = () => {
   const [newListName, setNewListName] = useState("");
   const [isDefault, setIsDefault] = useState(false);
 
-  // Conversion / Deletion
+  // Conversion / Deletion / Printing
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [convertId, setConvertId] = useState<string | null>(null);
+  const [printSetlist, setPrintSetlist] = useState<Setlist | null>(null);
   const [usageData, setUsageData] = useState<Gig[]>([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
 
@@ -127,7 +129,7 @@ const Setlists = () => {
       if (mode === "clone" && sourceId) {
           setSourceSetlistId(sourceId);
           setCloneType("personal"); // Default to personal copy
-          const src = setlists.find(l => l.id === sourceId);
+          const src = setlists.find(l => l.id => l.id === sourceId);
           if (src) setNewListName(`${src.name} (Copy)`);
       }
       setIsCreateOpen(true);
@@ -234,9 +236,24 @@ const Setlists = () => {
                                     </div>
                                 </CardContent>
                                 
-                                {/* Actions only visible if online */}
-                                {isOnline && (
-                                    <div className="absolute top-2 right-2">
+                                <div className="absolute top-2 right-2 flex items-center">
+                                    {/* Print Button */}
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-10 w-10 hover:bg-muted text-muted-foreground" 
+                                        onClick={(e) => { 
+                                            e.preventDefault(); 
+                                            e.stopPropagation(); 
+                                            setPrintSetlist(list); 
+                                        }}
+                                        title="Print Setlist"
+                                    >
+                                        <Printer className="h-5 w-5" />
+                                    </Button>
+
+                                    {/* Actions only visible if online */}
+                                    {isOnline && (
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
                                                 <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-muted" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
@@ -269,8 +286,8 @@ const Setlists = () => {
                                                 )}
                                             </DropdownMenuContent>
                                         </DropdownMenu>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </Card>
                         </Link>
                     );
@@ -430,6 +447,13 @@ const Setlists = () => {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        {/* Print Dialog */}
+        <SetlistPrintDialog 
+            open={!!printSetlist} 
+            setlist={printSetlist} 
+            onClose={() => setPrintSetlist(null)} 
+        />
       </div>
     </AppLayout>
   );
