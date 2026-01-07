@@ -4,8 +4,9 @@ import { useEffect, useMemo, useCallback } from "react";
 import { getAllSkippedSongs } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
-// --- Sync Coordination ---
+// --- Sync Manager & Realtime Connection ---
 
 export const useSyncManager = () => {
   const initialize = useStore(state => state.initialize);
@@ -16,27 +17,30 @@ export const useSyncManager = () => {
   
   const queryClient = useQueryClient();
 
-  // Setup Listeners
+  // 1. Connectivity & Visibility Listeners
   useEffect(() => {
-    // 1. Online/Offline
     const handleOnline = () => {
+        console.log("[Sync] App is Online");
         setOnlineStatus(true);
         syncDeltas();
     };
-    const handleOffline = () => setOnlineStatus(false);
+    const handleOffline = () => {
+        console.log("[Sync] App is Offline");
+        setOnlineStatus(false);
+    };
     
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // 2. Visibility
     const handleVisibility = () => {
         if (document.visibilityState === 'visible' && navigator.onLine) {
+            console.log("[Sync] App Visible - Checking for updates");
             syncDeltas();
         }
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // 3. Polling Fallback (5 min)
+    // Polling Fallback (5 min) to catch missed events
     const interval = setInterval(() => {
         if (navigator.onLine && document.visibilityState === 'visible') {
             syncDeltas();
@@ -51,45 +55,55 @@ export const useSyncManager = () => {
     };
   }, [syncDeltas, setOnlineStatus]);
 
-  // 4. Realtime Subscription
+  // 2. Realtime Subscription
   useEffect(() => {
     if (!user) return;
 
-    // Use a unique channel name to avoid conflicts with previous versions
-    const channel = supabase.channel('global_sync_v5')
-      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-          // console.log("RT Event:", payload.table, payload.eventType);
-          
-          // Process cached tables via store (Optimistic Update + Trigger Sync)
+    console.log("[Sync] Initializing Realtime Subscription...");
+    
+    const channel = supabase.channel('global_app_sync')
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public' }, 
+        (payload) => {
+          // Process persisted tables via Store
           processRealtimeUpdate(payload);
 
-          // Handle non-cached tables via React Query Invalidation
-          if (['gig_skipped_songs'].includes(payload.table)) {
+          // Handle React Query tables (non-persisted)
+          if (payload.table === 'gig_skipped_songs') {
               queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
           }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+            console.log("[Sync] Connected to Realtime Changes");
+        } else if (status === 'CHANNEL_ERROR') {
+            console.error("[Sync] Realtime Connection Error");
+        }
+      });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+        console.log("[Sync] Cleaning up subscription");
+        supabase.removeChannel(channel); 
+    };
   }, [user, processRealtimeUpdate, queryClient]);
 
   return { runDeltaSync: syncDeltas, initialize };
 };
 
-// --- DATA HOOKS (Store Selectors) ---
+// --- DATA SELECTORS ---
 
-// Helper to filter deleted items
 const activeFilter = (item: any) => !item.deleted_at;
 
 export const useSyncedSongs = () => {
   const songsMap = useStore(state => state.songs);
   const data = useMemo(() => Object.values(songsMap).filter(activeFilter).sort((a,b) => a.title.localeCompare(b.title)), [songsMap]);
-  return { data, isLoading: false }; // Store is always "loaded" after init
+  return { data, isLoading: false }; 
 };
 
 export const useSyncedGigs = () => {
   const gigsMap = useStore(state => state.gigs);
-  const setlistsMap = useStore(state => state.setlists); // For joining name
+  const setlistsMap = useStore(state => state.setlists); 
   
   const data = useMemo(() => {
       return Object.values(gigsMap)
@@ -104,7 +118,6 @@ export const useSyncedGigs = () => {
   return { data, isLoading: false };
 };
 
-// Complex Selector: Reconstruct Setlist Tree
 export const useSyncedSetlists = () => {
   const setlistsMap = useStore(state => state.setlists);
   const setsMap = useStore(state => state.sets);
@@ -115,31 +128,36 @@ export const useSyncedSetlists = () => {
     const rawSetlists = Object.values(setlistsMap).filter(activeFilter);
     
     return rawSetlists.map(list => {
-        // Find sets for this list
+        // Sets
         const listSets = Object.values(setsMap)
+            // @ts-ignore
             .filter((s: any) => s.setlist_id === list.id && !s.deleted_at)
+            // @ts-ignore
             .sort((a, b) => a.position - b.position);
 
         const hydratedSets = listSets.map(set => {
-            // Find songs for this set
+            // Set Songs
             const listSetSongs = Object.values(setSongsMap)
+                // @ts-ignore
                 .filter((ss: any) => ss.set_id === set.id && !ss.deleted_at)
+                // @ts-ignore
                 .sort((a, b) => a.position - b.position);
 
             const songs = listSetSongs.map((ss: any) => ({
                 id: ss.id,
                 position: ss.position,
-                // Handle raw snake_case from DB or camelCase from type
                 songId: ss.song_id || ss.songId,
-                set_id: ss.set_id, // Pass this through
-                song_id: ss.song_id, // Pass this through
+                set_id: ss.set_id, 
+                song_id: ss.song_id, 
+                // @ts-ignore
                 song: songsMap[ss.song_id || ss.songId] || undefined,
-                version: ss.version || 0 // Default for older records or optimistic
+                version: ss.version || 0 
             }));
 
             return {
                 ...set,
                 songs,
+                // @ts-ignore
                 version: set.version || 0
             };
         });
@@ -155,7 +173,6 @@ export const useSyncedSetlists = () => {
   return { data, isLoading: false };
 };
 
-// Skipped Songs: Still uses React Query (Not cached persistently in store)
 export const useSyncedSkippedSongs = () => {
   const { user } = useAuth();
   return useQuery({
@@ -166,6 +183,11 @@ export const useSyncedSkippedSongs = () => {
     gcTime: Infinity,
   });
 };
+
+// --- LEGACY ALIASES (Migration Support) ---
+// These ensure code imported from deleted useData.ts still works if imports are redirected here
+export const useAllSongs = useSyncedSongs;
+export const useAllSetlists = useSyncedSetlists;
 
 // --- HYDRATION HELPERS ---
 
@@ -183,6 +205,7 @@ export const useSongFromCache = (songId?: string) => {
 };
 
 // --- SYNC STATUS HELPER ---
+
 export const useSyncStatus = () => {
     const { runDeltaSync } = useSyncManager();
     const isSyncing = useStore(state => state.isSyncing);
@@ -191,7 +214,6 @@ export const useSyncStatus = () => {
 
     const refreshAll = useCallback(async () => {
         await runDeltaSync();
-        // Also refresh non-cached queries
         queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
     }, [runDeltaSync, queryClient]);
 

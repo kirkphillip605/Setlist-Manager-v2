@@ -51,8 +51,8 @@ export const useStore = create<AppState>((set, get) => ({
   lastSyncedVersion: 0,
   lastSyncedAt: null,
   isInitialized: false,
-  isLoading: true, // Only true during initial boot
-  isSyncing: false, // True during background syncs
+  isLoading: true,
+  isSyncing: false,
   isOnline: navigator.onLine,
   loadingMessage: 'Initializing...',
   loadingProgress: 0,
@@ -60,7 +60,6 @@ export const useStore = create<AppState>((set, get) => ({
   setOnlineStatus: (status) => set({ isOnline: status }),
 
   initialize: async () => {
-    // Prevent double init
     if (get().isInitialized) return;
 
     try {
@@ -84,55 +83,44 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
 
-      // 2. Unblock UI Immediately if we have data (Optimistic Load)
+      // 2. Optimistic UI unblock
       if (hasData) {
           set({ isInitialized: true, isLoading: false });
       }
 
-      // 3. Trigger Background Sync if online
+      // 3. Background Sync
       if (get().isOnline) {
-        // This runs in background, updating store as it goes
         get().syncDeltas().then(() => {
-            // Ensure we mark initialized if we weren't already (e.g. fresh install)
             if (!get().isInitialized) {
                 set({ isInitialized: true, isLoading: false });
             }
         });
       } else {
-          // Offline and no data? Or offline and data loaded?
           set({ isInitialized: true, isLoading: false });
       }
 
     } catch (error) {
       console.error("Initialization failed:", error);
-      set({ 
-        isLoading: false, 
-        isInitialized: true, // Allow render even if failed
-        loadingMessage: 'Offline Mode' 
-      });
+      set({ isLoading: false, isInitialized: true, loadingMessage: 'Offline Mode' });
     }
   },
 
   syncDeltas: async () => {
-    if (!get().isOnline) return;
-    if (get().isSyncing) return; // Prevent overlap
+    if (!get().isOnline || get().isSyncing) return;
 
     set({ isSyncing: true });
 
     try {
         const currentVersion = get().lastSyncedVersion;
-        
-        // 1. Smart Check: Compare versions before fetching
         const globalVersion = await getCurrentGlobalVersion();
         
+        // Smart Check
         if (currentVersion > 0 && currentVersion >= globalVersion) {
-            // Local is up to date
             set({ isSyncing: false });
             return;
         }
 
         let maxVersionFound = currentVersion;
-        // Shallow clone state for mutation
         const newState: DataState = {
             profiles: { ...get().profiles },
             songs: { ...get().songs },
@@ -142,10 +130,7 @@ export const useStore = create<AppState>((set, get) => ({
             set_songs: { ...get().set_songs },
         };
 
-        // Only show message if we are in the "Blocking" phase (fresh install)
-        if (get().isLoading) {
-            set({ loadingMessage: 'Syncing changes...' });
-        }
+        if (get().isLoading) set({ loadingMessage: 'Syncing changes...' });
 
         let progressStep = 0;
         const totalSteps = PERSISTED_TABLES.length;
@@ -178,24 +163,18 @@ export const useStore = create<AppState>((set, get) => ({
             }
         }
 
-        // 3. Persist & Update State
         if (maxVersionFound > currentVersion) {
             const timestamp = new Date().toISOString();
-            
-            // Update Store
             set({
                 ...newState,
                 lastSyncedVersion: maxVersionFound,
                 lastSyncedAt: timestamp
             });
-            
-            // Persist to Disk
             await storageAdapter.setItem(DB_KEY, JSON.stringify({
                 data: newState,
                 lastSyncedVersion: maxVersionFound,
                 lastSyncedAt: timestamp
             }));
-            
             console.log(`[Sync] Updated to version ${maxVersionFound}`);
         }
 
@@ -207,63 +186,66 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   processRealtimeUpdate: async (payload: any) => {
-    const { table, eventType, new: newRecord, old: oldRecord } = payload;
-    
-    if (!PERSISTED_TABLES.includes(table)) return;
+    try {
+        const { table, eventType, new: newRecord, old: oldRecord } = payload;
+        if (!PERSISTED_TABLES.includes(table)) return;
 
-    const state = get();
-    // Gap Detection handled by syncDeltas trigger below, but we can do optimistic update first.
+        const state = get();
+        
+        // Gap Detection: Trigger full sync if we missed versions
+        if (newRecord && newRecord.version > state.lastSyncedVersion + 1) {
+            console.log(`[Realtime] Gap detected. Triggering Delta Sync.`);
+            get().syncDeltas();
+            return;
+        }
 
-    // @ts-ignore
-    const currentTableMap = state[table];
-    const newTableMap = { ...currentTableMap };
-    let updatedVersion = state.lastSyncedVersion;
+        // @ts-ignore
+        const currentTableMap = state[table];
+        const newTableMap = { ...currentTableMap };
+        let updatedVersion = state.lastSyncedVersion;
 
-    if (eventType === 'DELETE') {
-      // Hard delete (fallback)
-      delete newTableMap[oldRecord.id];
-    } else if (newRecord) {
-      // INSERT or UPDATE
-      // CRITICAL: Merge with existing record to avoid partial update data loss
-      // Supabase realtime payloads might not include all columns depending on config,
-      // but usually include changed columns. Merging is safer.
-      const existing = newTableMap[newRecord.id] || {};
-      newTableMap[newRecord.id] = { ...existing, ...newRecord };
-      
-      if (newRecord.version > updatedVersion) {
-        updatedVersion = newRecord.version;
-      }
+        if (eventType === 'DELETE') {
+            delete newTableMap[oldRecord.id];
+        } else if (newRecord) {
+            // MERGE to preserve fields if payload is partial (though usually full in supabase)
+            const existing = newTableMap[newRecord.id] || {};
+            newTableMap[newRecord.id] = { ...existing, ...newRecord };
+            
+            if (newRecord.version > updatedVersion) {
+                updatedVersion = newRecord.version;
+            }
+        }
+
+        // Optimistic Update
+        set({ 
+            [table as keyof DataState]: newTableMap,
+            lastSyncedVersion: updatedVersion,
+            lastSyncedAt: new Date().toISOString()
+        });
+
+        // Trigger verification sync (non-blocking) to ensure consistency
+        get().syncDeltas();
+
+        // Persist
+        const stateToSave = {
+            data: {
+                profiles: table === 'profiles' ? newTableMap : state.profiles,
+                songs: table === 'songs' ? newTableMap : state.songs,
+                gigs: table === 'gigs' ? newTableMap : state.gigs,
+                setlists: table === 'setlists' ? newTableMap : state.setlists,
+                sets: table === 'sets' ? newTableMap : state.sets,
+                set_songs: table === 'set_songs' ? newTableMap : state.set_songs,
+            },
+            lastSyncedVersion: updatedVersion,
+            lastSyncedAt: new Date().toISOString()
+        };
+        await storageAdapter.setItem(DB_KEY, JSON.stringify(stateToSave));
+
+    } catch (e) {
+        console.error("Error processing realtime update:", e);
+        // Fallback to safe sync
+        get().syncDeltas();
     }
-
-    // Optimistic UI Update
-    set({ 
-      [table as keyof DataState]: newTableMap,
-      // We don't update lastSyncedVersion here to allow syncDeltas to confirm validity
-      // effectively, or we can update it if we trust the gap check.
-      // Let's update it to keep UI responsive.
-      lastSyncedVersion: updatedVersion
-    });
-
-    // Trigger Delta Sync to ensure consistency and fill any gaps
-    // This is the "Check version / sync" logic requested.
-    // It's non-blocking and will verify we have the absolute latest state.
-    get().syncDeltas();
-
-    // Persist to Disk
-    const stateToSave = {
-      data: {
-        profiles: table === 'profiles' ? newTableMap : state.profiles,
-        songs: table === 'songs' ? newTableMap : state.songs,
-        gigs: table === 'gigs' ? newTableMap : state.gigs,
-        setlists: table === 'setlists' ? newTableMap : state.setlists,
-        sets: table === 'sets' ? newTableMap : state.sets,
-        set_songs: table === 'set_songs' ? newTableMap : state.set_songs,
-      },
-      lastSyncedVersion: updatedVersion,
-      lastSyncedAt: new Date().toISOString()
-    };
-
-    await storageAdapter.setItem(DB_KEY, JSON.stringify(stateToSave));
   },
 
   reset: async () => {
