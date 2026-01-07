@@ -95,8 +95,6 @@ export interface GigSession {
   started_at: string;
   last_heartbeat: string;
   ended_at?: string | null;
-  deleted_at?: string | null;
-  deleted_by?: string | null;
   version: number;
 }
 
@@ -109,8 +107,8 @@ export interface GigSessionParticipant {
     first_name: string;
     last_name: string;
     position: string;
+    email?: string | null;
   };
-  deleted_at?: string | null;
   version: number;
 }
 

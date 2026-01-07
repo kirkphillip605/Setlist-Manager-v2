@@ -145,7 +145,6 @@ export const saveGig = async (gig: Partial<Gig>) => {
             .select('id')
             .eq('gig_id', gig.id)
             .eq('is_active', true)
-            .is('deleted_at', null)
             .maybeSingle();
         if (session) throw new Error("Cannot edit gig while a performance session is active.");
     }
@@ -190,7 +189,6 @@ export const cancelGig = async (id: string, reason?: string) => {
         .select('id')
         .eq('gig_id', id)
         .eq('is_active', true)
-        .is('deleted_at', null)
         .maybeSingle();
         
     if (session) throw new Error("Cannot cancel gig while a performance session is active.");
@@ -214,7 +212,6 @@ export const deleteGig = async (id: string) => {
         .select('id')
         .eq('gig_id', id)
         .eq('is_active', true)
-        .is('deleted_at', null)
         .maybeSingle();
         
     if (session) throw new Error("Cannot delete gig while a performance session is active.");
@@ -582,7 +579,6 @@ export const getGigSession = async (gigId: string): Promise<GigSession | null> =
         .from('gig_sessions')
         .select('*')
         .eq('gig_id', gigId)
-        .is('deleted_at', null)
         .maybeSingle();
     if (error && error.code !== 'PGRST116') throw error;
     return data;
@@ -600,7 +596,6 @@ export const getAllGigSessions = async () => {
             )
         `)
         .eq('is_active', true)
-        .is('deleted_at', null)
         .order('started_at', { ascending: false });
     
     if (error) throw error;
@@ -611,18 +606,12 @@ export const createGigSession = async (gigId: string, leaderId: string): Promise
     const { data: existing } = await supabase
         .from('gig_sessions')
         .select('*')
-        .eq('gig_id', gigId)
-        .is('deleted_at', null);
+        .eq('gig_id', gigId);
     
     if (existing && existing.length > 0) {
-        const active = existing.find(s => s.is_active);
-        if (active) {
-             throw new Error("Active session already exists");
-        } else {
-            // Soft delete old inactive sessions just to be clean, though they are already inactive
-            const idsToDelete = existing.map(s => s.id);
-            await supabase.from('gig_sessions').update({ deleted_at: new Date().toISOString() }).in('id', idsToDelete);
-        }
+        // Hard Delete old sessions
+        const idsToDelete = existing.map(s => s.id);
+        await supabase.from('gig_sessions').delete().in('id', idsToDelete);
     }
 
     const { data, error } = await supabase
@@ -635,12 +624,15 @@ export const createGigSession = async (gigId: string, leaderId: string): Promise
 };
 
 export const endGigSession = async (sessionId: string) => {
-    await supabase.from('gig_sessions').update({ is_active: false, is_on_break: false, ended_at: new Date().toISOString() }).eq('id', sessionId);
+    // Hard delete session (cascades to participants via DB FK if set, but we explicit delete to be safe/sure per request)
+    // Deleting the session should cascade, but let's just delete the session row directly.
+    const { error } = await supabase.from('gig_sessions').delete().eq('id', sessionId);
+    if (error) throw error;
 };
 
 export const endAllSessions = async () => {
-    // Admin only function, likely doesn't need soft delete logic change, just updates status
-    await supabase.from('gig_sessions').update({ is_active: false, ended_at: new Date().toISOString() }).neq('id', '00000000-0000-0000-0000-000000000000');
+    // Admin only function - Hard delete all active sessions
+    await supabase.from('gig_sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 };
 
 export const cleanupStaleSessions = async () => {
@@ -654,11 +646,9 @@ export const joinGigSession = async (sessionId: string, userId: string) => {
 };
 
 export const leaveGigSession = async (sessionId: string, userId: string) => {
-    // For participants, hard delete is acceptable as it's a join table without version history usually needed,
-    // BUT we should stick to soft delete if schema supports it.
-    // The schema provided for `gig_session_participants` includes `deleted_at`.
+    // Hard delete participant
     const { error } = await supabase.from('gig_session_participants')
-        .update({ deleted_at: new Date().toISOString() })
+        .delete()
         .eq('session_id', sessionId)
         .eq('user_id', userId);
     if (error) throw error;
