@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 interface MetronomeContextType {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface MetronomeContextType {
 const MetronomeContext = createContext<MetronomeContextType | undefined>(undefined);
 
 export const MetronomeProvider = ({ children }: { children: React.ReactNode }) => {
+  const { profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [bpm, setBpm] = useState(120);
@@ -24,7 +26,14 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
   const lookahead = 25.0; // How frequently to call scheduling function (in milliseconds)
   const scheduleAheadTime = 0.1; // How far ahead to schedule audio (sec)
 
-  // Initialize AudioContext
+  // Preference Ref (to avoid stale closures in interval)
+  const clickSoundRef = useRef<'click1' | 'click2' | 'click3' | 'click4' | 'click5'>('click1');
+
+  useEffect(() => {
+    clickSoundRef.current = profile?.preferences?.metronome_click_sound || 'click1';
+  }, [profile?.preferences?.metronome_click_sound]);
+
+  // Initialize AudioContext cleanup
   useEffect(() => {
     return () => {
       if (timerIDRef.current) window.clearInterval(timerIDRef.current);
@@ -46,15 +55,70 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
     osc.connect(gainNode);
     gainNode.connect(audioContextRef.current.destination);
 
-    // High pitch beep
-    osc.frequency.value = 1000;
-    
-    // Short, sharp envelope
-    gainNode.gain.setValueAtTime(1, time);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+    const soundType = clickSoundRef.current;
 
-    osc.start(time);
-    osc.stop(time + 0.05);
+    switch (soundType) {
+        case 'click2':
+            osc.type = 'triangle';
+            // Pitch Sweep
+            osc.frequency.setValueAtTime(1000, time);
+            osc.frequency.exponentialRampToValueAtTime(900, time + 0.05);
+            // Envelope
+            gainNode.gain.setValueAtTime(1, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+            osc.start(time);
+            osc.stop(time + 0.05);
+            break;
+
+        case 'click3':
+            osc.type = 'triangle';
+            // Pitch Sweep
+            osc.frequency.setValueAtTime(700, time);
+            osc.frequency.exponentialRampToValueAtTime(650, time + 0.03);
+            // Envelope
+            gainNode.gain.setValueAtTime(1, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+            osc.start(time);
+            osc.stop(time + 0.03);
+            break;
+
+        case 'click4':
+            osc.type = 'sine';
+            // Pitch Sweep
+            osc.frequency.setValueAtTime(1500, time);
+            osc.frequency.exponentialRampToValueAtTime(1200, time + 0.03);
+            // Envelope
+            gainNode.gain.setValueAtTime(1, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+            osc.start(time);
+            osc.stop(time + 0.03);
+            break;
+
+        case 'click5':
+            osc.type = 'triangle';
+            // Pitch Sweep
+            osc.frequency.setValueAtTime(2000, time);
+            osc.frequency.exponentialRampToValueAtTime(1900, time + 0.04);
+            // Envelope
+            gainNode.gain.setValueAtTime(1, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+            osc.start(time);
+            osc.stop(time + 0.04);
+            break;
+
+        case 'click1':
+        default:
+            osc.type = 'sine';
+            // Pitch Sweep
+            osc.frequency.setValueAtTime(800, time);
+            osc.frequency.exponentialRampToValueAtTime(900, time + 0.05);
+            // Envelope
+            gainNode.gain.setValueAtTime(1, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+            osc.start(time);
+            osc.stop(time + 0.05);
+            break;
+    }
   };
 
   const scheduler = () => {

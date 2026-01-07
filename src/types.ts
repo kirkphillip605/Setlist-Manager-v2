@@ -118,6 +118,7 @@ export interface UserPreferences {
   tempo_blinker_enabled?: boolean;
   tempo_blinker_color?: string; // 'red', 'green', 'blue', 'amber'
   performance_view?: 'full' | 'simple';
+  metronome_click_sound?: 'click1' | 'click2' | 'click3' | 'click4' | 'click5';
 }
 
 export interface Profile {

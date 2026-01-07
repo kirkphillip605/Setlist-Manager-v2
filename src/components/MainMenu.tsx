@@ -10,7 +10,7 @@ import {
 import { 
   Menu, Settings, Shield, User, LogOut, Moon, Sun, 
   Cloud, RefreshCw, CheckCircle2, CloudOff, Radio, Maximize, Minimize,
-  ChevronLeft, Layout, Activity, Palette
+  ChevronLeft, Layout, Activity, Palette, Volume2
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -59,7 +59,8 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
   const [prefs, setPrefs] = useState<UserPreferences>({
       tempo_blinker_enabled: true,
       tempo_blinker_color: 'amber',
-      performance_view: 'full'
+      performance_view: 'full',
+      metronome_click_sound: 'click1'
   });
 
   useEffect(() => {
@@ -203,6 +204,33 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
                       <p className="text-xs text-muted-foreground">
                           "Simple" view hides lyrics and maximizes Title, Key, and Tempo for better visibility.
                       </p>
+                  </div>
+              </div>
+
+              {/* Metronome Sound */}
+              <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                      <Volume2 className="h-4 w-4" /> Metronome Sound
+                  </div>
+                  <div className="bg-muted/30 p-3 rounded-lg border space-y-4">
+                      <div className="flex items-center justify-between">
+                          <Label htmlFor="click-sound" className="font-normal">Click Tone</Label>
+                          <Select 
+                              value={prefs.metronome_click_sound || 'click1'} 
+                              onValueChange={(val) => savePreference('metronome_click_sound', val)}
+                          >
+                              <SelectTrigger className="w-[140px] h-8 text-xs bg-background">
+                                  <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  <SelectItem value="click1">Click 1 (Default)</SelectItem>
+                                  <SelectItem value="click2">Click 2 (High)</SelectItem>
+                                  <SelectItem value="click3">Click 3 (Low)</SelectItem>
+                                  <SelectItem value="click4">Click 4 (Sharp)</SelectItem>
+                                  <SelectItem value="click5">Click 5 (Ping)</SelectItem>
+                              </SelectContent>
+                          </Select>
+                      </div>
                   </div>
               </div>
 
