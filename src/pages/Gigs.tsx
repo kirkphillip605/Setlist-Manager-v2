@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { deleteGig } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, Clock, ChevronRight } from "lucide-react";
+import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, Clock, ChevronRight, Play } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,8 +20,9 @@ import { LoadingDialog } from "@/components/LoadingDialog";
 import { format, parseISO } from "date-fns";
 import { GigCreateWizard } from "@/components/GigCreateWizard";
 import { useAuth } from "@/context/AuthContext";
+import { PerformanceSessionDialog } from "@/components/PerformanceSessionDialog";
 
-const GigList = ({ list }: { list: Gig[] }) => (
+const GigList = ({ list, onPerform }: { list: Gig[], onPerform: (gig: Gig) => void }) => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {list.map(gig => (
             <div key={gig.id} className="relative group">
@@ -65,6 +66,19 @@ const GigList = ({ list }: { list: Gig[] }) => (
                                 </div>
                             )}
                         </CardContent>
+                        
+                        {/* Perform Action Overlay Button (only if setlist present) */}
+                        {gig.setlist && (
+                            <div className="absolute bottom-3 right-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button 
+                                    size="sm" 
+                                    className="gap-2 shadow-lg" 
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPerform(gig); }}
+                                >
+                                    <Play className="h-3 w-3 fill-current" /> Perform
+                                </Button>
+                            </div>
+                        )}
                     </Card>
                 </Link>
             </div>
@@ -81,6 +95,9 @@ const Gigs = () => {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [showPast, setShowPast] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    
+    // Performance Session State
+    const [selectedGig, setSelectedGig] = useState<Gig | null>(null);
 
     // Use Master Cache
     const { data: gigs = [], isLoading } = useSyncedGigs();
@@ -112,6 +129,15 @@ const Gigs = () => {
             return;
         }
         setIsCreateOpen(true);
+    };
+
+    const handleSessionJoin = (role: string, sessionId: string) => {
+        if (!selectedGig) return;
+        let url = `/performance/${selectedGig.setlist_id}?gigId=${selectedGig.id}`;
+        if (role === 'standalone') {
+            url += '&standalone=true';
+        }
+        navigate(url);
     };
 
     return (
@@ -147,7 +173,7 @@ const Gigs = () => {
                                     {canManageGigs && <p className="text-muted-foreground">Add a gig to get started!</p>}
                                 </div>
                             ) : (
-                                <GigList list={groupedGigs.upcoming} />
+                                <GigList list={groupedGigs.upcoming} onPerform={setSelectedGig} />
                             )}
                         </section>
 
@@ -156,7 +182,7 @@ const Gigs = () => {
                                 <Checkbox id="showPast" checked={showPast} onCheckedChange={(c) => setShowPast(c === true)} />
                                 <Label htmlFor="showPast">Show Past Gigs</Label>
                             </div>
-                            {showPast && <GigList list={groupedGigs.past} />}
+                            {showPast && <GigList list={groupedGigs.past} onPerform={setSelectedGig} />}
                         </div>
                     </>
                 )}
@@ -192,6 +218,15 @@ const Gigs = () => {
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                {/* Performance Session Dialog */}
+                <PerformanceSessionDialog 
+                    open={!!selectedGig}
+                    gigId={selectedGig?.id || null}
+                    gigName={selectedGig?.name || ""}
+                    onClose={() => setSelectedGig(null)}
+                    onJoin={handleSessionJoin}
+                />
             </div>
         </AppLayout>
     );

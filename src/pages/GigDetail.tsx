@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { saveGig, deleteGig } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff, Clock, Trash2, AlertTriangle } from "lucide-react";
+import { Loader2, MapPin, Calendar, Edit, ListMusic, ChevronLeft, Navigation, CloudOff, Clock, Trash2, AlertTriangle, Play } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -22,6 +22,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription
 } from "@/components/ui/alert-dialog";
+import { PerformanceSessionDialog } from "@/components/PerformanceSessionDialog";
 
 const GigDetail = () => {
     const { id } = useParams();
@@ -33,6 +34,9 @@ const GigDetail = () => {
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Gig>>({});
+    
+    // Performance Dialog
+    const [isSessionOpen, setIsSessionOpen] = useState(false);
 
     const { data: gigs = [], isLoading } = useSyncedGigs();
     const gig = useMemo(() => gigs.find(g => g.id === id), [gigs, id]);
@@ -120,6 +124,15 @@ const GigDetail = () => {
         window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, '_blank');
     };
 
+    const handleSessionJoin = (role: string, sessionId: string) => {
+        if (!gig) return;
+        let url = `/performance/${gig.setlist_id}?gigId=${gig.id}`;
+        if (role === 'standalone') {
+            url += '&standalone=true';
+        }
+        navigate(url);
+    };
+
     if (isLoading && !gig) return (
         <AppLayout>
             <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
@@ -161,16 +174,27 @@ const GigDetail = () => {
                             {!isOnline && <span className="flex items-center text-xs bg-muted px-1.5 rounded w-fit mt-1"><CloudOff className="w-3 h-3 mr-1" /> Offline</span>}
                         </div>
                     </div>
-                    {canEdit && (
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="icon" onClick={handleEditOpen}>
-                                <Edit className="h-4 w-4" />
+                    <div className="flex gap-2">
+                        {gig.setlist && (
+                            <Button 
+                                variant="default" 
+                                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => setIsSessionOpen(true)}
+                            >
+                                <Play className="h-4 w-4 fill-current" /> <span className="hidden sm:inline">Perform</span>
                             </Button>
-                            <Button variant="destructive" size="icon" onClick={() => setShowDeleteConfirm(true)}>
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    )}
+                        )}
+                        {canEdit && (
+                            <>
+                                <Button variant="outline" size="icon" onClick={handleEditOpen}>
+                                    <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button variant="destructive" size="icon" onClick={() => setShowDeleteConfirm(true)}>
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Info Grid */}
@@ -377,6 +401,14 @@ const GigDetail = () => {
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                <PerformanceSessionDialog 
+                    open={isSessionOpen}
+                    gigId={gig.id}
+                    gigName={gig.name}
+                    onClose={() => setIsSessionOpen(false)}
+                    onJoin={handleSessionJoin}
+                />
             </div>
         </AppLayout>
     );

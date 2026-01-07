@@ -41,6 +41,7 @@ import { useAppStatus } from "@/hooks/useAppStatus";
 import { SystemStatusScreen } from "@/components/SystemStatusScreen";
 import { MobileAppSuggestion } from "@/components/MobileAppSuggestion";
 import { storageAdapter } from "@/lib/storageAdapter";
+import { MetronomeRouteHandler } from "@/components/MetronomeRouteHandler";
 
 // Robust Protected Route
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -146,6 +147,7 @@ const AppContent = () => {
     return (
         <>
             <ScrollToTop />
+            <MetronomeRouteHandler />
             <Routes>
                 <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
                 <Route path="/auth/callback" element={<AuthCallback />} />

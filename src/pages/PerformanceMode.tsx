@@ -48,7 +48,7 @@ const PerformanceMode = () => {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome } = useMetronome();
+  const { openMetronome, isOpen: isMetronomeOpen, bpm, closeMetronome, setBpm } = useMetronome();
   
   // -- Preferences --
   const blinkerEnabled = profile?.preferences?.tempo_blinker_enabled !== false;
@@ -603,6 +603,16 @@ const PerformanceMode = () => {
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
   const showMetronome = !gigId || (gigId && isLeader) || (gigId && !isLeader && !isOnBreak); 
+
+  // -- Auto Update Metronome BPM --
+  useEffect(() => {
+      if (isMetronomeOpen && activeSong?.tempo) {
+          const bpmVal = parseInt(activeSong.tempo);
+          if (!isNaN(bpmVal)) {
+              setBpm(bpmVal);
+          }
+      }
+  }, [activeSong, isMetronomeOpen, setBpm]);
 
   const nextSong = useMemo(() => {
       if (tempSong) {

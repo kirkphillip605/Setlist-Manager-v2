@@ -1,20 +1,32 @@
 import AppLayout from "@/components/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarDays, ChevronRight, Music2, Users, Lock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { CalendarDays, ChevronRight, Music2, Users, Lock, Plus, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSyncedSetlists, useSyncedGigs } from "@/hooks/useSyncedData";
 import { PerformanceSessionDialog } from "@/components/PerformanceSessionDialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { createSetlist } from "@/lib/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 const PerformanceSelection = () => {
   const navigate = useNavigate();
+  const isOnline = useNetworkStatus();
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState<"gig" | "practice" | null>(null);
   
   // Session Init State
   const [selectedGig, setSelectedGig] = useState<any>(null);
+
+  // Setlist Creation State
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newListName, setNewListName] = useState("");
 
   const { data: setlists = [] } = useSyncedSetlists();
   const { data: gigs = [] } = useSyncedGigs();
@@ -38,6 +50,20 @@ const PerformanceSelection = () => {
       }
       navigate(url);
   };
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+       return createSetlist(newListName, true, false); // Create Personal Setlist by default
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['setlists'] });
+      setNewListName("");
+      setIsCreateOpen(false);
+      setMode(null); // Close selection dialog
+      if (data?.id) navigate(`/setlists/${data.id}`); // Navigate to edit the new list
+    },
+    onError: () => toast.error("Failed to create setlist")
+  });
 
   return (
     <AppLayout>
@@ -107,10 +133,12 @@ const PerformanceSelection = () => {
                                 ))
                              )
                         ) : (
-                            setlists.length === 0 ? (
-                                <div className="p-8 text-center text-muted-foreground">No setlists found.</div>
-                            ) : (
-                                setlists.sort((a,b) => a.name.localeCompare(b.name)).map(list => (
+                            <div>
+                                {setlists.length === 0 && (
+                                    <div className="p-8 text-center text-muted-foreground">No setlists found.</div>
+                                )}
+                                
+                                {setlists.sort((a,b) => a.name.localeCompare(b.name)).map(list => (
                                     <div 
                                         key={list.id} 
                                         className="p-4 hover:bg-accent cursor-pointer flex items-center justify-between group"
@@ -127,11 +155,51 @@ const PerformanceSelection = () => {
                                         </div>
                                         <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
                                     </div>
-                                ))
-                            )
+                                ))}
+
+                                {/* Create Button */}
+                                {isOnline && (
+                                    <div className="p-4 border-t bg-muted/10">
+                                        <Button 
+                                            variant="outline" 
+                                            className="w-full justify-start gap-2 h-12 text-primary border-primary/20 hover:bg-primary/5"
+                                            onClick={() => setIsCreateOpen(true)}
+                                        >
+                                            <Plus className="h-5 w-5" /> Create New Setlist...
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </ScrollArea>
+            </DialogContent>
+        </Dialog>
+
+        {/* Create Setlist Dialog */}
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>New Personal Setlist</DialogTitle>
+                    <DialogDescription>Create a new list for practice.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Name</Label>
+                        <Input 
+                            value={newListName} 
+                            onChange={e => setNewListName(e.target.value)} 
+                            placeholder="e.g. My Practice List" 
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => createMutation.mutate()} disabled={!newListName.trim() || createMutation.isPending}>
+                            {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Create & Edit
+                        </Button>
+                    </DialogFooter>
+                </div>
             </DialogContent>
         </Dialog>
 
