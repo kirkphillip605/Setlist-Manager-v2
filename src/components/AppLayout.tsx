@@ -210,9 +210,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       <main className={mainClass}>
         <motion.div
           key={location.pathname}
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
         >
           {children}
         </motion.div>
@@ -237,8 +237,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                         location.pathname === item.path ? "text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.3)]" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
-                    <item.icon className="w-5 h-5" />
-                    <span className="text-[10px] font-medium">{item.label}</span>
+                    <item.icon className="w-6 h-6" />
+                    <span className="text-xs font-medium">{item.label}</span>
                 </Link>
             ))}
 
@@ -255,8 +255,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
                         location.pathname === item.path ? "text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.3)]" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
-                    <item.icon className="w-5 h-5" />
-                    <span className="text-[10px] font-medium">{item.label}</span>
+                    <item.icon className="w-6 h-6" />
+                    <span className="text-xs font-medium">{item.label}</span>
                 </Link>
             ))}
 
@@ -264,15 +264,15 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <div className="absolute left-1/2 -top-6 -translate-x-1/2">
                 <Link to="/performance">
                     <div className={cn(
-                        "w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-primary/20 transition-transform active:scale-95 border-4 border-background",
+                        "w-16 h-16 rounded-full flex items-center justify-center shadow-lg shadow-primary/20 transition-transform active:scale-95 border-4 border-background",
                         location.pathname === "/performance" 
                             ? "bg-primary text-primary-foreground" 
                             : "bg-primary text-primary-foreground"
                     )}>
-                        <Play className="w-6 h-6 ml-1 fill-current" />
+                        <Play className="w-7 h-7 ml-1 fill-current" />
                     </div>
                     <div className={cn(
-                        "text-[10px] font-medium text-center mt-1 transition-colors",
+                        "text-xs font-medium text-center mt-1 transition-colors",
                         location.pathname === "/performance" ? "text-primary" : "text-muted-foreground"
                     )}>
                         Perform

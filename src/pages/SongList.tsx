@@ -7,7 +7,7 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuRadioGroup, DropdownMenuRadioItem
 } from "@/components/ui/dropdown-menu";
 import { deleteSong, getSongUsage, saveSong } from "@/lib/api";
-import { Plus, Search, Loader2, Trash2, Edit, Music, Filter, AlertTriangle, Archive, CloudOff } from "lucide-react";
+import { Plus, Search, Loader2, Trash2, Edit, Music, Filter, AlertTriangle, Archive, CloudOff, ChevronRight } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -69,7 +69,7 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
         onDragEnd={handleDragEnd}
         animate={controls}
         whileTap={{ scale: 0.99 }}
-        className={`relative bg-card/95 backdrop-blur-sm rounded-xl border shadow-sm touch-pan-y transition-all duration-200 hover:shadow-md hover:border-primary/20 ${song.is_retired ? 'border-dashed border-destructive/40 bg-muted/40' : ''}`}
+        className={`relative bg-card/90 backdrop-blur-sm rounded-xl border shadow-sm touch-pan-y transition-all duration-300 hover:shadow-md hover:border-primary/20 hover:bg-accent/40 ${song.is_retired ? 'border-dashed border-destructive/40 bg-muted/40' : ''}`}
         style={{ x: 0 }}
       >
         <Link to={`/songs/${song.id}`} className="flex items-center p-3 gap-4">
@@ -108,6 +108,8 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
               </span>
             )}
           </div>
+          
+          <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
         </Link>
       </motion.div>
     </div>
