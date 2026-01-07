@@ -8,6 +8,7 @@ import { queryClient } from '@/lib/queryClient';
 
 // Constants
 const DB_KEY = 'setlist-pro-v1';
+// Explicitly define tables to sync to ensure we catch everything
 const PERSISTED_TABLES = ['profiles', 'songs', 'gigs', 'setlists', 'sets', 'set_songs'];
 
 // Types
@@ -64,30 +65,48 @@ export const useStore = create<AppState>((set, get) => ({
   setOnlineStatus: (status) => set({ isOnline: status }),
 
   initialize: async () => {
-    // Prevent double init and subscription
+    // Prevent double init
     if (get().isInitialized) return;
 
     try {
       set({ isLoading: true, loadingMessage: 'Loading local data...' });
 
       // 1. Setup Realtime Subscription (Singleton)
+      // We explicitly bind to each table to ensure no events are missed by a generic wildcard
       if (!get().subscription) {
-        console.log("[Store] Setting up Realtime Subscription");
-        const channel = supabase.channel('global_store_sync')
-          .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-            // A. Handle Store Data (Optimistic + Gap Check)
-            get().processRealtimeUpdate(payload);
+        console.log("[Store] Setting up Realtime Subscription for all tables...");
+        
+        let channel = supabase.channel('global_store_sync');
+        
+        // Loop through all persisted tables and add a listener for each
+        PERSISTED_TABLES.forEach(table => {
+            channel = channel.on(
+                'postgres_changes', 
+                { event: '*', schema: 'public', table: table }, 
+                (payload) => {
+                    console.log(`[Realtime] Change detected in ${table}:`, payload.eventType);
+                    get().processRealtimeUpdate(payload);
+                }
+            );
+        });
 
-            // B. Handle Non-Persisted Data (React Query)
-            if (payload.table === 'gig_skipped_songs') {
-                queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
+        // Special listener for skipped songs (not in persistent store, but needs invalidation)
+        channel = channel.on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'gig_skipped_songs' },
+            () => {
+                 console.log(`[Realtime] Change detected in gig_skipped_songs`);
+                 queryClient.invalidateQueries({ queryKey: ['skipped_songs_all'] });
             }
-          })
-          .subscribe((status) => {
+        );
+        
+        channel.subscribe((status) => {
              if (status === 'SUBSCRIBED') {
-                 console.log("[Store] Connected to Realtime Changes");
+                 console.log("[Store] Successfully connected to Realtime Changes for: " + PERSISTED_TABLES.join(', '));
+             } else if (status === 'CHANNEL_ERROR') {
+                 console.error("[Store] Realtime connection failed");
              }
-          });
+        });
         
         set({ subscription: channel });
       }
@@ -145,7 +164,8 @@ export const useStore = create<AppState>((set, get) => ({
         const currentVersion = get().lastSyncedVersion;
         const globalVersion = await getCurrentGlobalVersion();
         
-        // Smart Check
+        // Smart Check: If local version matches global, we are up to date.
+        // This is called frequently (e.g. on every realtime event), so it must be efficient.
         if (currentVersion > 0 && currentVersion >= globalVersion) {
             set({ isSyncing: false });
             return;
@@ -256,6 +276,8 @@ export const useStore = create<AppState>((set, get) => ({
         });
 
         // Trigger verification sync (non-blocking)
+        // This ensures that receiving a realtime event IMMEDIATELY triggers a version check
+        // effectively making the sync "realtime" even if the payload was partial.
         get().syncDeltas();
 
         // Persist
