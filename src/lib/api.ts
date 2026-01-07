@@ -281,11 +281,6 @@ export const getSetlists = async (): Promise<Setlist[]> => {
 
   if (error) throw error;
 
-  // Filter nested soft-deleted items (Postgrest filtering on nested resources isn't as clean for 'deleted_at is null' inside arrays without explicit filters in the select string, but cascading triggers should handle consistency. 
-  // However, strict read requirement says we must filter. 
-  // We can add filtering here in JS to be safe, or improve the select query.
-  // Using JS filter for complex nested structures is safer for now.
-  
   const rawSetlists = data as any[];
 
   return rawSetlists.map(list => ({
@@ -412,8 +407,6 @@ export const updateSetlist = async (id: string, updates: Partial<Setlist>) => {
 };
 
 // --- Sync Logic (Legacy/Transaction for Setlist Editor) ---
-// This handles the complex setlist structure save. 
-// We need to ensure deletes here are also soft deletes.
 
 export const syncSetlist = async (setlist: Setlist) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -668,7 +661,11 @@ export const sendHeartbeat = async (sessionId: string, userId: string, isLeader:
 };
 
 export const updateSessionState = async (sessionId: string, state: { current_set_index?: number, current_song_index?: number, adhoc_song_id?: string | null, is_on_break?: boolean }) => {
-    await supabase.from('gig_sessions').update(state).eq('id', sessionId);
+    const { error } = await supabase.from('gig_sessions').update(state).eq('id', sessionId);
+    if (error) {
+        console.error("Failed to update session state", error);
+        throw error;
+    }
 };
 
 export const requestLeadership = async (sessionId: string, userId: string) => {
