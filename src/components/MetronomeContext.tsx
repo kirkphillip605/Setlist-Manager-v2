@@ -9,6 +9,7 @@ interface MetronomeContextType {
   closeMetronome: () => void;
   togglePlay: () => void;
   setBpm: (bpm: number) => void;
+  previewSound: (soundType: 'click1' | 'click2' | 'click3' | 'click4' | 'click5') => void;
 }
 
 const MetronomeContext = createContext<MetronomeContextType | undefined>(undefined);
@@ -46,7 +47,7 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
     nextNoteTimeRef.current += secondsPerBeat;
   };
 
-  const playClick = (time: number) => {
+  const playClick = (time: number, type?: 'click1' | 'click2' | 'click3' | 'click4' | 'click5') => {
     if (!audioContextRef.current) return;
     
     const osc = audioContextRef.current.createOscillator();
@@ -55,7 +56,7 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
     osc.connect(gainNode);
     gainNode.connect(audioContextRef.current.destination);
 
-    const soundType = clickSoundRef.current;
+    const soundType = type || clickSoundRef.current;
 
     switch (soundType) {
         case 'click2':
@@ -167,6 +168,23 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
     }
   };
 
+  const previewSound = (soundType: 'click1' | 'click2' | 'click3' | 'click4' | 'click5') => {
+    if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+    }
+
+    const now = audioContextRef.current.currentTime;
+    const beatLen = 0.5; // 120 BPM equivalent
+
+    // Schedule 4 clicks
+    for(let i = 0; i < 4; i++) {
+        playClick(now + (i * beatLen), soundType);
+    }
+  };
+
   const openMetronome = (newBpm: number) => {
     // Only set BPM if it's valid
     if (newBpm && newBpm > 0) {
@@ -220,7 +238,8 @@ export const MetronomeProvider = ({ children }: { children: React.ReactNode }) =
       openMetronome,
       closeMetronome,
       togglePlay,
-      setBpm
+      setBpm,
+      previewSound
     }}>
       {children}
     </MetronomeContext.Provider>

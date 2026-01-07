@@ -10,7 +10,7 @@ import {
 import { 
   Menu, Settings, Shield, User, LogOut, Moon, Sun, 
   Cloud, RefreshCw, CheckCircle2, CloudOff, Radio, Maximize, Minimize,
-  ChevronLeft, Layout, Activity, Palette, Volume2
+  ChevronLeft, Layout, Activity, Palette, Volume2, Play
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -29,6 +29,7 @@ import { useImmersiveMode } from "@/context/ImmersiveModeContext";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { UserPreferences } from "@/types";
+import { useMetronome } from "@/components/MetronomeContext";
 
 interface MainMenuProps {
     open?: boolean;
@@ -43,6 +44,7 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
   const { isSyncing, lastSyncedAt, refreshAll } = useSyncStatus();
   const isOnline = useNetworkStatus();
   const { isImmersive, toggleImmersive } = useImmersiveMode();
+  const { previewSound } = useMetronome();
   
   const [internalOpen, setInternalOpen] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -213,23 +215,36 @@ export const MainMenu = ({ open: controlledOpen, onOpenChange: setControlledOpen
                       <Volume2 className="h-4 w-4" /> Metronome Sound
                   </div>
                   <div className="bg-muted/30 p-3 rounded-lg border space-y-4">
-                      <div className="flex items-center justify-between">
-                          <Label htmlFor="click-sound" className="font-normal">Click Tone</Label>
-                          <Select 
-                              value={prefs.metronome_click_sound || 'click1'} 
-                              onValueChange={(val) => savePreference('metronome_click_sound', val)}
-                          >
-                              <SelectTrigger className="w-[140px] h-8 text-xs bg-background">
-                                  <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                  <SelectItem value="click1">Click 1 (Default)</SelectItem>
-                                  <SelectItem value="click2">Click 2 (High)</SelectItem>
-                                  <SelectItem value="click3">Click 3 (Low)</SelectItem>
-                                  <SelectItem value="click4">Click 4 (Sharp)</SelectItem>
-                                  <SelectItem value="click5">Click 5 (Ping)</SelectItem>
-                              </SelectContent>
-                          </Select>
+                      <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                              <Label htmlFor="click-sound" className="font-normal block mb-1">Click Tone</Label>
+                              <Select 
+                                  value={prefs.metronome_click_sound || 'click1'} 
+                                  onValueChange={(val) => savePreference('metronome_click_sound', val)}
+                              >
+                                  <SelectTrigger className="w-full h-9 text-xs bg-background">
+                                      <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                      <SelectItem value="click1">Click 1 (Default)</SelectItem>
+                                      <SelectItem value="click2">Click 2 (High)</SelectItem>
+                                      <SelectItem value="click3">Click 3 (Low)</SelectItem>
+                                      <SelectItem value="click4">Click 4 (Sharp)</SelectItem>
+                                      <SelectItem value="click5">Click 5 (Ping)</SelectItem>
+                                  </SelectContent>
+                              </Select>
+                          </div>
+                          <div className="flex flex-col justify-end">
+                              <Button 
+                                  variant="outline" 
+                                  size="icon" 
+                                  className="h-9 w-9 shrink-0" 
+                                  onClick={() => previewSound(prefs.metronome_click_sound || 'click1')}
+                                  title="Preview Sound"
+                              >
+                                  <Play className="h-4 w-4" />
+                              </Button>
+                          </div>
                       </div>
                   </div>
               </div>
