@@ -107,12 +107,14 @@ const PerformanceSelection = () => {
 
         {/* Selection Dialog */}
         <Dialog open={!!mode} onOpenChange={() => setMode(null)}>
-            <DialogContent className="max-w-md h-[60vh] flex flex-col p-0 gap-0">
-                <DialogHeader className="px-6 py-4 border-b">
-                    <DialogTitle>{mode === "gig" ? "Select Gig" : "Select Setlist"}</DialogTitle>
+            <DialogContent className="max-w-md h-[60vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl">
+                <DialogHeader className="px-6 py-4 border-b bg-muted/40 shrink-0">
+                    <DialogTitle className="text-xl font-bold tracking-tight">
+                        {mode === "gig" ? "Select Gig" : "Select Setlist"}
+                    </DialogTitle>
                 </DialogHeader>
                 
-                <ScrollArea className="flex-1">
+                <ScrollArea className="flex-1 bg-background/50">
                     <div className="divide-y">
                         {mode === "gig" ? (
                              upcomingGigs.length === 0 ? (
@@ -121,14 +123,17 @@ const PerformanceSelection = () => {
                                 upcomingGigs.map(gig => (
                                     <div 
                                         key={gig.id} 
-                                        className="p-4 hover:bg-accent cursor-pointer flex items-center justify-between group"
+                                        className="p-4 hover:bg-primary/5 cursor-pointer flex items-center justify-between group transition-colors"
                                         onClick={() => handleGigSelect(gig)}
                                     >
                                         <div>
-                                            <div className="font-bold">{gig.name}</div>
-                                            <div className="text-sm text-muted-foreground">{new Date(gig.start_time).toLocaleDateString()}</div>
+                                            <div className="font-bold text-base">{gig.name}</div>
+                                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                                <CalendarDays className="w-3 h-3" />
+                                                {new Date(gig.start_time).toLocaleDateString()}
+                                            </div>
                                         </div>
-                                        <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
+                                        <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                                     </div>
                                 ))
                              )
@@ -141,28 +146,28 @@ const PerformanceSelection = () => {
                                 {setlists.sort((a,b) => a.name.localeCompare(b.name)).map(list => (
                                     <div 
                                         key={list.id} 
-                                        className="p-4 hover:bg-accent cursor-pointer flex items-center justify-between group"
+                                        className="p-4 hover:bg-secondary/20 cursor-pointer flex items-center justify-between group transition-colors"
                                         onClick={() => navigate(`/performance/${list.id}`)}
                                     >
                                         <div>
-                                            <div className="font-bold flex items-center gap-2">
-                                                {list.is_personal ? <Lock className="w-3 h-3 text-muted-foreground" /> : <Users className="w-3 h-3 text-muted-foreground" />}
+                                            <div className="font-bold text-base flex items-center gap-2">
+                                                {list.is_personal ? <Lock className="w-3.5 h-3.5 text-muted-foreground" /> : <Users className="w-3.5 h-3.5 text-muted-foreground" />}
                                                 {list.name}
                                             </div>
-                                            <div className="text-xs text-muted-foreground flex gap-2 mt-1">
+                                            <div className="text-xs text-muted-foreground flex gap-2 mt-1 pl-6">
                                                 {list.sets.reduce((acc, s) => acc + s.songs.length, 0)} Songs
                                             </div>
                                         </div>
-                                        <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
+                                        <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
                                     </div>
                                 ))}
 
                                 {/* Create Button */}
                                 {isOnline && (
-                                    <div className="p-4 border-t bg-muted/10">
+                                    <div className="p-4 border-t bg-muted/10 sticky bottom-0 backdrop-blur-sm">
                                         <Button 
                                             variant="outline" 
-                                            className="w-full justify-start gap-2 h-12 text-primary border-primary/20 hover:bg-primary/5"
+                                            className="w-full justify-start gap-2 h-12 text-primary border-primary/20 hover:bg-primary/10 hover:text-primary hover:border-primary/40 transition-all"
                                             onClick={() => setIsCreateOpen(true)}
                                         >
                                             <Plus className="h-5 w-5" /> Create New Setlist...

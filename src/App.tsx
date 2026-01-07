@@ -235,7 +235,15 @@ const App = () => {
             <ImmersiveModeProvider>
                 <MetronomeProvider>
                     <Toaster />
-                    <Sonner position="bottom-center" closeButton toastOptions={{ className: "mb-[60px] md:mb-0" }} />
+                    {/* Updated Sonner Position and Offset */}
+                    <Sonner 
+                        position="top-center" 
+                        closeButton 
+                        toastOptions={{ 
+                            className: "mt-12 md:mt-4", // Push down below header on mobile
+                            style: { margin: '0 auto' } // Center align fix
+                        }} 
+                    />
                     <SyncIndicator />
                     <AppStatusWrapper />
                 </MetronomeProvider>

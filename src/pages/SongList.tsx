@@ -52,11 +52,11 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
     <div className="relative mb-3 group">
       {/* Swipe Actions Background (Only visible if online) */}
       {isOnline && (
-          <div className="absolute inset-0 flex items-center justify-between rounded-xl overflow-hidden">
-            <div className="h-full w-1/2 bg-blue-500/10 flex items-center justify-start pl-6">
+          <div className="absolute inset-0 flex items-center justify-between rounded-xl overflow-hidden my-0.5">
+            <div className="h-full w-1/2 bg-blue-500/10 flex items-center justify-start pl-6 rounded-l-xl">
               <Edit className="text-blue-600" />
             </div>
-            <div className="h-full w-1/2 bg-red-500/10 flex items-center justify-end pr-6">
+            <div className="h-full w-1/2 bg-red-500/10 flex items-center justify-end pr-6 rounded-r-xl">
               <Trash2 className="text-red-600" />
             </div>
           </div>
@@ -68,35 +68,23 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
         dragElastic={0.2}
         onDragEnd={handleDragEnd}
         animate={controls}
-        whileTap={{ scale: 0.98 }}
-        className={`relative bg-card rounded-xl border shadow-sm touch-pan-y ${song.is_retired ? 'border-2 border-dashed border-destructive/40 bg-muted/20' : ''}`}
+        whileTap={{ scale: 0.99 }}
+        className={`relative bg-card/95 backdrop-blur-sm rounded-xl border shadow-sm touch-pan-y transition-all duration-200 hover:shadow-md hover:border-primary/20 ${song.is_retired ? 'border-dashed border-destructive/40 bg-muted/40' : ''}`}
         style={{ x: 0 }}
       >
         <Link to={`/songs/${song.id}`} className="flex items-center p-3 gap-4">
-          {/* Offline Mode: Text Only / No Image (or use placeholder if cached, but for now stick to simple icon if totally offline to save space/bandwidth?) 
-              Actually, let's use AlbumArtwork everywhere. The browser cache will handle offline if available.
-          */}
-          {isOnline ? (
-              <div className="shrink-0 w-14 h-14 relative">
-                <AlbumArtwork 
-                    src={song.cover_url} 
-                    alt={song.title} 
-                    className={`rounded-md shadow-inner ${song.is_retired ? 'grayscale' : ''}`}
-                    containerClassName="w-full h-full rounded-md"
-                />
-              </div>
-          ) : (
-              // Compact Icon for Offline explicitly if we want to differentiate, 
-              // otherwise we could just use AlbumArtwork and let it show placeholder.
-              // Keeping existing logic for explicit offline mode visual distinction.
-              <div className="shrink-0 w-8 h-8 flex items-center justify-center bg-muted rounded-full">
-                  <Music className="w-4 h-4 text-muted-foreground" />
-              </div>
-          )}
+          <div className="shrink-0 w-14 h-14 relative">
+            <AlbumArtwork 
+                src={song.cover_url} 
+                alt={song.title} 
+                className={`rounded-lg shadow-sm ${song.is_retired ? 'grayscale opacity-70' : ''}`}
+                containerClassName="w-full h-full rounded-lg"
+            />
+          </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
-              <h3 className={`font-semibold text-base leading-none truncate ${song.is_retired ? 'line-through text-muted-foreground' : ''}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className={`font-semibold text-base leading-tight truncate ${song.is_retired ? 'line-through text-muted-foreground' : ''}`}>
                 {song.title}
               </h3>
               {song.is_retired && (
@@ -108,14 +96,14 @@ const SongListItem = ({ song, onDeleteRequest, isOnline }: { song: Song; onDelet
             </p>
           </div>
 
-          <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
             {song.key && (
-              <span className="px-2 py-0.5 rounded-full bg-secondary/50 text-[10px] font-medium text-secondary-foreground border border-border/50">
+              <span className="px-2 py-0.5 rounded-md bg-secondary text-[11px] font-bold text-foreground border border-border/50 shadow-sm">
                 {song.key}
               </span>
             )}
             {song.tempo && (
-              <span className="text-[10px] text-muted-foreground font-mono">
+              <span className="text-[10px] text-muted-foreground font-mono bg-muted/30 px-1.5 rounded">
                 {song.tempo} bpm
               </span>
             )}
@@ -284,7 +272,7 @@ const SongList = () => {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-2">
             {filteredAndSortedSongs.length === 0 ? (
               <div className="text-center py-20">
                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
