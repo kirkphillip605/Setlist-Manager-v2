@@ -231,28 +231,13 @@ const Setlists = () => {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-sm text-muted-foreground">
-                                    {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
+                                    <div className="text-sm text-muted-foreground pb-6">
+                                        {list.sets.length} Sets • {list.sets.reduce((acc: number, s: any) => acc + s.songs.length, 0)} Songs
                                     </div>
                                 </CardContent>
                                 
+                                {/* Top Right: Menu Actions */}
                                 <div className="absolute top-2 right-2 flex items-center">
-                                    {/* Print Button */}
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-10 w-10 hover:bg-muted text-muted-foreground" 
-                                        onClick={(e) => { 
-                                            e.preventDefault(); 
-                                            e.stopPropagation(); 
-                                            setPrintSetlist(list); 
-                                        }}
-                                        title="Print Setlist"
-                                    >
-                                        <Printer className="h-5 w-5" />
-                                    </Button>
-
-                                    {/* Actions only visible if online */}
                                     {isOnline && (
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
@@ -287,6 +272,23 @@ const Setlists = () => {
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )}
+                                </div>
+
+                                {/* Bottom Right: Print Button */}
+                                <div className="absolute bottom-2 right-2 z-10">
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-10 w-10 hover:bg-muted text-muted-foreground hover:text-foreground" 
+                                        onClick={(e) => { 
+                                            e.preventDefault(); 
+                                            e.stopPropagation(); 
+                                            setPrintSetlist(list); 
+                                        }}
+                                        title="Print Setlist"
+                                    >
+                                        <Printer className="h-5 w-5" />
+                                    </Button>
                                 </div>
                             </Card>
                         </Link>

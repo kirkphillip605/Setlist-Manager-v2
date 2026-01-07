@@ -6,6 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { jsPDF } from "jspdf";
 import { Setlist } from "@/types";
 import { Loader2, Printer, Download } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
+import { toast } from "sonner";
 
 interface SetlistPrintDialogProps {
   open: boolean;
@@ -136,16 +138,29 @@ export const SetlistPrintDialog = ({ open, onClose, setlist }: SetlistPrintDialo
         }
       });
 
+      const filename = `${setlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+
       if (action === 'print') {
-        doc.autoPrint();
-        window.open(doc.output('bloburl'), '_blank');
+        // Native check: Direct printing often requires native plugins. 
+        // Fallback to save + toast instruction for mobile app users.
+        if (Capacitor.isNativePlatform()) {
+            doc.save(filename);
+            toast.success("PDF saved. Open file to print.", { duration: 4000 });
+        } else {
+            doc.autoPrint();
+            window.open(doc.output('bloburl'), '_blank');
+        }
       } else {
-        doc.save(`${setlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
+        doc.save(filename);
+        if (Capacitor.isNativePlatform()) {
+            toast.success("PDF Downloaded");
+        }
       }
       
       onClose();
     } catch (e) {
       console.error(e);
+      toast.error("Failed to generate PDF");
     } finally {
       setIsGenerating(false);
     }
