@@ -78,6 +78,8 @@ export interface Gig {
   last_updated_by?: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   version: number;
 }
 

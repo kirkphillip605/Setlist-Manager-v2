@@ -602,7 +602,9 @@ const PerformanceMode = () => {
   const currentSet = sets[currentSetIndex];
   const activeSong = tempSong || currentSet?.songs[currentSongIndex]?.song;
   const filteredSongs = allSongs.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()) || s.artist.toLowerCase().includes(searchQuery.toLowerCase()));
-  const showMetronome = !gigId || (gigId && isLeader) || (gigId && !isLeader && !isOnBreak); 
+  
+  // Metronome Logic
+  const showMetronome = !gigId || isForcedStandalone;
 
   // -- Auto Update Metronome BPM --
   useEffect(() => {

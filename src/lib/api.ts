@@ -184,6 +184,28 @@ export const saveGig = async (gig: Partial<Gig>) => {
     }
 };
 
+export const cancelGig = async (id: string, reason?: string) => {
+    const { data: session } = await supabase
+        .from('gig_sessions')
+        .select('id')
+        .eq('gig_id', id)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .maybeSingle();
+        
+    if (session) throw new Error("Cannot cancel gig while a performance session is active.");
+
+    const { error } = await supabase
+        .from('gigs')
+        .update({ 
+            cancelled_at: new Date().toISOString(),
+            cancellation_reason: reason || null
+        })
+        .eq('id', id);
+        
+    if (error) throw error;
+};
+
 export const deleteGig = async (id: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     

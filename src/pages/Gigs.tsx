@@ -1,10 +1,13 @@
 import AppLayout from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { deleteGig } from "@/lib/api";
-import { Plus, Calendar, Trash2, Loader2, MapPin, ListMusic, CloudOff, Clock, ChevronRight, Play } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { deleteGig, cancelGig, saveGig } from "@/lib/api";
+import { Plus, Calendar, Trash2, Loader2, MapPin, CloudOff, Clock, Play, Ban, RefreshCw, AlertTriangle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,70 +25,6 @@ import { GigCreateWizard } from "@/components/GigCreateWizard";
 import { useAuth } from "@/context/AuthContext";
 import { PerformanceSessionDialog } from "@/components/PerformanceSessionDialog";
 
-const GigList = ({ list, onPerform }: { list: Gig[], onPerform: (gig: Gig) => void }) => (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {list.map(gig => (
-            <div key={gig.id} className="relative group">
-                <Link to={`/gigs/${gig.id}`} className="block">
-                    <Card className="hover:bg-accent/40 transition-colors border shadow-sm h-full relative overflow-hidden">
-                        {/* Only hide chevron on desktop initially (md:opacity-0). Visible on mobile to avoid double-tap issues. */}
-                        <div className="absolute top-0 right-0 p-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <CardHeader className="flex flex-row items-start justify-between pb-2 pr-10">
-                            <div className="space-y-1">
-                                <CardTitle className="text-lg font-bold">{gig.name}</CardTitle>
-                                <div className="flex flex-col text-sm text-muted-foreground gap-1">
-                                    <div className="flex items-center">
-                                        <Calendar className="mr-1.5 h-3.5 w-3.5" />
-                                        {format(parseISO(gig.start_time), "EEE, MMM d, yyyy")}
-                                    </div>
-                                    <div className="flex items-center">
-                                        <Clock className="mr-1.5 h-3.5 w-3.5" />
-                                        {format(parseISO(gig.start_time), "h:mm a")} 
-                                    </div>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {gig.venue_name && (
-                                <div className="text-sm text-muted-foreground flex items-center gap-1.5">
-                                    <MapPin className="h-3.5 w-3.5" /> 
-                                    <span className="truncate">{gig.venue_name}</span>
-                                </div>
-                            )}
-
-                            {gig.setlist ? (
-                                <div className="flex items-center gap-2 text-sm font-medium text-primary bg-primary/5 p-2 rounded border border-primary/10">
-                                    <ListMusic className="h-4 w-4" />
-                                    <span className="truncate">{gig.setlist.name}</span>
-                                </div>
-                            ) : (
-                                <div className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded border border-transparent">
-                                    No setlist attached
-                                </div>
-                            )}
-                        </CardContent>
-                        
-                        {/* Perform Action Overlay Button (only if setlist present) */}
-                        {gig.setlist && (
-                            <div className="absolute bottom-3 right-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button 
-                                    size="sm" 
-                                    className="gap-2 shadow-lg" 
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPerform(gig); }}
-                                >
-                                    <Play className="h-3 w-3 fill-current" /> Perform
-                                </Button>
-                            </div>
-                        )}
-                    </Card>
-                </Link>
-            </div>
-        ))}
-    </div>
-);
-
 const Gigs = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -94,10 +33,19 @@ const Gigs = () => {
     
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [showPast, setShowPast] = useState(false);
-    const [deleteId, setDeleteId] = useState<string | null>(null);
     
     // Performance Session State
     const [selectedGig, setSelectedGig] = useState<Gig | null>(null);
+
+    // Cancel State
+    const [gigToCancel, setGigToCancel] = useState<Gig | null>(null);
+    const [cancelReason, setCancelReason] = useState("");
+    const [customReason, setCustomReason] = useState("");
+
+    // Reschedule State
+    const [gigToReschedule, setGigToReschedule] = useState<Gig | null>(null);
+    const [newStart, setNewStart] = useState("");
+    const [newEnd, setNewEnd] = useState("");
 
     // Use Master Cache
     const { data: gigs = [], isLoading } = useSyncedGigs();
@@ -106,16 +54,6 @@ const Gigs = () => {
     // Filter band setlists for wizard (only public/band lists)
     const bandSetlists = useMemo(() => setlists.filter(s => !s.is_personal), [setlists]);
 
-    const deleteMutation = useMutation({
-        mutationFn: deleteGig,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['gigs'] });
-            setDeleteId(null);
-            toast.success("Gig deleted");
-        },
-        onError: (e: any) => toast.error("Failed to delete gig: " + (e.message || "Unknown error"))
-    });
-
     const groupedGigs = useMemo(() => {
         const now = new Date().toISOString();
         const upcoming = gigs.filter(g => g.start_time >= now).sort((a, b) => a.start_time.localeCompare(b.start_time));
@@ -123,13 +61,48 @@ const Gigs = () => {
         return { upcoming, past };
     }, [gigs]);
 
-    const openCreate = () => {
-        if (!isOnline) {
-            toast.error("Offline: Cannot create gigs");
-            return;
-        }
-        setIsCreateOpen(true);
-    };
+    const cancelMutation = useMutation({
+        mutationFn: async () => {
+            if (!gigToCancel) return;
+            const reason = cancelReason === 'Other' ? customReason : cancelReason;
+            await cancelGig(gigToCancel.id, reason);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['gigs'] });
+            setGigToCancel(null);
+            setCancelReason("");
+            setCustomReason("");
+            toast.success("Gig cancelled");
+        },
+        onError: (e: any) => toast.error("Failed to cancel: " + e.message)
+    });
+
+    const rescheduleMutation = useMutation({
+        mutationFn: async () => {
+            if (!gigToReschedule) return;
+            const date = new Date(newStart);
+            const offset = date.getTimezoneOffset() * 60000;
+            const startISO = new Date(date.getTime() - offset).toISOString();
+            
+            let endISO = null;
+            if (newEnd) {
+                const eDate = new Date(newEnd);
+                endISO = new Date(eDate.getTime() - offset).toISOString();
+            }
+
+            await saveGig({ 
+                ...gigToReschedule,
+                start_time: startISO,
+                end_time: endISO
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['gigs'] });
+            setGigToReschedule(null);
+            toast.success("Gig rescheduled");
+        },
+        onError: (e: any) => toast.error("Failed to reschedule: " + e.message)
+    });
 
     const handleSessionJoin = (role: string, sessionId: string) => {
         if (!selectedGig) return;
@@ -140,9 +113,17 @@ const Gigs = () => {
         navigate(url);
     };
 
+    const openReschedule = (gig: Gig) => {
+        setGigToReschedule(gig);
+        // Pre-fill
+        const toInput = (iso: string) => iso ? iso.slice(0, 16) : "";
+        setNewStart(toInput(gig.start_time));
+        setNewEnd(toInput(gig.end_time || ""));
+    };
+
     return (
         <AppLayout>
-             <LoadingDialog open={deleteMutation.isPending} />
+             <LoadingDialog open={cancelMutation.isPending || rescheduleMutation.isPending} />
 
              <div className="space-y-6 pb-20">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-[56px] md:top-0 z-30 bg-background/95 backdrop-blur py-2">
@@ -157,7 +138,7 @@ const Gigs = () => {
                     </div>
                     {/* Desktop Button */}
                     {canManageGigs && (
-                        <Button onClick={openCreate} className="hidden md:flex rounded-full shadow-lg" disabled={!isOnline}>
+                        <Button onClick={() => setIsCreateOpen(true)} className="hidden md:flex rounded-full shadow-lg" disabled={!isOnline}>
                             <Plus className="mr-2 h-4 w-4" /> Add Gig
                         </Button>
                     )}
@@ -165,7 +146,7 @@ const Gigs = () => {
 
                 {isLoading ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
                     <>
-                        <section>
+                        <section className="space-y-4">
                             {groupedGigs.upcoming.length === 0 ? (
                                 <div className="text-center py-12 border-2 border-dashed rounded-lg">
                                     <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
@@ -173,7 +154,77 @@ const Gigs = () => {
                                     {canManageGigs && <p className="text-muted-foreground">Add a gig to get started!</p>}
                                 </div>
                             ) : (
-                                <GigList list={groupedGigs.upcoming} onPerform={setSelectedGig} />
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {groupedGigs.upcoming.map(gig => (
+                                        <div key={gig.id} className="relative group">
+                                            <Card className={`relative overflow-hidden transition-all hover:shadow-md ${gig.cancelled_at ? 'opacity-70 bg-muted/30' : ''}`}>
+                                                <CardContent className="p-5">
+                                                    {/* Top Right Actions */}
+                                                    <div className="absolute top-4 right-4 flex gap-2">
+                                                        {gig.setlist && !gig.cancelled_at && (
+                                                            <Button 
+                                                                size="sm" 
+                                                                className="h-8 gap-2 bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                                                                onClick={() => setSelectedGig(gig)}
+                                                            >
+                                                                <Play className="h-3 w-3 fill-current" /> Perform
+                                                            </Button>
+                                                        )}
+                                                    </div>
+
+                                                    <Link to={`/gigs/${gig.id}`} className="block pr-24">
+                                                        {/* Cancelled Badge */}
+                                                        {gig.cancelled_at && (
+                                                            <div className="inline-flex items-center gap-1 bg-destructive/10 text-destructive px-2 py-0.5 rounded text-[10px] font-bold uppercase mb-2 border border-destructive/20">
+                                                                <Ban className="h-3 w-3" /> Cancelled
+                                                            </div>
+                                                        )}
+
+                                                        <div className="space-y-3">
+                                                            <div>
+                                                                <h3 className={`font-bold text-lg leading-tight ${gig.cancelled_at ? 'line-through decoration-destructive' : ''}`}>
+                                                                    {gig.name}
+                                                                </h3>
+                                                                {gig.cancelled_at && gig.cancellation_reason && (
+                                                                    <p className="text-xs text-destructive mt-1 italic">Reason: {gig.cancellation_reason}</p>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex items-center text-sm text-muted-foreground">
+                                                                    <Calendar className="mr-2 h-4 w-4 text-primary/70" />
+                                                                    <span className="font-medium text-foreground">
+                                                                        {format(parseISO(gig.start_time), "EEE, MMM d")}
+                                                                    </span>
+                                                                    <span className="mx-1.5 opacity-30">|</span>
+                                                                    <Clock className="mr-1.5 h-3.5 w-3.5" />
+                                                                    {format(parseISO(gig.start_time), "h:mm a")}
+                                                                </div>
+                                                                
+                                                                <div className="flex items-center text-sm text-muted-foreground">
+                                                                    <MapPin className="mr-2 h-4 w-4 text-primary/70" />
+                                                                    <span className="truncate">{gig.venue_name || "TBD"}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </Link>
+
+                                                    {/* Action Buttons Row */}
+                                                    {canManageGigs && !gig.cancelled_at && (
+                                                        <div className="flex gap-2 mt-5 pt-4 border-t">
+                                                            <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={() => openReschedule(gig)}>
+                                                                <RefreshCw className="mr-1.5 h-3 w-3" /> Reschedule
+                                                            </Button>
+                                                            <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setGigToCancel(gig)}>
+                                                                <Ban className="mr-1.5 h-3 w-3" /> Cancel
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </section>
 
@@ -182,7 +233,23 @@ const Gigs = () => {
                                 <Checkbox id="showPast" checked={showPast} onCheckedChange={(c) => setShowPast(c === true)} />
                                 <Label htmlFor="showPast">Show Past Gigs</Label>
                             </div>
-                            {showPast && <GigList list={groupedGigs.past} onPerform={setSelectedGig} />}
+                            {showPast && (
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 opacity-75">
+                                    {groupedGigs.past.map(gig => (
+                                        <Card key={gig.id}>
+                                            <CardContent className="p-4">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <div className="font-bold">{gig.name}</div>
+                                                        <div className="text-sm text-muted-foreground">{format(parseISO(gig.start_time), "MMM d, yyyy")}</div>
+                                                    </div>
+                                                    {gig.cancelled_at && <Ban className="h-4 w-4 text-destructive" />}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
@@ -190,7 +257,7 @@ const Gigs = () => {
                 {/* Mobile FAB */}
                 {canManageGigs && (
                     <Button
-                        onClick={openCreate}
+                        onClick={() => setIsCreateOpen(true)}
                         size="icon"
                         className="md:hidden fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1rem)] right-4 z-40 rounded-full shadow-xl h-14 w-14 bg-primary hover:bg-primary/90 text-primary-foreground"
                         disabled={!isOnline}
@@ -206,18 +273,82 @@ const Gigs = () => {
                     setlists={bandSetlists}
                 />
 
-                <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+                {/* Cancel Dialog */}
+                <AlertDialog open={!!gigToCancel} onOpenChange={(open) => !open && setGigToCancel(null)}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Gig?</AlertDialogTitle>
-                            <AlertDialogDescription>This will permanently delete the gig and its details.</AlertDialogDescription>
+                            <AlertDialogTitle className="text-destructive flex items-center gap-2">
+                                <AlertTriangle className="h-5 w-5" /> Cancel Gig?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Are you sure you want to cancel <b>{gigToCancel?.name}</b>? This action cannot be undone.
+                            </AlertDialogDescription>
                         </AlertDialogHeader>
+                        
+                        <div className="py-2 space-y-3">
+                            <Label>Reason (Optional)</Label>
+                            <Select onValueChange={setCancelReason}>
+                                <SelectTrigger><SelectValue placeholder="Select a reason..." /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Venue Cancelled">Venue Cancelled</SelectItem>
+                                    <SelectItem value="Illness">Illness / Emergency</SelectItem>
+                                    <SelectItem value="Weather">Weather</SelectItem>
+                                    <SelectItem value="Scheduling Conflict">Scheduling Conflict</SelectItem>
+                                    <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {cancelReason === 'Other' && (
+                                <Input placeholder="Enter reason..." value={customReason} onChange={e => setCustomReason(e.target.value)} />
+                            )}
+                        </div>
+
                         <AlertDialogFooter>
-                            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-destructive" disabled={deleteMutation.isPending}>Delete</AlertDialogAction>
+                            <AlertDialogCancel disabled={cancelMutation.isPending}>Keep Gig</AlertDialogCancel>
+                            <AlertDialogAction 
+                                onClick={() => cancelMutation.mutate()} 
+                                className="bg-destructive hover:bg-destructive/90"
+                                disabled={cancelMutation.isPending}
+                            >
+                                Confirm Cancellation
+                            </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                {/* Reschedule Dialog */}
+                <Dialog open={!!gigToReschedule} onOpenChange={(open) => !open && setGigToReschedule(null)}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Reschedule Gig</DialogTitle>
+                            <DialogDescription>Change the date and time for <b>{gigToReschedule?.name}</b>.</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Start Time</Label>
+                                <Input 
+                                    type="datetime-local" 
+                                    value={newStart} 
+                                    onChange={e => setNewStart(e.target.value)} 
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>End Time</Label>
+                                <Input 
+                                    type="datetime-local" 
+                                    value={newEnd} 
+                                    onChange={e => setNewEnd(e.target.value)} 
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="ghost" onClick={() => setGigToReschedule(null)}>Cancel</Button>
+                            <Button onClick={() => rescheduleMutation.mutate()} disabled={rescheduleMutation.isPending || !newStart}>
+                                {rescheduleMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Save New Time
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Performance Session Dialog */}
                 <PerformanceSessionDialog 
