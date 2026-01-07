@@ -129,7 +129,7 @@ const Setlists = () => {
       if (mode === "clone" && sourceId) {
           setSourceSetlistId(sourceId);
           setCloneType("personal"); // Default to personal copy
-          const src = setlists.find(l => l.id => l.id === sourceId);
+          const src = setlists.find(l => l.id === sourceId);
           if (src) setNewListName(`${src.name} (Copy)`);
       }
       setIsCreateOpen(true);
